@@ -3,8 +3,10 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/terminal"
 )
 
@@ -13,6 +15,8 @@ type rowProps struct {
 	Primary    string
 	Secondary  string
 	Trailing   string
+	Status     status.State
+	StatusTime time.Time
 	JumpLabel  string
 	Depth      int
 	TreePrefix string
@@ -43,7 +47,7 @@ func renderList(props listProps) []string {
 		left[i] = renderRowLine(row, props.Theme, props.Compact)
 		columnWidth = max(columnWidth, terminal.Width(left[i]))
 		secondaryWidth = max(secondaryWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Secondary))))
-		trailingWidth = max(trailingWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Trailing))))
+		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
 		alignSecondary = alignSecondary || (row.Depth == 0 && strings.TrimSpace(row.Secondary) != "")
 	}
 	const gap = 2
@@ -63,7 +67,7 @@ func renderList(props listProps) []string {
 	for i, row := range props.Rows {
 		line := composeRowLine(row, left[i], columnWidth, bodyWidth, props.Compact, alignSecondary, props.Theme)
 		if trailingWidth > 0 {
-			trailing := truncateWidth(strings.TrimSpace(terminal.Sanitize(row.Trailing)), trailingWidth)
+			trailing := renderTrailing(row, trailingWidth, props.Theme)
 			if trailing != "" {
 				padding := max(0, props.Width-terminal.Width(line)-terminal.Width(trailing))
 				// The path's nested style resets ANSI attributes. Reapply the

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 
+	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/tui/list"
 )
 
@@ -34,6 +35,7 @@ type liveItem struct {
 	PaneID         string
 	PaneIndex      int
 	Last           bool
+	StatusPanes    []status.PaneRef
 }
 
 type itemIndex map[list.ItemID]liveItem

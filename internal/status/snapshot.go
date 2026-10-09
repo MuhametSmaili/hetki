@@ -31,8 +31,10 @@ func NewSnapshot(values map[PaneRef]Value) (Snapshot, error) {
 }
 
 func (s Snapshot) At(pane PaneRef, now time.Time) State {
-	return s.panes[pane].At(now)
+	return s.Lookup(pane).At(now)
 }
+
+func (s Snapshot) Lookup(pane PaneRef) Value { return s.panes[pane] }
 
 func (s Snapshot) Invalidate() Snapshot {
 	values := make(map[PaneRef]Value, len(s.panes))

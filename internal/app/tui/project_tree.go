@@ -66,7 +66,7 @@ func appendTreeSession(
 			return err
 		}
 		if activeSession && windowIsActive(window, active) {
-			snapshot.ActiveItemID = list.ItemID("window:" + window.ID)
+			snapshot.ActiveItemID = windowItemID(session.ID, window.ID)
 		}
 	}
 	snapshot.Items = append(snapshot.Items, sessionItem)
@@ -84,7 +84,7 @@ func appendTreeWindow(
 		return err
 	}
 
-	windowID := list.ItemID("window:" + window.ID)
+	windowID := windowItemID(session.ID, window.ID)
 	label := fmt.Sprintf("%d", window.Index)
 	if window.Name != "" {
 		label += " " + window.Name
@@ -123,12 +123,17 @@ func appendTreeWindow(
 		WindowIndex:    window.Index,
 		WindowActive:   window.Active,
 		Last:           last,
+		StatusPanes:    paneStatusRefs(window.Panes),
 	}
 	return nil
 }
 
 func windowIsActive(window backend.Window, active backend.ActiveContext) bool {
 	return active.WindowID == window.ID || (active.WindowID == "" && active.WindowIndex == window.Index)
+}
+
+func windowItemID(session, window string) list.ItemID {
+	return list.ItemID("window:" + session + ":" + window)
 }
 
 func validateStableTmuxID(value string, prefix byte, kind string) error {

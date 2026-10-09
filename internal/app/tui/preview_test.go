@@ -30,7 +30,7 @@ func TestPreviewResolvesOnlyTheSelectedTarget(t *testing.T) {
 		return "screen", nil
 	}
 	adapter := loadedAdapter(t, stub)
-	for _, id := range []list.ItemID{"session:$1", "window:@1"} {
+	for _, id := range []list.ItemID{"session:$1", "window:$1:@1"} {
 		text, err := adapter.Preview(context.Background(), id)
 		require.NoError(t, err)
 		require.Equal(t, "screen", text)
@@ -47,7 +47,7 @@ func TestPreviewResolvesOnlyTheSelectedTarget(t *testing.T) {
 	window.Panes = append(window.Panes, window.Panes[0])
 	window.Panes[0].ID, window.Panes[0].Active = "%0", false
 	stub.state = state
-	_, err := adapter.toggleProjection(context.Background(), "window:@1")
+	_, err := adapter.toggleProjection(context.Background(), "window:$1:@1")
 	require.NoError(t, err)
 	id := destinationItemID("$1", "@1", "%1")
 	_, err = adapter.Preview(context.Background(), id)
@@ -74,7 +74,7 @@ func TestPreviewDoesNotHoldTheIndexLockDuringCapture(t *testing.T) {
 	}}
 	adapter := loadedAdapter(t, stub)
 	go func() {
-		_, err := adapter.Preview(context.Background(), "window:@1")
+		_, err := adapter.Preview(context.Background(), "window:$1:@1")
 		done <- err
 	}()
 	awaitChannel(t, started)
@@ -95,7 +95,7 @@ func TestPreviewReadCanRaceWithSnapshotReplacement(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		for range 100 {
-			if _, err := adapter.Preview(context.Background(), "window:@1"); err != nil {
+			if _, err := adapter.Preview(context.Background(), "window:$1:@1"); err != nil {
 				done <- err
 				return
 			}
@@ -114,7 +114,7 @@ func TestServiceCancelsAndJoinsPreviewOnExit(t *testing.T) {
 	done := make(chan error, 1)
 	var read ui.PreviewFunc
 	service := Service{Driver: driver, PreviewWidth: 65,
-		RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, preview ui.PreviewOptions) (ui.BackendTarget, error) {
+		RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, preview ui.PreviewOptions, _ ui.StatusOptions) (ui.BackendTarget, error) {
 			require.Equal(t, 65, preview.Width)
 			read = preview.Read
 			go func() {
@@ -140,7 +140,7 @@ func TestServicePropagatesSelectionCancellation(t *testing.T) {
 	driver := &blockingDriver{started: make(chan struct{}), stopped: make(chan struct{})}
 	done := make(chan error, 1)
 	service := Service{Driver: driver,
-		RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, preview ui.PreviewOptions) (ui.BackendTarget, error) {
+		RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, preview ui.PreviewOptions, _ ui.StatusOptions) (ui.BackendTarget, error) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			go func() {

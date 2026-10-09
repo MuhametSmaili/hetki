@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/MSmaili/hetki/internal/backend"
@@ -19,7 +18,7 @@ type Driver interface {
 	Navigate(context.Context, ui.BackendTarget) error
 }
 
-type RunUIFunc func(context.Context, list.Snapshot, ui.KeyMap, ui.StartMode, ui.DispatchFunc, ui.PreviewOptions) (ui.BackendTarget, error)
+type RunUIFunc func(context.Context, list.Snapshot, ui.KeyMap, ui.StartMode, ui.DispatchFunc, ui.PreviewOptions, ui.StatusOptions) (ui.BackendTarget, error)
 
 type Service struct {
 	Driver       Driver
@@ -27,6 +26,7 @@ type Service struct {
 	StartMode    ui.StartMode
 	PreviewWidth int
 	RunUI        RunUIFunc
+	StatusReader StatusReader
 }
 
 func NewService(detectBackend func(...string) (backend.Backend, error)) Service {
@@ -39,76 +39,21 @@ func NewService(detectBackend func(...string) (backend.Backend, error)) Service 
 }
 
 func (s Service) Run(ctx context.Context) error {
-	if s.Driver == nil {
-		return fmt.Errorf("tui driver is not configured")
+	s, err := s.resolveOptions()
+	if err != nil {
+		return err
 	}
-	runUI := s.RunUI
-	if runUI == nil {
-		runUI = ui.Run
-	}
-	keys := s.Keys
-	if keys.IsZero() {
-		keys = ui.DefaultKeyMap()
-	}
-	startMode := s.StartMode
-	if startMode == "" {
-		startMode = ui.DefaultStartMode()
-	}
-
-	width := s.PreviewWidth
-	if width == 0 {
-		width = ui.DefaultPreviewWidth
-	}
-	if width < 1 || width > 99 {
-		return fmt.Errorf("preview width must be between 1 and 99 percent")
-	}
-
 	effectsCtx, cancelEffects := context.WithCancel(ctx)
 	defer cancelEffects()
-	var effects sync.WaitGroup
-	var effectsMu sync.Mutex
+	effects := uiEffects{ctx: effectsCtx, cancel: cancelEffects, driver: s.Driver, reader: s.StatusReader}
 
 	initial, err := s.Driver.Load(effectsCtx)
 	if err != nil {
 		return err
 	}
-
-	beginEffect := func() error {
-		effectsMu.Lock()
-		defer effectsMu.Unlock()
-		if err := effectsCtx.Err(); err != nil {
-			return err
-		}
-		effects.Add(1)
-		return nil
-	}
-	dispatch := func(request ui.ActionRequest) (ui.ActionResult, error) {
-		if err := beginEffect(); err != nil {
-			return ui.ActionResult{}, err
-		}
-		defer effects.Done()
-		return s.Driver.Execute(effectsCtx, request)
-	}
-	preview := func(ctx context.Context, id list.ItemID) (string, error) {
-		if err := beginEffect(); err != nil {
-			return "", err
-		}
-		defer effects.Done()
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		readCtx, cancel := context.WithCancel(effectsCtx)
-		defer cancel()
-		stop := context.AfterFunc(ctx, cancel)
-		defer stop()
-		return s.Driver.Preview(readCtx, id)
-	}
-
-	navigation, err := runUI(effectsCtx, initial, keys, startMode, dispatch, ui.PreviewOptions{Width: width, Read: preview})
-	effectsMu.Lock()
-	cancelEffects()
-	effectsMu.Unlock()
-	effects.Wait()
+	preview := ui.PreviewOptions{Width: s.PreviewWidth, Read: effects.preview}
+	navigation, err := s.RunUI(effectsCtx, initial, s.Keys, s.StartMode, effects.dispatch, preview, effects.statusOptions())
+	effects.stop()
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -122,4 +67,26 @@ func (s Service) Run(ctx context.Context) error {
 		return s.Driver.Navigate(ctx, navigation)
 	}
 	return nil
+}
+
+func (s Service) resolveOptions() (Service, error) {
+	if s.Driver == nil {
+		return s, fmt.Errorf("tui driver is not configured")
+	}
+	if s.RunUI == nil {
+		s.RunUI = ui.Run
+	}
+	if s.Keys.IsZero() {
+		s.Keys = ui.DefaultKeyMap()
+	}
+	if s.StartMode == "" {
+		s.StartMode = ui.DefaultStartMode()
+	}
+	if s.PreviewWidth == 0 {
+		s.PreviewWidth = ui.DefaultPreviewWidth
+	}
+	if s.PreviewWidth < 1 || s.PreviewWidth > 99 {
+		return s, fmt.Errorf("preview width must be between 1 and 99 percent")
+	}
+	return s, nil
 }

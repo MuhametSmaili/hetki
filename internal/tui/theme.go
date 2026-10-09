@@ -10,6 +10,8 @@ const (
 	colorEmphasis         = "255" // #eeeeee — focused text
 	colorActive           = "217" // #ffafaf — warm pink
 	colorAccent           = "110" // #87afd7 — soft blue
+	colorBlocked          = "214"
+	colorIdle             = "114"
 	colorSelection        = "238" // #444444 — quiet selection
 	colorPromptText       = "235" // #262626 — dark prompt text
 	colorPromptBackground = "181" // #d7afaf — dusty rose

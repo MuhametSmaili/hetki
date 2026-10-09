@@ -49,7 +49,7 @@ func TestLastSessionMarkerAndShortcutUseTheSameDestination(t *testing.T) {
 			if strings.HasSuffix(row.Item.Primary, " ↶") {
 				lastID = row.Item.ID
 				count++
-				require.Equal(t, list.ItemID("window:@2"), index[row.Item.ID].WindowID)
+				require.Equal(t, list.ItemID("window:$2:@2"), index[row.Item.ID].WindowID)
 				require.Equal(t, want.Item.Primary+" ↶", row.Item.Primary)
 			} else {
 				require.Equal(t, want.Item.Primary, row.Item.Primary)

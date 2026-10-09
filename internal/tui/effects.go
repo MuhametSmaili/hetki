@@ -41,6 +41,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.preview.invalidate()
+	m.paneStatus.options.Bindings = result.StatusBindings
 	if pending != nil && isDeleteAction(pending.ActionID) {
 		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
 	}

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -44,12 +45,15 @@ func (m model) viewHeader(width int) string {
 func (m model) viewList(layout layoutMetrics) string {
 	rows := m.items.VisibleRows()
 	visibleRows := make([]rowProps, 0, len(rows))
+	now := time.Now()
 	for i, row := range rows {
 		visibleRows = append(visibleRows, rowProps{
 			ItemID: string(row.Item.ID), Primary: row.Item.Primary, Secondary: row.Item.Secondary,
-			Trailing:  row.Item.Trailing,
-			JumpLabel: m.jumpLabel(row.Item.ID),
-			Depth:     row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,
+			Trailing:   row.Item.Trailing,
+			Status:     m.paneStatus.options.Bindings.StateAt(row.Item.ID, m.paneStatus.values, now),
+			StatusTime: now,
+			JumpLabel:  m.jumpLabel(row.Item.ID),
+			Depth:      row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,
 			Active: m.items.IsActive(row.Item.ID), Selected: m.items.Offset()+i == m.items.Cursor(),
 		})
 	}

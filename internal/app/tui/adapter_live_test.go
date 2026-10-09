@@ -99,10 +99,10 @@ func TestLiveAdapterProjectsPresentationAndKeepsTargetsInOwnerIndex(t *testing.T
 	require.Len(t, snapshot.Items, 1)
 	require.Len(t, snapshot.Items[0].Children, 1)
 	assert.Equal(t, list.ItemID("session:$1"), snapshot.Items[0].ID)
-	assert.Equal(t, list.ItemID("window:@1"), snapshot.Items[0].Children[0].ID)
-	assert.Equal(t, list.ItemID("window:@1"), snapshot.ActiveItemID)
+	assert.Equal(t, list.ItemID("window:$1:@1"), snapshot.Items[0].Children[0].ID)
+	assert.Equal(t, list.ItemID("window:$1:@1"), snapshot.ActiveItemID)
 	assert.Contains(t, snapshot.Items[0].Primary, "core")
-	assert.Equal(t, "$1:@1", adapter.index["window:@1"].Target)
+	assert.Equal(t, "$1:@1", adapter.index["window:$1:@1"].Target)
 }
 
 func TestLiveAdapterStartsWithTheFlatProjection(t *testing.T) {
@@ -253,7 +253,7 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 			},
 		},
 		{
-			name: "tree window", id: "window:@1", title: "WINDOW ACTIONS", projection: projectionTree,
+			name: "tree window", id: "window:$1:@1", title: "WINDOW ACTIONS", projection: projectionTree,
 			entries: []ui.MenuEntry{
 				{Action: ui.ActionOpen, Label: "Open window"},
 				{Action: ui.ActionRename, Label: "Rename window"},
@@ -301,7 +301,7 @@ func TestSessionActionsUseTheOwningStableSessionForEveryRowKind(t *testing.T) {
 		id         list.ItemID
 	}{
 		{name: "tree session", projection: projectionTree, id: "session:$1"},
-		{name: "tree window", projection: projectionTree, id: "window:@1"},
+		{name: "tree window", projection: projectionTree, id: "window:$1:@1"},
 		{name: "flat destination", projection: projectionFlat, id: destinationItemID("$1", "@1", "%1")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -353,7 +353,7 @@ func TestSessionActionsRejectOriginsReplacedDuringRefresh(t *testing.T) {
 		id         list.ItemID
 	}{
 		{name: "tree session", projection: projectionTree, id: "session:$1"},
-		{name: "tree window", projection: projectionTree, id: "window:@1"},
+		{name: "tree window", projection: projectionTree, id: "window:$1:@1"},
 		{name: "flat destination", projection: projectionFlat, id: destinationItemID("$1", "@1", "%1")},
 	} {
 		for _, action := range []ui.ActionID{ui.ActionRenameSession, ui.ActionDeleteSession} {
@@ -412,15 +412,15 @@ func TestWindowActionsRejectSessionRowsBeforePromptOrMutation(t *testing.T) {
 func TestLiveAdapterContextMenuOmitsActionsWithoutCapabilities(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := loadedAdapter(t, stub)
-	item := adapter.index["window:@1"]
+	item := adapter.index["window:$1:@1"]
 	item.Target = ""
 	item.SessionTarget = ""
 	item.MutationTarget = ""
-	adapter.index["window:@1"] = item
+	adapter.index["window:$1:@1"] = item
 
-	_, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionRenameSession, ItemID: "window:@1"})
+	_, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionRenameSession, ItemID: "window:$1:@1"})
 	require.ErrorContains(t, err, "no owning session action")
-	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionContextMenu, ItemID: "window:@1"})
+	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionContextMenu, ItemID: "window:$1:@1"})
 	require.NoError(t, err)
 	require.NotNil(t, result.Menu)
 	assert.Equal(t, []ui.MenuEntry{
@@ -433,12 +433,12 @@ func TestLiveAdapterContextMenuOmitsActionsWithoutCapabilities(t *testing.T) {
 func TestLiveAdapterMenuActionFailsWhenItsOriginItemIsStale(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := loadedAdapter(t, stub)
-	request := ui.ActionRequest{ActionID: ui.ActionContextMenu, ItemID: "window:@1"}
+	request := ui.ActionRequest{ActionID: ui.ActionContextMenu, ItemID: "window:$1:@1"}
 	result, err := adapter.Execute(context.Background(), request)
 	require.NoError(t, err)
 	require.NotNil(t, result.Menu)
 
-	delete(adapter.index, "window:@1")
+	delete(adapter.index, "window:$1:@1")
 	_, err = adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateSession, ItemID: request.ItemID})
 	require.ErrorContains(t, err, "stale")
 	assert.Empty(t, stub.applyCalls)
@@ -448,7 +448,7 @@ func TestLiveAdapterResolvesOpenFromCurrentItemIndex(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := loadedAdapter(t, stub)
 
-	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: "window:@1"})
+	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: "window:$1:@1"})
 	require.NoError(t, err)
 	assert.Empty(t, stub.switchCalls)
 	assert.Equal(t, ui.BackendTarget("$1:@1"), result.Navigation)
@@ -464,7 +464,7 @@ func TestLiveAdapterRejectsAnItemRemovedAfterTheSnapshot(t *testing.T) {
 	adapter := loadedAdapter(t, stub)
 	stub.state.Sessions[0].Windows = nil
 
-	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: "window:@1"})
+	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: "window:$1:@1"})
 	require.ErrorContains(t, err, "stale")
 	assert.Empty(t, result.Navigation)
 	assert.Empty(t, stub.switchCalls)
@@ -482,7 +482,7 @@ func TestLiveAdapterValidatesFlatPaneIdentityNotItsDirectory(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			stub := &stubBackend{state: liveState()}
 			adapter := loadedAdapter(t, stub)
-			_, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: "window:@1"})
+			_, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: "window:$1:@1"})
 			require.NoError(t, err)
 			id := destinationItemID("$1", "@1", "%1")
 			test.edit(&stub.state.Sessions[0].Windows[0].Panes[0])
@@ -508,7 +508,7 @@ func TestLiveAdapterCreateWindowPromptsThenRefreshesAndSelectsCreatedItem(t *tes
 		stub.state.Sessions[0].Windows = append(stub.state.Sessions[0].Windows, backend.Window{ID: "@2", Index: 2, Name: "logs"})
 	}
 	adapter := loadedAdapter(t, stub)
-	request := ui.ActionRequest{ActionID: ui.ActionCreateWindow, ItemID: "window:@1"}
+	request := ui.ActionRequest{ActionID: ui.ActionCreateWindow, ItemID: "window:$1:@1"}
 
 	prompt, err := adapter.Execute(context.Background(), request)
 	require.NoError(t, err)
@@ -518,14 +518,14 @@ func TestLiveAdapterCreateWindowPromptsThenRefreshesAndSelectsCreatedItem(t *tes
 	result, err := adapter.Execute(context.Background(), request)
 	require.NoError(t, err)
 	require.NotNil(t, result.Snapshot)
-	assert.Equal(t, list.ItemID("window:@2"), result.SelectItemID)
+	assert.Equal(t, list.ItemID("window:$1:@2"), result.SelectItemID)
 	require.Len(t, stub.applyCalls, 1)
 }
 
 func TestLiveAdapterRenameAndDeleteReResolveTheSameStableItem(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := loadedAdapter(t, stub)
-	rename := ui.ActionRequest{ActionID: ui.ActionRename, ItemID: "window:@1"}
+	rename := ui.ActionRequest{ActionID: ui.ActionRename, ItemID: "window:$1:@1"}
 
 	prompt, err := adapter.Execute(context.Background(), rename)
 	require.NoError(t, err)
@@ -538,9 +538,9 @@ func TestLiveAdapterRenameAndDeleteReResolveTheSameStableItem(t *testing.T) {
 	rename.Value = text("api")
 	result, err := adapter.Execute(context.Background(), rename)
 	require.NoError(t, err)
-	assert.Equal(t, list.ItemID("window:@1"), result.SelectItemID)
+	assert.Equal(t, list.ItemID("window:$1:@1"), result.SelectItemID)
 
-	remove := ui.ActionRequest{ActionID: ui.ActionDelete, ItemID: "window:@1"}
+	remove := ui.ActionRequest{ActionID: ui.ActionDelete, ItemID: "window:$1:@1"}
 	confirmation, err := adapter.Execute(context.Background(), remove)
 	require.NoError(t, err)
 	assert.Equal(t, "DELETE WINDOW", confirmation.Confirmation.Title)
@@ -581,7 +581,7 @@ func TestInvalidProjectionRetainsPreviousOwnerIndex(t *testing.T) {
 
 	_, err := adapter.Load(context.Background())
 	require.ErrorContains(t, err, "duplicate item ID")
-	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: "window:@1"})
+	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: "window:$1:@1"})
 	require.NoError(t, err)
 	assert.Equal(t, ui.BackendTarget("$1:@1"), result.Navigation)
 }
@@ -592,7 +592,7 @@ func TestLiveAdapterTogglesBetweenTreeAndFlatWithStableSelection(t *testing.T) {
 	destinationID := destinationItemID("$1", "@1", "%1")
 
 	flat, err := adapter.Execute(context.Background(), ui.ActionRequest{
-		ActionID: ui.ActionToggleProjection, ItemID: "window:@1",
+		ActionID: ui.ActionToggleProjection, ItemID: "window:$1:@1",
 	})
 	require.NoError(t, err)
 	require.Len(t, flat.Snapshot.Items, 1)
@@ -607,7 +607,7 @@ func TestLiveAdapterTogglesBetweenTreeAndFlatWithStableSelection(t *testing.T) {
 		ActionID: ui.ActionToggleProjection, ItemID: destinationID,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, list.ItemID("window:@1"), tree.SelectItemID)
+	assert.Equal(t, list.ItemID("window:$1:@1"), tree.SelectItemID)
 	assert.Equal(t, projectionTree, adapter.projection)
 }
 
@@ -632,7 +632,7 @@ func TestTreeToFlatPrefersTheSelectedSessionsActiveDestination(t *testing.T) {
 func TestFlatDestinationActionsUseTheOwningWindowAndSession(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := loadedAdapter(t, stub)
-	_, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: "window:@1"})
+	_, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: "window:$1:@1"})
 	require.NoError(t, err)
 	destinationID := destinationItemID("$1", "@1", "%1")
 
@@ -673,11 +673,11 @@ func TestInvalidFlatProjectionRetainsTreeAndOwnerIndex(t *testing.T) {
 	adapter := loadedAdapter(t, stub)
 
 	_, err := adapter.Execute(context.Background(), ui.ActionRequest{
-		ActionID: ui.ActionToggleProjection, ItemID: "window:@1",
+		ActionID: ui.ActionToggleProjection, ItemID: "window:$1:@1",
 	})
 	require.ErrorContains(t, err, "stable %N ID")
 	assert.Equal(t, projectionTree, adapter.projection)
-	assert.Contains(t, adapter.index, list.ItemID("window:@1"))
+	assert.Contains(t, adapter.index, list.ItemID("window:$1:@1"))
 }
 
 func TestLiveAdapterRejectsMissingStableSessionAndWindowIDsDuringProjection(t *testing.T) {

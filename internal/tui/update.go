@@ -1,17 +1,36 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"time"
 
-func (m model) Init() tea.Cmd { return nil }
+	tea "charm.land/bubbletea/v2"
+)
+
+func (m model) Init() tea.Cmd {
+	if m.paneStatus.options.Read != nil {
+		return statusPoll(0)
+	}
+	return nil
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(msg)
 	next, previewCmd := updated.(model).syncPreview()
-	return next, tea.Batch(cmd, previewCmd)
+	next, frameCmd := next.syncStatusFrame(time.Now())
+	return next, tea.Batch(cmd, previewCmd, frameCmd)
 }
 
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case statusPollMsg:
+		return m.readPaneStatus()
+	case statusResultMsg:
+		return m.handleStatusResult(msg)
+	case statusFrameMsg:
+		if msg.generation == m.paneStatus.frameGeneration {
+			m.paneStatus.frameDue = time.Time{}
+		}
+		return m, nil
 	case previewResultMsg:
 		return m.handlePreviewResult(msg)
 	case tea.WindowSizeMsg:

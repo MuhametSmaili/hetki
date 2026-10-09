@@ -124,7 +124,7 @@ func projectFlatDestination(
 	destination := liveItem{
 		ID:             id,
 		SessionID:      list.ItemID("session:" + session.ID),
-		WindowID:       list.ItemID("window:" + window.ID),
+		WindowID:       windowItemID(session.ID, window.ID),
 		Kind:           liveDestination,
 		Label:          name,
 		Name:           window.Name,
@@ -140,6 +140,7 @@ func projectFlatDestination(
 		PaneID:         pane.ID,
 		PaneIndex:      pane.Index,
 		Last:           session.Last && window.Active && pane.Active,
+		StatusPanes:    paneStatusRefs([]backend.Pane{pane}),
 	}
 	if destination.Last {
 		item.Primary += " ↶"

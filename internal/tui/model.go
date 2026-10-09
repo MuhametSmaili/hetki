@@ -10,12 +10,13 @@ import (
 )
 
 // Run expects resolved options; its caller cancels and joins effects.
-func Run(ctx context.Context, initial list.Snapshot, keys KeyMap, startMode StartMode, dispatch DispatchFunc, preview PreviewOptions) (BackendTarget, error) {
+func Run(ctx context.Context, initial list.Snapshot, keys KeyMap, startMode StartMode, dispatch DispatchFunc, preview PreviewOptions, paneStatus StatusOptions) (BackendTarget, error) {
 	m, err := newModelWithStartMode(initial, dispatch, keys, startMode)
 	if err != nil {
 		return "", err
 	}
 	m.ctx, m.readPreview, m.preview.width = ctx, preview.Read, preview.Width
+	m.paneStatus.options = paneStatus
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithFPS(120))
 	final, err := p.Run()
 	if err != nil {
@@ -67,6 +68,7 @@ type model struct {
 	preview     previewState
 	readPreview PreviewFunc
 	ctx         context.Context
+	paneStatus  paneStatusState
 
 	width  int
 	height int
