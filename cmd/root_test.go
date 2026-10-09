@@ -99,7 +99,7 @@ func TestRootRejectsArgumentsAndRemovedCommands(t *testing.T) {
 	require.Error(t, rootCmd.Args(rootCmd, []string{"unexpected"}))
 	t.Cleanup(func() { rootCmd.SetArgs(nil) })
 
-	for _, removed := range []string{"tui", "list"} {
+	for _, removed := range []string{"tui", "list", "report"} {
 		rootCmd.SetArgs([]string{removed})
 		_, err := rootCmd.ExecuteC()
 		require.ErrorContains(t, err, `unknown command "`+removed+`"`)

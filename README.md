@@ -63,12 +63,6 @@ command. Linux uses tmux's own argv-zero-based command observation without
 additional process scanning. There is no application catalogue or package-path
 matching; ordinary Node jobs and failed lookups keep the raw command.
 
-Run `hetki report --status working` inside a tmux pane to report its current
-status; also accepts `needs-input`, `idle`, and `unknown`. Hetki resolves the
-pane context and handles bounded private storage internally—no JSON or daemon
-needed. Agent plugins, TUI status indicators, notifications and sound are not
-yet implemented. See [reporting status](docs/reporting.md) for lifecycle rules.
-
 ## Safety
 
 `hetki start --force` reconciles windows only inside sessions declared by the selected workspace; it never removes unrelated sessions. Saves use atomic replacement and refuse to overwrite a destination that changed while it was being saved.
