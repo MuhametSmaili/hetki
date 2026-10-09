@@ -195,7 +195,7 @@ func TestDirectActionKeysEmitStableActionAndItemIDs(t *testing.T) {
 	}{
 		{name: "open", key: specialKey(tea.KeyEnter), selectedID: "window-2", want: ActionRequest{ActionID: ActionOpen, ItemID: "window-2"}},
 		{name: "refresh", key: controlKey('r'), selectedID: "window-2", want: ActionRequest{ActionID: ActionRefresh}},
-		{name: "toggle projection", key: specialKey(tea.KeyTab), selectedID: "window-2", want: ActionRequest{ActionID: ActionToggleProjection, ItemID: "window-2"}},
+		{name: "toggle projection", key: controlKey('t'), selectedID: "window-2", want: ActionRequest{ActionID: ActionToggleProjection, ItemID: "window-2"}},
 		{name: "create session", key: printableKey("A"), selectedID: "session-1", want: ActionRequest{ActionID: ActionCreateSession}},
 		{name: "create window", key: printableKey("a"), selectedID: "window-2", want: ActionRequest{ActionID: ActionCreateWindow, ItemID: "window-2"}},
 		{name: "rename window", key: printableKey("r"), selectedID: "window-2", want: ActionRequest{ActionID: ActionRename, ItemID: "window-2"}},
@@ -311,14 +311,14 @@ func TestProjectionTogglePreservesTheFilterAndUsesPreferredSelection(t *testing.
 	m = selectNode(t, m, "window-2")
 	m.items.SetQuery("server")
 
-	m, cmd := updateModel(t, m, specialKey(tea.KeyTab))
+	m, cmd := updateModel(t, m, controlKey('t'))
 	require.NotNil(t, cmd)
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, "server", m.items.Query())
 	require.Equal(t, list.ItemID("destination-2"), selectedNodeID(m))
 }
 
-func TestTabFromJumpTogglesProjectionAndCancelsStaleLabels(t *testing.T) {
+func TestCtrlTFromJumpTogglesProjectionAndRebuildsLabels(t *testing.T) {
 	flat := list.Snapshot{Items: []list.Item{{
 		ID: "destination-2", Primary: "beta > api",
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "server"}},
@@ -332,11 +332,11 @@ func TestTabFromJumpTogglesProjectionAndCancelsStaleLabels(t *testing.T) {
 	m, _ = updateModel(t, m, printableKey(";"))
 	require.Equal(t, modeJump, m.mode)
 
-	m, cmd := updateModel(t, m, specialKey(tea.KeyTab))
+	m, cmd := updateModel(t, m, controlKey('t'))
 	require.NotNil(t, cmd)
 	m, _ = updateModel(t, m, cmd())
-	require.Equal(t, modeBrowse, m.mode)
-	require.Empty(t, m.jump.candidates)
+	require.Equal(t, modeJump, m.mode)
+	require.Equal(t, []jumpCandidate{{label: "a", itemID: "destination-2"}}, m.jump.candidates)
 	require.Equal(t, list.ItemID("destination-2"), selectedNodeID(m))
 }
 

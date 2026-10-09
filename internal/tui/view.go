@@ -36,9 +36,15 @@ func (m model) View() tea.View {
 }
 
 func (m model) viewHeader(width int) string {
+	scope := "All"
+	if m.scope.tracked {
+		scope = "Tracked"
+	}
 	return renderSearchBar(searchBarProps{
 		Width: width, Filter: m.items.Query(), Hint: headerHint(m), Right: headerRight(m),
-		Prompt: headerPrompt(m), Active: m.mode == modeFilter, Theme: m.theme,
+		Scope:      scope,
+		RightWidth: len(fmt.Sprintf("%d/%d", len(m.items.Snapshot().Items), len(m.items.Snapshot().Items))),
+		Prompt:     headerPrompt(m), Active: m.mode == modeFilter, Theme: m.theme,
 	}) + "\n" + m.theme.sectionLine.Render(strings.Repeat("─", width))
 }
 
@@ -175,7 +181,11 @@ func headerRight(m model) string {
 	if notice := m.items.Snapshot().Notice; notice != "" {
 		return notice
 	}
-	return rootCountLabel(m.items.Snapshot(), m.items.ShownRoots(), m.items.Query())
+	query := m.items.Query()
+	if m.scope.tracked {
+		query = "tracked"
+	}
+	return rootCountLabel(m.items.Snapshot(), m.items.ShownRoots(), query)
 }
 
 func rootCountLabel(snapshot list.Snapshot, shown int, query string) string {
@@ -206,6 +216,9 @@ func responsiveFrameStyle(base lipgloss.Style, width, height int) lipgloss.Style
 }
 
 func emptyStateText(m model) string {
+	if m.scope.tracked {
+		return "no matching tracked items"
+	}
 	if strings.TrimSpace(m.items.Query()) != "" {
 		return "no matching items"
 	}

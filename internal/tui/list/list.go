@@ -1,6 +1,7 @@
 package list
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -26,6 +27,7 @@ type Model struct {
 	height    int
 	shownRoot int
 	query     string
+	included  map[ItemID]struct{}
 	expanded  map[ItemID]bool
 	active    map[ItemID]bool
 }
@@ -92,9 +94,24 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 }
 
 func (m *Model) SetQuery(query string) {
+	m.SetFilter(query, nil)
+}
+
+// SetFilter retains ancestors of included items; nil allows all items.
+func (m *Model) SetFilter(query string, included map[ItemID]struct{}) bool {
+	if m.query == query && (m.included == nil) == (included == nil) && maps.Equal(m.included, included) {
+		return false
+	}
+	selected, hasSelection := m.Selected()
+	preserve := m.query == query
 	m.query = query
+	m.included = maps.Clone(included)
 	m.applyFilter()
+	if preserve && hasSelection {
+		m.Select(selected.Item.ID)
+	}
 	m.reflow()
+	return true
 }
 
 func (m *Model) Resize(height int) {
@@ -226,15 +243,16 @@ func (m *Model) applyFilter() {
 		selectedID = selected.Item.ID
 	}
 	query := strings.ToLower(strings.TrimSpace(m.query))
+	items := restrictItems(m.snapshot.Items, m.included)
 	if query == "" {
-		m.rows = flatten(m.snapshot.Items, m.expanded, false)
+		m.rows = flatten(items, m.expanded, false)
 		if idx := findRow(m.rows, selectedID); idx >= 0 {
 			m.cursor = idx
 		} else {
 			m.cursor = clampCursor(m.cursor, len(m.rows))
 		}
 	} else {
-		m.rows = rankedMatches(m.snapshot.Items, query)
+		m.rows = rankedMatches(items, query)
 		m.cursor = bestMatchCursor(m.rows)
 	}
 	m.shownRoot = 0

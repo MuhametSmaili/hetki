@@ -90,7 +90,10 @@ func appendTreeWindow(
 		label += " " + window.Name
 	}
 	path := displayPath(window.Path, homeDir)
-	fields := []list.SearchField{{Tier: list.SearchPrimary, Text: label}}
+	fields := []list.SearchField{
+		{Tier: list.SearchPrimary, Text: label},
+		{Tier: list.SearchPrimary, Text: session.Name},
+	}
 	if path != "" {
 		fields = append(fields, list.SearchField{Tier: list.SearchSecondary, Text: path})
 	}

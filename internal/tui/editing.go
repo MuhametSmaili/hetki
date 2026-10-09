@@ -31,7 +31,7 @@ func handleDeleteToStart(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 func (m model) editValue(action ActionID, edit func(string) string) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case modeFilter:
-		m.items.SetQuery(edit(m.items.Query()))
+		m.setQuery(edit(m.items.Query()))
 		return m.reflow(), nil
 	case modeInput:
 		m.input.Value = edit(m.input.Value)

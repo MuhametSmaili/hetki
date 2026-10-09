@@ -2,6 +2,7 @@ package tui
 
 import (
 	"slices"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/MSmaili/hetki/internal/tui/list"
@@ -17,6 +18,7 @@ type actionResultMsg struct {
 func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	result := msg.result
 	pending, previousRows := m.pending, m.pendingRows
+	resumeJump := m.mode == modeJump && pending != nil && pending.ActionID == ActionToggleProjection
 	m.pending, m.pendingRows = nil, nil
 	m.busy, m.status = false, ""
 	if result.Snapshot != nil && m.mode == modeJump {
@@ -42,8 +44,15 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.preview.invalidate()
 	m.paneStatus.options.Bindings = result.StatusBindings
+	m.applyScope(m.items.Query(), time.Now())
+	if result.SelectItemID != "" {
+		m.items.Select(result.SelectItemID)
+	}
 	if pending != nil && isDeleteAction(pending.ActionID) {
 		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
+	}
+	if resumeJump {
+		return handleJump(m.reflow(), "")
 	}
 	return m.reflow(), nil
 }
@@ -58,7 +67,7 @@ func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows
 			return
 		}
 		if m.items.Query() != "" {
-			m.items.SetQuery("")
+			m.setQuery("")
 			if m.items.Select(preferred) {
 				return
 			}
@@ -71,7 +80,7 @@ func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows
 		return
 	}
 	if m.items.Query() != "" {
-		m.items.SetQuery("")
+		m.setQuery("")
 		if m.items.SelectSurvivor(previousRows, deletedID) {
 			return
 		}

@@ -130,7 +130,7 @@ func TestEveryMenuEntryDispatchesFromTheStableOrigin(t *testing.T) {
 		{ActionDelete, printableKey("x")},
 		{ActionDeleteSession, printableKey("X")},
 		{ActionRefresh, controlKey('r')},
-		{ActionToggleProjection, specialKey(tea.KeyTab)},
+		{ActionToggleProjection, controlKey('t')},
 	}
 	for _, test := range tests {
 		t.Run(string(test.action), func(t *testing.T) {

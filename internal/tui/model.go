@@ -69,6 +69,7 @@ type model struct {
 	readPreview PreviewFunc
 	ctx         context.Context
 	paneStatus  paneStatusState
+	scope       scopeState
 
 	width  int
 	height int

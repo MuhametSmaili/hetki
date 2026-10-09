@@ -87,6 +87,7 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.paneStatus.values = msg.values
+	m.applyScope(m.items.Query(), time.Now())
 	return m, statusPoll(statusPollInterval)
 }
 

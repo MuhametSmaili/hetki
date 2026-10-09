@@ -163,7 +163,7 @@ func TestContextMenuViewportFitsAndCentersTheFullMenu(t *testing.T) {
 		}
 	}
 	plain := terminal.Sanitize(content)
-	if !strings.Contains(plain, "‹tab› Toggle proj...") || strings.Contains(plain, "Open destination") {
+	if !strings.Contains(plain, "‹ctrl+t› Toggle p...") || strings.Contains(plain, "Open destination") {
 		t.Fatalf("menu viewport did not follow the selection: %q", plain)
 	}
 
@@ -174,7 +174,7 @@ func TestContextMenuViewportFitsAndCentersTheFullMenu(t *testing.T) {
 	content = centered.View().Content
 	plain = terminal.Sanitize(content)
 	require.Contains(t, plain, "‹ctrl+r› Refresh")
-	require.Contains(t, plain, "‹tab› Toggle projection")
+	require.Contains(t, plain, "‹ctrl+t› Toggle projection")
 	overlay := renderMenu(menuProps{
 		LineWidth: 80, MaxHeight: lipgloss.Height(content), Title: centered.menu.Title,
 		Entries: entries, Keys: centered.keys, Theme: centered.theme,

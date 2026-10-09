@@ -62,7 +62,7 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	}
 	switch m.mode {
 	case modeFilter:
-		m.items.SetQuery(m.items.Query() + singleLinePaste(msg.Content))
+		m.setQuery(m.items.Query() + singleLinePaste(msg.Content))
 		return m.reflow(), nil
 	case modeInput:
 		m.input.Value += singleLinePaste(msg.Content)
@@ -94,7 +94,7 @@ func (m model) updateUnboundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateJumpInput(msg)
 	case modeFilter:
 		if msg.Text != "" {
-			m.items.SetQuery(m.items.Query() + msg.Text)
+			m.setQuery(m.items.Query() + msg.Text)
 		}
 		return m.reflow(), nil
 	case modeInput:

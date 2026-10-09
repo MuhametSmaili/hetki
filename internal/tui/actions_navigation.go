@@ -135,7 +135,7 @@ func handleClearFilter(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	if !m.isListMode() {
 		return m.actionUnavailable(ActionClearFilter)
 	}
-	m.items.SetQuery("")
+	m.setQuery("")
 	if m.mode == modeFilter {
 		m.mode = modeBrowse
 	}
