@@ -44,10 +44,25 @@ func Serve(ctx context.Context, binding Binding, start func(context.Context) (So
 	}
 	defer release()
 
-	return serveLocked(ctx, c.path, binding, start)
+	logs, err := openDaemonLog(c.LogPath())
+	if err != nil {
+		return fmt.Errorf("open daemon log: %w", err)
+	}
+	defer logs.close()
+	defer logs.recordPanic()
+
+	logs.info("starting")
+	err = serveLocked(ctx, c.path, binding, start, logs)
+	if err != nil {
+		logs.failure("serve_failed", err)
+	} else {
+		logs.info("stopped")
+	}
+
+	return err
 }
 
-func serveLocked(ctx context.Context, path string, binding Binding, start func(context.Context) (Source, error)) (err error) {
+func serveLocked(ctx context.Context, path string, binding Binding, start func(context.Context) (Source, error), logs *daemonLog) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -91,11 +106,14 @@ func serveLocked(ctx context.Context, path string, binding Binding, start func(c
 		binding: binding,
 		source:  source,
 		cancel:  cancel,
+		logs:    logs,
 		info: Info{
 			PID:   os.Getpid(),
 			Epoch: hex.EncodeToString(epoch[:]),
 		},
 	}
+	logs.ready(d.info.Epoch)
+
 	return d.run(ctx, listener)
 }
 

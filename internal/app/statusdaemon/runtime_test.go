@@ -44,6 +44,8 @@ func fixtureClient(t testing.TB, server string) *Client {
 		_ = os.Remove(c.path)
 		_ = os.Remove(c.path + ".lock")
 		_ = os.Remove(c.path + ".old")
+		_ = os.Remove(c.LogPath())
+		_ = os.Remove(c.LogPath() + ".1")
 	})
 
 	return c
@@ -68,7 +70,7 @@ func startFixture(t testing.TB, c *Client, binding Binding, start func(context.C
 			t.Error("daemon did not join workers")
 		}
 	})
-	require.NoError(t, c.waitReady(ctx))
+	require.NoError(t, c.waitReady(ctx, nil))
 
 	return done
 }

@@ -2,10 +2,14 @@ package statusdaemon
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net"
 )
 
 func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
+	defer d.logs.recordPanic()
 	defer conn.Close()
 
 	ctx, cancel := context.WithTimeout(parent, requestTimeout)
@@ -20,10 +24,14 @@ func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 
 	var req request
 	if err := readFrame(conn, maxRequestBytes, &req); err != nil {
+		if ctx.Err() == nil && !errors.Is(err, io.EOF) {
+			d.logs.repeatedFailure("request_read_failed", err)
+		}
 		return
 	}
 
 	if req.Version != protocolVersion || req.Server != d.binding.Server {
+		d.logs.repeatedFailure("request_rejected", fmt.Errorf("version or server identity mismatch"))
 		return
 	}
 
@@ -53,7 +61,15 @@ func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 		return
 	}
 
-	if writeFrame(conn, maxReplyBytes, row) == nil && req.Action == "stop" {
+	if err := writeFrame(conn, maxReplyBytes, row); err != nil {
+		if ctx.Err() == nil {
+			d.logs.repeatedFailure("reply_write_failed", err)
+		}
+		return
+	}
+
+	if req.Action == "stop" {
+		d.logs.info("stop_requested")
 		d.cancel()
 	}
 }
@@ -64,6 +80,7 @@ func (d *daemon) checkLifetime(ctx context.Context) bool {
 	}
 
 	if ctx.Err() == nil {
+		d.logs.info("backend_unavailable")
 		d.cancel()
 	}
 
@@ -87,10 +104,14 @@ func (d *daemon) respond(ctx context.Context, action string) (reply, bool) {
 		}
 
 		if err != nil {
+			if ctx.Err() == nil {
+				d.logs.repeatedFailure("source_read_failed", err)
+			}
 			row.Entries, row.Error = nil, "unavailable"
 		}
 
 	default:
+		d.logs.repeatedFailure("request_rejected", fmt.Errorf("unknown action"))
 		return reply{}, false
 	}
 

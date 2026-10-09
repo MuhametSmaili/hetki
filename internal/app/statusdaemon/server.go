@@ -14,6 +14,7 @@ type daemon struct {
 	source  Source
 	cancel  context.CancelFunc
 	info    Info
+	logs    *daemonLog
 }
 
 func (d *daemon) run(ctx context.Context, listener *net.UnixListener) error {
@@ -36,6 +37,8 @@ func (d *daemon) run(ctx context.Context, listener *net.UnixListener) error {
 }
 
 func (d *daemon) watchLifetime(ctx context.Context) {
+	defer d.logs.recordPanic()
+
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -45,8 +48,7 @@ func (d *daemon) watchLifetime(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			if !bindingAlive(ctx, d.binding) {
-				d.cancel()
+			if !d.checkLifetime(ctx) {
 				return
 			}
 		}
