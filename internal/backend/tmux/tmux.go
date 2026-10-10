@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 const (
@@ -155,7 +156,7 @@ func (b *TmuxBackend) Switch(ctx context.Context, target string) error {
 		return fmt.Errorf("empty switch target")
 	}
 	if strings.HasPrefix(target, "%") {
-		if err := validateObjectID("pane", target, '%'); err != nil {
+		if err := format.ValidateObjectID("pane", target, '%'); err != nil {
 			return err
 		}
 		queryCtx, cancel := context.WithTimeout(ctx, queryTimeout)
@@ -172,7 +173,7 @@ func (b *TmuxBackend) Switch(ctx context.Context, target string) error {
 	}
 	session, rest, hasWindow := strings.Cut(target, ":")
 	if strings.HasPrefix(session, "$") {
-		if err := validateObjectID("session", session, '$'); err != nil {
+		if err := format.ValidateObjectID("session", session, '$'); err != nil {
 			return err
 		}
 	}
@@ -186,14 +187,14 @@ func (b *TmuxBackend) Switch(ctx context.Context, target string) error {
 		return fmt.Errorf("invalid switch target %q: empty session or window", target)
 	}
 	if strings.HasPrefix(window, "@") {
-		if err := validateObjectID("window", window, '@'); err != nil {
+		if err := format.ValidateObjectID("window", window, '@'); err != nil {
 			return err
 		}
 	}
 	pane := -1
 	if hasPane {
 		if strings.HasPrefix(paneStr, "%") {
-			if err := validateObjectID("pane", paneStr, '%'); err != nil {
+			if err := format.ValidateObjectID("pane", paneStr, '%'); err != nil {
 				return err
 			}
 			queryCtx, cancel := context.WithTimeout(ctx, queryTimeout)
@@ -303,10 +304,10 @@ func resolvePaneTarget(sessions []Session, paneID string) (string, error) {
 // Pane IDs can occur in multiple linked sessions. A pane row carries its
 // session/window occurrence rather than guessing which link the user meant.
 func resolveScopedPaneTarget(sessions []Session, sessionID, windowID, paneID string) (string, error) {
-	if err := validateObjectID("session", sessionID, '$'); err != nil {
+	if err := format.ValidateObjectID("session", sessionID, '$'); err != nil {
 		return "", err
 	}
-	if err := validateObjectID("window", windowID, '@'); err != nil {
+	if err := format.ValidateObjectID("window", windowID, '@'); err != nil {
 		return "", err
 	}
 	for _, session := range sessions {
@@ -368,7 +369,7 @@ func findWindowIndex(sessions []Session, sessionRef, windowName string) (int, er
 func resolveWindowIndex(sessions []Session, sessionRef, window string) (int, error) {
 	window = strings.TrimSpace(window)
 	if strings.HasPrefix(window, "@") {
-		if err := validateObjectID("window", window, '@'); err != nil {
+		if err := format.ValidateObjectID("window", window, '@'); err != nil {
 			return 0, err
 		}
 		for _, session := range sessions {
@@ -438,7 +439,7 @@ func (b *TmuxBackend) applyAction(ctx context.Context, a backend.Action, created
 			return err
 		}
 		paneID := strings.TrimSpace(output)
-		if err := validateObjectID("pane", paneID, '%'); err != nil {
+		if err := format.ValidateObjectID("pane", paneID, '%'); err != nil {
 			return fmt.Errorf("tmux returned %w", err)
 		}
 		target.paneIDs = append(target.paneIDs, paneID)
@@ -479,10 +480,10 @@ func (b *TmuxBackend) createTarget(ctx context.Context, action Action, name stri
 	if !ok {
 		return nil, fmt.Errorf("tmux returned invalid created target %q", output)
 	}
-	if err := validateObjectID("window", windowID, '@'); err != nil {
+	if err := format.ValidateObjectID("window", windowID, '@'); err != nil {
 		return nil, fmt.Errorf("tmux returned invalid created target %q: %w", output, err)
 	}
-	if err := validateObjectID("pane", paneID, '%'); err != nil {
+	if err := format.ValidateObjectID("pane", paneID, '%'); err != nil {
 		return nil, fmt.Errorf("tmux returned invalid created target %q: %w", output, err)
 	}
 	return &createdTarget{name: name, windowID: windowID, paneIDs: []string{paneID}}, nil
@@ -516,14 +517,14 @@ func staticAction(a backend.Action) (Action, error) {
 	case backend.RenameSessionAction:
 		return RenameSession{Target: action.Current, Name: action.New}, nil
 	case backend.RenameWindowAction:
-		if err := validateObjectID("window", action.WindowID, '@'); err != nil {
+		if err := format.ValidateObjectID("window", action.WindowID, '@'); err != nil {
 			return nil, err
 		}
 		return RenameWindow{Target: action.WindowID, Name: action.New}, nil
 	case backend.KillSessionAction:
 		return KillSession{Name: action.Name}, nil
 	case backend.KillWindowAction:
-		if err := validateObjectID("window", action.WindowID, '@'); err != nil {
+		if err := format.ValidateObjectID("window", action.WindowID, '@'); err != nil {
 			return nil, err
 		}
 		return KillWindow{Target: action.WindowID}, nil

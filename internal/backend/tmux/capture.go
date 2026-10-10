@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 // CapturePane reads the current screen for %N, $N:, or $N:@N.
@@ -13,7 +15,7 @@ func (b *TmuxBackend) CapturePane(ctx context.Context, target string) (string, e
 		return "", err
 	}
 	if strings.HasPrefix(target, "%") {
-		if err := validateObjectID("pane", target, '%'); err != nil {
+		if err := format.ValidateObjectID("pane", target, '%'); err != nil {
 			return "", err
 		}
 	} else {
@@ -21,11 +23,11 @@ func (b *TmuxBackend) CapturePane(ctx context.Context, target string) (string, e
 		if !ok {
 			return "", fmt.Errorf("invalid capture target %q", target)
 		}
-		if err := validateObjectID("session", session, '$'); err != nil {
+		if err := format.ValidateObjectID("session", session, '$'); err != nil {
 			return "", err
 		}
 		if window != "" {
-			if err := validateObjectID("window", window, '@'); err != nil {
+			if err := format.ValidateObjectID("window", window, '@'); err != nil {
 				return "", err
 			}
 		}

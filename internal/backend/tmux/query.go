@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 type Query[T any] interface {
@@ -156,7 +157,7 @@ func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, erro
 	if programInfo {
 		count += 2
 	}
-	fields, err := parseFields(line, count)
+	fields, err := format.Fields(line, count)
 	if err != nil {
 		return paneLine{}, err
 	}
@@ -187,13 +188,13 @@ func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, erro
 	if p.paneActive, err = parseFlag("pane active", fields[10]); err != nil {
 		return paneLine{}, err
 	}
-	if err := validateObjectID("session", p.sessionID, '$'); err != nil {
+	if err := format.ValidateObjectID("session", p.sessionID, '$'); err != nil {
 		return paneLine{}, err
 	}
-	if err := validateObjectID("window", p.windowID, '@'); err != nil {
+	if err := format.ValidateObjectID("window", p.windowID, '@'); err != nil {
 		return paneLine{}, err
 	}
-	if err := validateObjectID("pane", p.paneID, '%'); err != nil {
+	if err := format.ValidateObjectID("pane", p.paneID, '%'); err != nil {
 		return paneLine{}, err
 	}
 	if programInfo {
@@ -207,50 +208,12 @@ func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, erro
 	return p, nil
 }
 
-// parseFields splits one #{q:...}-escaped row: a backslash always
-// introduces one literal byte, so an unescaped '|' is unambiguous.
-func parseFields(line string, want int) ([]string, error) {
-	fields := make([]string, 0, want)
-	var value strings.Builder
-	for i := 0; i < len(line); i++ {
-		switch line[i] {
-		case '\\':
-			if i+1 == len(line) {
-				return nil, fmt.Errorf("dangling escape in row %q", line)
-			}
-			i++
-			value.WriteByte(line[i])
-		case '|':
-			fields = append(fields, value.String())
-			value.Reset()
-		default:
-			value.WriteByte(line[i])
-		}
-	}
-	fields = append(fields, value.String())
-	if len(fields) != want {
-		return nil, fmt.Errorf("expected %d fields, found %d", want, len(fields))
-	}
-	return fields, nil
-}
-
 func parseIndex(kind, value string) (int, error) {
 	index, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || index < 0 {
 		return 0, fmt.Errorf("invalid %s index %q", kind, value)
 	}
 	return index, nil
-}
-
-func validateObjectID(kind, value string, prefix byte) error {
-	if len(value) < 2 || value[0] != prefix {
-		return fmt.Errorf("invalid %s ID %q", kind, value)
-	}
-	number, err := strconv.Atoi(value[1:])
-	if err != nil || number < 0 || strconv.Itoa(number) != value[1:] {
-		return fmt.Errorf("invalid %s ID %q", kind, value)
-	}
-	return nil
 }
 
 func parseFlag(kind, value string) (bool, error) {
@@ -357,14 +320,14 @@ type clientState struct {
 }
 
 func parseClientLine(line string) (clientState, error) {
-	fields, err := parseFields(line, 4)
+	fields, err := format.Fields(line, 4)
 	if err != nil {
 		return clientState{}, err
 	}
-	if err := validateObjectID("client session", fields[1], '$'); err != nil {
+	if err := format.ValidateObjectID("client session", fields[1], '$'); err != nil {
 		return clientState{}, err
 	}
-	if err := validateObjectID("client pane", fields[2], '%'); err != nil {
+	if err := format.ValidateObjectID("client pane", fields[2], '%'); err != nil {
 		return clientState{}, err
 	}
 	return clientState{sessionID: fields[1], paneID: fields[2], lastSession: fields[3]}, nil
@@ -376,8 +339,8 @@ func invokingClient(clients []clientState) clientState {
 	}
 	pane, session := os.Getenv("TMUX_PANE"), getCurrentSessionID()
 	// Popup jobs have TMUX's session ID but usually no TMUX_PANE.
-	if (pane != "" && validateObjectID("invoking pane", pane, '%') != nil) ||
-		(pane == "" && validateObjectID("invoking session", session, '$') != nil) {
+	if (pane != "" && format.ValidateObjectID("invoking pane", pane, '%') != nil) ||
+		(pane == "" && format.ValidateObjectID("invoking session", session, '$') != nil) {
 		return clientState{}
 	}
 	var found clientState
