@@ -41,7 +41,7 @@ func TestMalformedControlOutputNeverReachesConsumer(t *testing.T) {
 			err := connection.deliverLine([]byte(tc.line), func(PaneOutput) error {
 				called = true
 				return nil
-			})
+			}, nil)
 
 			require.ErrorIs(t, err, ErrStreamLost)
 			require.False(t, called)
@@ -69,6 +69,37 @@ func TestBoundedControlLinesRejectTruncationAndOverflow(t *testing.T) {
 			_, err := connection.readLine()
 
 			require.ErrorIs(t, err, tc.want)
+		})
+	}
+}
+
+func TestControlHintsAreSeparateFromPaneBytes(t *testing.T) {
+	cases := []struct {
+		name, line   string
+		hint, output bool
+	}{
+		{"layout", "%layout-change @1 layout visible flags", true, false},
+		{"session set", "%sessions-changed", true, false},
+		{"linked window", "%window-add @1", true, false},
+		{"unlinked window", "%unlinked-window-close @1", true, false},
+		{"pane selection", "%window-pane-changed @1 %2", true, false},
+		{"unknown notice", "%future-notice data", false, false},
+		{"ordinary output", "%output %1 hello", false, true},
+		{"notice-looking pane bytes", "%output %1 %layout-change @1", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			conn := &Connection{session: "$1"}
+			hinted, emitted := false, false
+
+			err := conn.deliverLine([]byte(tc.line), func(PaneOutput) error {
+				emitted = true
+				return nil
+			}, func() { hinted = true })
+
+			require.NoError(t, err)
+			require.Equal(t, tc.hint, hinted)
+			require.Equal(t, tc.output, emitted)
 		})
 	}
 }

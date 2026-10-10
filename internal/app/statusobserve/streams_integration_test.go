@@ -4,9 +4,11 @@ package statusobserve
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,76 @@ import (
 type nativeRunner struct {
 	client tmux.Client
 	socket string
+}
+
+func TestNativeInventoryWatchDiscoversSessionsAndJoinsOnPublisherFailure(t *testing.T) {
+	runner, server, sampler, _, _ := nativeStreamsFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	streams, err := NewStreams(ctx, server, &recorder{})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, streams.Close()) }()
+	published := make(chan observe.Inventory, 4)
+	done := make(chan error, 1)
+	joined := make(chan struct{})
+	failure := errors.New("fixture publisher stopped")
+	var stop atomic.Bool
+	go func() {
+		defer close(joined)
+		done <- WatchInventory(ctx, sampler, streams, func(inventory observe.Inventory, err error) error {
+			if err != nil {
+				return err
+			}
+			if stop.Load() {
+				return failure
+			}
+			select {
+			case published <- inventory:
+			default:
+			}
+			return nil
+		})
+	}()
+	defer func() {
+		cancel()
+		select {
+		case <-joined:
+		case <-time.After(3 * time.Second):
+			t.Error("inventory watch did not join")
+		}
+	}()
+	first := awaitInventory(t, ctx, published, "")
+
+	out, err := runner.RunLimited(ctx, 4096, "new-session", "-d", "-s", "new-session", "-P", "-F", "#{pane_id}", "cat")
+	require.NoError(t, err)
+	second := awaitInventory(t, ctx, published, strings.TrimSpace(out))
+	stop.Store(true)
+	streams.signalChange()
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, failure)
+	case <-ctx.Done():
+		t.Fatal("publisher error did not stop inventory watch")
+	}
+
+	require.Greater(t, second.Revision(), first.Revision())
+	require.Equal(t, server.Identity(), second.Server())
+}
+
+func awaitInventory(t *testing.T, ctx context.Context, published <-chan observe.Inventory, pane string) observe.Inventory {
+	t.Helper()
+	for {
+		select {
+		case inventory := <-published:
+			_, found := inventory.Lookup(pane)
+			if pane == "" || found {
+				return inventory
+			}
+		case <-ctx.Done():
+			t.Fatal("inventory did not discover expected pane")
+			return observe.Inventory{}
+		}
+	}
 }
 
 func (r nativeRunner) RunLimited(ctx context.Context, limit int, args ...string) (string, error) {

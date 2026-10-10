@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
@@ -71,7 +72,7 @@ func (c *fakeConnection) Close() error {
 	return nil
 }
 
-func (c *fakeConnection) ReadOutput(ctx context.Context, emit func(observe.PaneOutput) error) error {
+func (c *fakeConnection) ReadOutput(ctx context.Context, emit func(observe.PaneOutput) error, _ func()) error {
 	defer close(c.joined)
 	for {
 		select {
@@ -180,6 +181,10 @@ func TestPaneHandoffRevokesOldOwnerBeforeAcceptingNewBytes(t *testing.T) {
 }
 
 func TestConnectionLossResetsImmediatelyAndReconnectCannotReviveScope(t *testing.T) {
+	synctest.Test(t, testConnectionLossResetsImmediatelyAndReconnectCannotReviveScope)
+}
+
+func testConnectionLossResetsImmediatelyAndReconnectCannotReviveScope(t *testing.T) {
 	streams, record, connections := streamFixture(t)
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1")))
 	connections["$1"].send(t, "%1", "before")
@@ -189,6 +194,7 @@ func TestConnectionLossResetsImmediatelyAndReconnectCannotReviveScope(t *testing
 	failed.failure <- observe.ErrStreamLost
 	await(t, streams.Changes())
 	_, lossResets := record.snapshot()
+	time.Sleep(time.Until(streams.nextRetry()))
 	err := streams.reconcile(t.Context(), fixtureTopology(2, "$1"))
 	connections["$1"].send(t, "%1", "fresh")
 	after, _ := record.snapshot()

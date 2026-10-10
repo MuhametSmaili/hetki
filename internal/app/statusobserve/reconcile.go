@@ -15,6 +15,7 @@ import (
 // are retained even if a lexically earlier linked session appears. Partial
 // success remains usable; failures are returned for the coordinator to diagnose
 // and retry with a later inventory. Inventory native problems disable routing.
+// A failed session's retry deadline also applies to manual reconciliation calls.
 func (s *Streams) Reconcile(ctx context.Context, inventory observe.Inventory) error {
 	return s.reconcile(ctx, collectTopology(inventory))
 }
@@ -151,6 +152,12 @@ func activeOrder(sub *subscription) int {
 }
 
 func (s *Streams) retire(selected []string) []*subscription {
+	for session := range s.retries {
+		if !slices.Contains(selected, session) {
+			delete(s.retries, session)
+		}
+	}
+
 	var retired []*subscription
 	for session, sub := range s.subscriptions {
 		if !sub.active || !slices.Contains(selected, session) {
@@ -233,13 +240,19 @@ func (s *Streams) assign(pane *route, owner *subscription) {
 func (s *Streams) start(ctx context.Context, session string) error {
 	s.mu.Lock()
 	existing := s.subscriptions[session]
+	retry := s.retries[session]
 	s.mu.Unlock()
-	if existing != nil {
+	if existing != nil || time.Now().Before(retry.after) {
 		return nil
 	}
 
 	conn, err := s.open(ctx, session)
 	if err != nil {
+		if s.ctx.Err() == nil {
+			s.mu.Lock()
+			s.retryLater(session, false)
+			s.mu.Unlock()
+		}
 		return fmt.Errorf("subscribe to tmux session %s: %w", session, err)
 	}
 
@@ -252,6 +265,7 @@ func (s *Streams) start(ctx context.Context, session string) error {
 		connection: conn,
 		done:       make(chan struct{}),
 		active:     true,
+		started:    time.Now(),
 	}
 
 	s.mu.Lock()

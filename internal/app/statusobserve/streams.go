@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 )
@@ -39,7 +41,7 @@ type Consumer interface {
 
 type connection interface {
 	Generation() string
-	ReadOutput(context.Context, func(observe.PaneOutput) error) error
+	ReadOutput(context.Context, func(observe.PaneOutput) error, func()) error
 	Close() error
 }
 
@@ -49,6 +51,7 @@ type subscription struct {
 	done       chan struct{}
 	active     bool
 	err        error
+	started    time.Time
 }
 
 type route struct {
@@ -78,6 +81,8 @@ type Streams struct {
 	panes         map[string]*route
 	subscriptions map[string]*subscription
 	closeErr      error
+	retries       map[string]retryState
+	watching      atomic.Bool
 }
 
 // NewStreams binds a subscription owner to a validated server and parent lifetime.
@@ -107,10 +112,11 @@ func newStreams(ctx context.Context, server string, consumer Consumer, open func
 		open:          open,
 		panes:         make(map[string]*route),
 		subscriptions: make(map[string]*subscription),
+		retries:       make(map[string]retryState),
 	}
 }
 
-// Changes coalesces connection-loss hints. It carries no evidence or bytes; the
+// Changes coalesces topology and connection-loss hints. It carries no evidence or bytes; the
 // coordinator should refresh inventory before retrying. Close does not close it.
 func (s *Streams) Changes() <-chan struct{} { return s.wake }
 
@@ -134,6 +140,7 @@ func (s *Streams) Close() error {
 	s.panes = nil
 	subscriptions := s.subscriptions
 	s.subscriptions = nil
+	s.retries = nil
 	s.mu.Unlock()
 
 	for _, sub := range subscriptions {
@@ -152,7 +159,7 @@ func (s *Streams) read(sub *subscription) {
 	defer close(sub.done)
 	err := sub.connection.ReadOutput(s.ctx, func(output observe.PaneOutput) error {
 		return s.deliver(sub, output)
-	})
+	}, s.signalChange)
 	err = errors.Join(err, sub.connection.Close())
 
 	s.mu.Lock()
@@ -160,6 +167,7 @@ func (s *Streams) read(sub *subscription) {
 	unexpected := sub.active && s.ctx.Err() == nil
 	if unexpected {
 		sub.err = errors.Join(observe.ErrStreamLost, err)
+		s.retryLater(sub.session, time.Since(sub.started) >= healthyInterval)
 	}
 	sub.active = false
 	for _, pane := range s.panes {
@@ -168,10 +176,14 @@ func (s *Streams) read(sub *subscription) {
 		}
 	}
 	if unexpected {
-		select {
-		case s.wake <- struct{}{}:
-		default:
-		}
+		s.signalChange()
+	}
+}
+
+func (s *Streams) signalChange() {
+	select {
+	case s.wake <- struct{}{}:
+	default:
 	}
 }
 

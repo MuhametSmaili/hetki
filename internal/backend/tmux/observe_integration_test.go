@@ -112,7 +112,7 @@ func assertNativeStatusDelivery(t *testing.T, b *TmuxBackend, c *observe.Connect
 			default:
 			}
 			return nil
-		})
+		}, nil)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -163,7 +163,7 @@ func TestNativeStatusOutputPreservesBytesPaneAndGeometry(t *testing.T) {
 				}
 			}
 			return nil
-		})
+		}, nil)
 	}()
 	t.Cleanup(func() {
 		stopRead()
@@ -218,7 +218,7 @@ func TestNativeStatusShutdownAndReconnectHaveSeparateLifetimes(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
-		done <- second.ReadOutput(ctx, func(observe.PaneOutput) error { return nil })
+		done <- second.ReadOutput(ctx, func(observe.PaneOutput) error { return nil }, nil)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -248,7 +248,7 @@ func TestNativeStatusOutputLossEndsObservation(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
-		done <- c.ReadOutput(ctx, func(observe.PaneOutput) error { return nil })
+		done <- c.ReadOutput(ctx, func(observe.PaneOutput) error { return nil }, nil)
 	}()
 	t.Cleanup(func() {
 		cancel()

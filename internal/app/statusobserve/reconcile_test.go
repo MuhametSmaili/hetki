@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/stretchr/testify/require"
@@ -83,6 +85,10 @@ func TestReconcileRejectsOldOrForeignInventoryWithoutRevokingRoutes(t *testing.T
 }
 
 func TestPartialStartupRemainsUsableAndRetriesWithFreshInventory(t *testing.T) {
+	synctest.Test(t, testPartialStartupRemainsUsableAndRetriesWithFreshInventory)
+}
+
+func testPartialStartupRemainsUsableAndRetriesWithFreshInventory(t *testing.T) {
 	record := &recorder{}
 	failed := errors.New("session temporarily unavailable")
 	first, second := fakeStream("first"), fakeStream("second")
@@ -101,6 +107,7 @@ func TestPartialStartupRemainsUsableAndRetriesWithFreshInventory(t *testing.T) {
 	initialErr := streams.reconcile(t.Context(), fixtureTopology(1, "$1", "$2"))
 	first.send(t, "%1", "still usable")
 	retry = true
+	time.Sleep(time.Until(streams.nextRetry()))
 	retryErr := streams.reconcile(t.Context(), fixtureTopology(2, "$1", "$2"))
 	second.send(t, "%1", "linked duplicate")
 	outputs, _ := record.snapshot()

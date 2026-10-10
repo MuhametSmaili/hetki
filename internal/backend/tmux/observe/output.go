@@ -22,8 +22,9 @@ type PaneOutput struct {
 }
 
 // ReadOutput delivers ordered decoded tmux output, leaving terminal framing and
-// protocol interpretation to its caller. Call once; emit must remain bounded.
-func (c *Connection) ReadOutput(ctx context.Context, emit func(PaneOutput) error) (err error) {
+// protocol interpretation to its caller. Call once; callbacks must remain bounded.
+// changed is optional and reports topology hints, never authoritative pane facts.
+func (c *Connection) ReadOutput(ctx context.Context, emit func(PaneOutput) error, changed func()) (err error) {
 	if emit == nil || !c.reading.CompareAndSwap(false, true) {
 		return fmt.Errorf("status output requires one reader and a callback")
 	}
@@ -50,7 +51,7 @@ func (c *Connection) ReadOutput(ctx context.Context, emit func(PaneOutput) error
 			return errors.Join(ErrStreamLost, readErr)
 		}
 
-		if err := c.deliverLine(line, emit); err != nil {
+		if err := c.deliverLine(line, emit, changed); err != nil {
 			return err
 		}
 	}
@@ -69,12 +70,15 @@ func (c *Connection) checkRead(ctx context.Context) error {
 	}
 }
 
-func (c *Connection) deliverLine(line []byte, emit func(PaneOutput) error) error {
+func (c *Connection) deliverLine(line []byte, emit func(PaneOutput) error, changed func()) error {
 	if err := checkControlNotice(line, c.session); err != nil {
 		return err
 	}
 
 	if !bytes.HasPrefix(line, []byte("%output ")) {
+		if changed != nil && topologyNotice(line) {
+			changed()
+		}
 		return nil
 	}
 
@@ -88,6 +92,18 @@ func (c *Connection) deliverLine(line []byte, emit func(PaneOutput) error) error
 	}
 
 	return nil
+}
+
+func topologyNotice(line []byte) bool {
+	name, _, _ := bytes.Cut(line, []byte(" "))
+	switch string(name) {
+	case "%layout-change", "%window-add", "%window-close", "%unlinked-window-add",
+		"%unlinked-window-close", "%sessions-changed", "%session-window-changed",
+		"%window-pane-changed", "%pane-mode-changed":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Connection) readLine() ([]byte, error) {
