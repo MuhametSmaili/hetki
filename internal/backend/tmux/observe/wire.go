@@ -11,14 +11,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// tmux 3.7c/3.8 tmux-protocol.h and compat/imsg.h: protocol 8, a 16-byte
-// native-endian header and a 32-bit length whose high bit marks an attached FD.
+// Message IDs and required client flags are shared by the audited 3.2–3.8
+// releases (tmux.h and, in later releases, tmux-protocol.h).
 const (
-	nativeProtocol = 8
-	nativeMaxFrame = 16384
-	nativeReady    = 207
-	nativeFlags    = 218
-	nativeCommand  = 200
+	nativeReady   = 207
+	nativeFlags   = 218
+	nativeCommand = 200
 
 	identifyTerm      = 101
 	identifyTTY       = 102
@@ -40,24 +38,24 @@ const (
 	pausedFlags      = clientNoOutput | clientPauseAfter | clientDiscard
 )
 
-func writeNativeMessage(wire *net.UnixConn, kind uint32, body []byte, fd int) error {
-	if len(body) > nativeMaxFrame-16 {
+func writeNativeMessage(wire *net.UnixConn, layout headerLayout, kind uint32, body []byte, fd int) error {
+	if len(body) > nativeMaxFrame-nativeHeaderSize {
 		return fmt.Errorf("native tmux message exceeds limit")
 	}
 
-	frame := make([]byte, 16+len(body))
-	size := uint32(len(frame))
+	header, err := layout.encode(kind, uint32(nativeHeaderSize+len(body)), uint32(os.Getpid()), fd >= 0)
+	if err != nil {
+		return err
+	}
+
+	frame := make([]byte, nativeHeaderSize+len(body))
+	copy(frame, header[:])
+	copy(frame[nativeHeaderSize:], body)
 	var rights []byte
 	if fd >= 0 {
-		size |= 0x80000000
 		rights = unix.UnixRights(fd)
 	}
 
-	binary.NativeEndian.PutUint32(frame, kind)
-	binary.NativeEndian.PutUint32(frame[4:], size)
-	binary.NativeEndian.PutUint32(frame[8:], nativeProtocol)
-	binary.NativeEndian.PutUint32(frame[12:], uint32(os.Getpid()))
-	copy(frame[16:], body)
 	n, oobn, err := wire.WriteMsgUnix(frame, rights, nil)
 	if err != nil {
 		return err
@@ -87,23 +85,22 @@ func writeNativeBytes(writer io.Writer, data []byte) error {
 	return nil
 }
 
-func readNativeMessage(reader io.Reader) (uint32, error) {
-	var header [16]byte
+func readNativeMessage(reader io.Reader, layout headerLayout) (uint32, error) {
+	var header [nativeHeaderSize]byte
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		return 0, err
 	}
 
-	kind := binary.NativeEndian.Uint32(header[:])
-	size := binary.NativeEndian.Uint32(header[4:])
-	if binary.NativeEndian.Uint32(header[8:]) != nativeProtocol || size < 16 || size > nativeMaxFrame {
-		return 0, fmt.Errorf("invalid native tmux frame")
+	kind, size, err := layout.decode(header)
+	if err != nil {
+		return 0, err
 	}
 
-	if kind == nativeReady && size == 16 {
+	if kind == nativeReady && size == nativeHeaderSize {
 		return kind, nil
 	}
 
-	if kind != nativeFlags || size != 24 {
+	if kind != nativeFlags || size != nativeHeaderSize+8 {
 		return 0, fmt.Errorf("native tmux control ended with message %d", kind)
 	}
 
@@ -121,7 +118,7 @@ func readNativeMessage(reader io.Reader) (uint32, error) {
 	return kind, nil
 }
 
-func identifyNative(wire *net.UnixConn, session string, input, output *os.File) error {
+func identifyNative(wire *net.UnixConn, layout headerLayout, session string, input, output *os.File) error {
 	pid := make([]byte, 4)
 	binary.NativeEndian.PutUint32(pid, uint32(os.Getpid()))
 	flags := make([]byte, 8)
@@ -142,7 +139,7 @@ func identifyNative(wire *net.UnixConn, session string, input, output *os.File) 
 		{identifyDone, nil, -1},
 	}
 	for _, message := range messages {
-		if err := writeNativeMessage(wire, message.kind, message.body, message.fd); err != nil {
+		if err := writeNativeMessage(wire, layout, message.kind, message.body, message.fd); err != nil {
 			return err
 		}
 	}
@@ -152,5 +149,5 @@ func identifyNative(wire *net.UnixConn, session string, input, output *os.File) 
 	binary.NativeEndian.PutUint32(body, uint32(len(args)))
 	body = append(body, strings.Join(args, "\x00")...)
 	body = append(body, 0)
-	return writeNativeMessage(wire, nativeCommand, body, -1)
+	return writeNativeMessage(wire, layout, nativeCommand, body, -1)
 }

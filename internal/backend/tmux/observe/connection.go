@@ -26,6 +26,7 @@ type Connection struct {
 	input      *os.File
 	output     *os.File
 	reader     *bufio.Scanner
+	layout     headerLayout
 	session    string
 	generation string
 	done       chan struct{}
@@ -38,8 +39,9 @@ type Connection struct {
 // Open checks the exact server and session before returning.
 // ctx owns startup only; ReadOutput and Close own the returned connection's life.
 func Open(ctx context.Context, server Server, session string) (_ *Connection, err error) {
-	if server.Version != "3.7c" && server.Version != "3.8" {
-		return nil, fmt.Errorf("native status observation requires tmux 3.7c or 3.8")
+	layout, err := headerLayoutForVersion(server.Version)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := format.ValidateObjectID("status session", session, '$'); err != nil {
@@ -52,7 +54,7 @@ func Open(ctx context.Context, server Server, session string) (_ *Connection, er
 		return nil, err
 	}
 
-	c, err := connectNative(ctx, server.Socket, session)
+	c, err := connectNative(ctx, server.Socket, session, layout)
 	if err != nil {
 		return nil, fmt.Errorf("connect native status observer: %w", err)
 	}
@@ -83,7 +85,7 @@ func Open(ctx context.Context, server Server, session string) (_ *Connection, er
 	return c, nil
 }
 
-func connectNative(ctx context.Context, socket, session string) (_ *Connection, err error) {
+func connectNative(ctx context.Context, socket, session string, layout headerLayout) (_ *Connection, err error) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	if err != nil {
 		return nil, err
@@ -91,6 +93,7 @@ func connectNative(ctx context.Context, socket, session string) (_ *Connection, 
 
 	c := &Connection{
 		wire:    conn.(*net.UnixConn),
+		layout:  layout,
 		session: session,
 		done:    make(chan struct{}),
 	}
@@ -139,7 +142,7 @@ func (c *Connection) identify(ctx context.Context) (err error) {
 	})
 	defer stop()
 
-	if err := identifyNative(c.wire, c.session, input, output); err != nil {
+	if err := identifyNative(c.wire, c.layout, c.session, input, output); err != nil {
 		return errors.Join(err, ctx.Err())
 	}
 
@@ -155,7 +158,7 @@ func (c *Connection) watchWire() {
 	defer c.closeResources()
 
 	for {
-		_, err := readNativeMessage(c.wire)
+		_, err := readNativeMessage(c.wire, c.layout)
 		if err != nil {
 			c.wireErr = err
 			return
