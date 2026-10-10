@@ -73,14 +73,14 @@ func TestSelectedSourceControlsAvailability(t *testing.T) {
 		{name: "missing screen evidence", profile: statusservice.Screen, want: status.Unknown},
 		{name: "screen evidence", profile: statusservice.Screen, report: status.Blocked, want: status.Blocked},
 		{name: "screen failure", profile: statusservice.Screen, report: status.Unknown, want: status.Unknown},
-		{name: "missing profiled protocol", profile: statusservice.OSC7501, want: status.Unknown},
-		{name: "profiled protocol", profile: statusservice.OSC7501, report: status.Idle, want: status.Idle},
+		{name: "missing profiled protocol", profile: statusservice.Protocol, want: status.Unknown},
+		{name: "profiled protocol", profile: statusservice.Protocol, report: status.Idle, want: status.Idle},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			pane := fixturePane(tc.profile)
 			service := fixtureService(t, pane)
-			source := statusservice.OSC7501
+			source := statusservice.Protocol
 			if tc.profile == statusservice.Screen {
 				source = statusservice.Screen
 			}
@@ -106,13 +106,13 @@ func TestSelectedSourceControlsAvailability(t *testing.T) {
 func TestScreenClaimDoesNotFallBackToProtocol(t *testing.T) {
 	pane := fixturePane("")
 	service := fixtureService(t, pane)
-	protocol := targetFor(t, service, pane, statusservice.OSC7501)
+	protocol := targetFor(t, service, pane, statusservice.Protocol)
 	require.NoError(t, service.Apply(protocol, 1, status.Value{State: status.Working}))
 	pane.Profile = statusservice.Profile{Source: statusservice.Screen, Generation: "screen-profile-1"}
 	require.NoError(t, service.UpdateInventory(inventory(2, pane)))
 
 	lateErr := service.Apply(protocol, 2, status.Value{State: status.Idle})
-	_, available := service.Target(pane.Ref, statusservice.OSC7501)
+	_, available := service.Target(pane.Ref, statusservice.Protocol)
 	snapshot, readErr := service.ReadStatus(t.Context())
 
 	require.ErrorIs(t, lateErr, statusservice.ErrStale)
@@ -169,7 +169,7 @@ func TestInventoryRefreshKeepsProtocolButDoesNotRefreshCapture(t *testing.T) {
 		screenPane := fixturePane(statusservice.Screen)
 		screenPane.Ref.ID = "%2"
 		service := fixtureService(t, protocolPane, screenPane)
-		protocol := targetFor(t, service, protocolPane, statusservice.OSC7501)
+		protocol := targetFor(t, service, protocolPane, statusservice.Protocol)
 		screen := targetFor(t, service, screenPane, statusservice.Screen)
 		require.NoError(t, service.Apply(protocol, 1, status.Value{State: status.Working}))
 		require.NoError(t, service.Apply(screen, 1, status.Value{
@@ -197,11 +197,11 @@ func TestInventoryGapRequiresFreshEvidence(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		pane := fixturePane("")
 		service := fixtureService(t, pane)
-		old := targetFor(t, service, pane, statusservice.OSC7501)
+		old := targetFor(t, service, pane, statusservice.Protocol)
 		require.NoError(t, service.Apply(old, 1, status.Value{State: status.Working}))
 		time.Sleep(time.Minute)
 
-		_, duringGap := service.Target(pane.Ref, statusservice.OSC7501)
+		_, duringGap := service.Target(pane.Ref, statusservice.Protocol)
 		refreshErr := service.UpdateInventory(inventory(2, pane))
 		lateErr := service.Apply(old, 2, status.Value{State: status.Idle})
 		snapshot, readErr := service.ReadStatus(t.Context())
@@ -220,8 +220,8 @@ func TestInvalidationPreservesAbsentWithdrawnAndUnknownDistinctions(t *testing.T
 	withdrawn.Ref.ID = "%2"
 	active.Ref.ID = "%3"
 	service := fixtureService(t, absent, withdrawn, active)
-	clearTarget := targetFor(t, service, withdrawn, statusservice.OSC7501)
-	activeTarget := targetFor(t, service, active, statusservice.OSC7501)
+	clearTarget := targetFor(t, service, withdrawn, statusservice.Protocol)
+	activeTarget := targetFor(t, service, active, statusservice.Protocol)
 	require.NoError(t, service.Apply(clearTarget, 1, status.Value{State: status.Withdrawn}))
 	require.NoError(t, service.Apply(activeTarget, 1, status.Value{State: status.Working}))
 
@@ -263,8 +263,8 @@ func TestInvalidEvidenceCannotOverwriteCurrentStatus(t *testing.T) {
 		source statusservice.Source
 		value  status.Value
 	}{
-		{"absence is not clear", statusservice.OSC7501, status.Value{}},
-		{"protocol has no heartbeat", statusservice.OSC7501, status.Value{State: status.Idle, ValidUntil: time.Now().Add(time.Minute)}},
+		{"absence is not clear", statusservice.Protocol, status.Value{}},
+		{"protocol has no heartbeat", statusservice.Protocol, status.Value{State: status.Idle, ValidUntil: time.Now().Add(time.Minute)}},
 		{"screen needs freshness", statusservice.Screen, status.Value{State: status.Working}},
 		{"screen cannot clear", statusservice.Screen, status.Value{State: status.Withdrawn}},
 	}
@@ -292,7 +292,7 @@ func TestInvalidEvidenceCannotOverwriteCurrentStatus(t *testing.T) {
 func TestTargetCannotCrossServiceInstances(t *testing.T) {
 	pane := fixturePane("")
 	previous := fixtureService(t, pane)
-	target := targetFor(t, previous, pane, statusservice.OSC7501)
+	target := targetFor(t, previous, pane, statusservice.Protocol)
 	current := fixtureService(t, pane)
 
 	err := current.Apply(target, 1, status.Value{State: status.Working})
@@ -322,7 +322,7 @@ func TestInvalidInventoryIsRejectedAtomically(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			pane := fixturePane("")
 			service := fixtureService(t, pane)
-			target := targetFor(t, service, pane, statusservice.OSC7501)
+			target := targetFor(t, service, pane, statusservice.Protocol)
 			require.NoError(t, service.Apply(target, 1, status.Value{State: status.Working}))
 			invalid := inventory(2, pane)
 			tc.change(&invalid)
@@ -340,7 +340,7 @@ func TestInvalidInventoryIsRejectedAtomically(t *testing.T) {
 func TestRetirementAndClosePreservePreviouslyReturnedSnapshots(t *testing.T) {
 	pane := fixturePane("")
 	service := fixtureService(t, pane)
-	target := targetFor(t, service, pane, statusservice.OSC7501)
+	target := targetFor(t, service, pane, statusservice.Protocol)
 	require.NoError(t, service.Apply(target, 1, status.Value{State: status.Working}))
 	original, err := service.ReadStatus(t.Context())
 	require.NoError(t, err)
@@ -376,7 +376,7 @@ func TestConcurrentReadersAndEvidenceUpdates(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		pane := fixturePane("")
 		service := fixtureService(t, pane)
-		target := targetFor(t, service, pane, statusservice.OSC7501)
+		target := targetFor(t, service, pane, statusservice.Protocol)
 		require.NoError(t, service.Apply(target, 1, status.Value{State: status.Working}))
 		var workers sync.WaitGroup
 		errs := make(chan error, 4)

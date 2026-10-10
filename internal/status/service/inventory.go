@@ -13,8 +13,8 @@ const maxIdentityBytes = 256
 type Source string
 
 const (
-	OSC7501 Source = "osc7501"
-	Screen  Source = "screen"
+	Protocol Source = "protocol"
+	Screen   Source = "screen"
 )
 
 // Scope fields are incarnation tokens, not PIDs or reusable command names.
@@ -26,7 +26,7 @@ type Scope struct {
 	Command    string
 }
 
-// Profile selects an evidence source; its zero value selects generic OSC7501.
+// Profile selects an evidence source; its zero value selects protocol reports.
 // Generation changes when matching or evaluation configuration changes, even if
 // the profile name stays the same.
 type Profile struct {
@@ -118,7 +118,7 @@ func sameEvidenceScope(previous, next Pane) bool {
 		return false
 	}
 
-	return next.source() != Screen || previous.Geometry == next.Geometry
+	return next.EvidenceSource() != Screen || previous.Geometry == next.Geometry
 }
 
 // UpdateScope replaces one pane's validated stream scope without extending the
@@ -179,9 +179,10 @@ func (s *Service) Invalidate(revision uint64) error {
 	return nil
 }
 
-func (p Pane) source() Source {
+// EvidenceSource resolves the profile's source, defaulting to protocol reports.
+func (p Pane) EvidenceSource() Source {
 	if p.Profile.Source == "" {
-		return OSC7501
+		return Protocol
 	}
 
 	return p.Profile.Source
@@ -192,7 +193,7 @@ func (p Pane) available() bool {
 		return false
 	}
 
-	return p.source() != Screen || p.Geometry.Columns > 0 && p.Geometry.Rows > 0
+	return p.EvidenceSource() != Screen || p.Geometry.Columns > 0 && p.Geometry.Rows > 0
 }
 
 // Small identity substrings must not retain a whole inventory response buffer.
@@ -254,7 +255,7 @@ func validatePane(server string, pane Pane) error {
 		if pane.Profile.Generation != "" {
 			return fmt.Errorf("status profile generation requires a source")
 		}
-	case OSC7501, Screen:
+	case Protocol, Screen:
 		if pane.Profile.Generation == "" {
 			return fmt.Errorf("status profile requires a generation")
 		}

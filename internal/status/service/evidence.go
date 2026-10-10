@@ -33,13 +33,13 @@ func (s *Service) Target(pane status.PaneRef, source Source) (Target, bool) {
 	}
 
 	row, exists := s.panes[pane.ID]
-	if !exists || row.pane.Ref != pane || row.pane.source() != source || !row.pane.available() {
+	if !exists || row.pane.Ref != pane || row.pane.EvidenceSource() != source || !row.pane.available() {
 		return Target{}, false
 	}
 
 	return Target{
 		Pane:       row.pane,
-		Source:     row.pane.source(),
+		Source:     row.pane.EvidenceSource(),
 		generation: row.generation,
 		service:    s,
 	}, true
@@ -82,7 +82,7 @@ func (s *Service) Apply(target Target, sequence uint64, value status.Value) erro
 
 func (r record) accepts(target Target, sequence uint64, validUntil, now time.Time) bool {
 	return sameEvidenceScope(r.pane, target.Pane) && r.generation == target.generation &&
-		r.pane.source() == target.Source && r.pane.available() &&
+		r.pane.EvidenceSource() == target.Source && r.pane.available() &&
 		sequence > r.sequence && now.Before(validUntil)
 }
 
@@ -102,7 +102,7 @@ func validateEvidence(source Source, sequence uint64, value status.Value) error 
 	}
 
 	switch source {
-	case OSC7501:
+	case Protocol:
 		if !value.ValidUntil.IsZero() {
 			return fmt.Errorf("protocol evidence cannot have a heartbeat lease")
 		}

@@ -1,46 +1,78 @@
 package statusobserver
 
 import (
-	"bytes"
 	"errors"
+	"time"
 
-	"github.com/MSmaili/hetki/internal/status/adapters/osc7501"
+	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/protocols"
 	"github.com/MSmaili/hetki/internal/status/service"
-	"github.com/MSmaili/hetki/internal/terminalstream"
 )
 
-// Stored by pointer: decoder buffers and reducer records must not be copied with
-// inventory rows. Source.mu serializes all access, including lifecycle changes.
-type paneProtocol struct {
-	decoder  terminalstream.Decoder
-	observer osc7501.Observer
-	target   service.Target
+// protocolBinding joins an encapsulated pane observer to the cache target. All
+// access is serialized by Source.mu; native identities stay in this package.
+type protocolBinding struct {
+	pane   *protocols.Pane
+	target service.Target
 }
 
-func (p *paneProtocol) resetInput(retainOutcomes bool) {
-	p.decoder.Reset()
+func (p *protocolBinding) reset() {
 	p.target = service.Target{}
-	if retainOutcomes {
-		p.observer.EndActivity()
-	} else {
-		p.observer.Reset()
+	p.pane.Reset()
+}
+
+func (p *protocolBinding) processExited() {
+	p.target = service.Target{}
+	p.pane.ProcessExited()
+}
+
+func (p *protocolBinding) foregroundChanged() {
+	p.target = service.Target{}
+	p.pane.ForegroundChanged()
+}
+
+func (s *Source) expireProtocols(now time.Time) {
+	if now.Before(s.validatedUntil) {
+		return
+	}
+
+	for _, row := range s.panes {
+		if row.protocol != nil {
+			row.protocol.reset()
+		}
 	}
 }
 
-func reconcileProtocol(previous, next sourcePane) *paneProtocol {
+func (p *protocolBinding) resetStream(previous, next Scope, dead bool) {
+	if dead {
+		p.processExited()
+		return
+	}
+
+	if next.Connection != "" && next.Connection == previous.Connection && next.Root == previous.Root &&
+		next.Foreground != previous.Foreground {
+		p.foregroundChanged()
+		return
+	}
+	p.reset()
+}
+
+func reconcileProtocol(previous, next sourcePane) *protocolBinding {
 	p := previous.protocol
 	if p == nil || previous.pane.Ref != next.pane.Ref || previous.pane.Profile != next.pane.Profile {
 		return nil
 	}
 
 	if next.facts.Dead {
-		p.resetInput(true)
+		p.processExited()
 	} else if !next.valid || previous.pane.Scope != next.pane.Scope {
-		// A verified foreground handoff ends activity attribution, not the pane's
-		// explicit outcome. Missing metadata and transport gaps prove no exit.
-		retain := previous.valid && next.valid && previous.facts.Root == next.facts.Root &&
+		continuous := previous.valid && next.valid && previous.facts.Root == next.facts.Root &&
 			next.facts.Foreground.Identity() != "" && previous.facts.Foreground.Identity() != ""
-		p.resetInput(retain)
+		if continuous {
+			p.foregroundChanged()
+		} else {
+			p.reset()
+		}
 	}
 	return p
 }
@@ -51,14 +83,18 @@ func (s *Source) bindProtocol(row sourcePane) bool {
 		return false
 	}
 
-	target, available := s.core.Target(row.pane.Ref, service.OSC7501)
+	target, available := s.core.Target(row.pane.Ref, row.pane.EvidenceSource())
 	if !available {
-		p.resetInput(row.facts.Dead)
+		if row.facts.Dead {
+			p.processExited()
+		} else {
+			p.reset()
+		}
 		return false
 	}
 
 	if p.target != (service.Target{}) && !p.target.SameGeneration(target) {
-		p.resetInput(false)
+		p.reset()
 	}
 	p.target = target
 	return true
@@ -70,30 +106,15 @@ func (s *Source) protocolOutput(row sourcePane, data []byte) error {
 	}
 
 	p := row.protocol
-	changed := false
-	p.decoder.Feed(data, func(frame terminalstream.Frame) {
-		switch frame.Kind {
-		case terminalstream.RIS:
-			changed = changed || p.observer.Observed()
-			p.observer.Reset()
-		case terminalstream.OSC:
-			if payload, found := bytes.CutPrefix(frame.Body, []byte("7501;")); found {
-				if p.observer.Handle(payload) == osc7501.Applied {
-					changed = true
-				}
-			}
-		}
-	})
-	if !changed {
+	observation, publish := p.pane.Feed(data)
+	if !publish {
 		return nil
 	}
 
-	// A chunk may contain many reports. Publish only its final reduction; each
-	// report still participates in ordering, subtree clears and record eviction.
 	s.protocolSequence++
-	err := s.core.Apply(p.target, s.protocolSequence, osc7501Value(&p.observer))
+	err := s.core.Apply(p.target, s.protocolSequence, status.Value{State: observation.Activity})
 	if errors.Is(err, service.ErrStale) {
-		p.resetInput(false)
+		p.reset()
 		return nil
 	}
 	return err

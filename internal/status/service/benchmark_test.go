@@ -26,7 +26,7 @@ func benchmarkService(b *testing.B, count int) (*statusservice.Service, []status
 	initial.ValidUntil = time.Now().Add(24 * time.Hour)
 	require.NoError(b, service.UpdateInventory(initial))
 	for _, pane := range panes {
-		target := targetFor(b, service, pane, statusservice.OSC7501)
+		target := targetFor(b, service, pane, statusservice.Protocol)
 		require.NoError(b, service.Apply(target, 1, status.Value{State: status.Working}))
 	}
 	_, err = service.ReadStatus(context.Background())
@@ -53,7 +53,7 @@ func BenchmarkEvidenceAndSnapshot(b *testing.B) {
 	for _, count := range []int{40, status.MaxPanes} {
 		b.Run(fmt.Sprintf("panes=%d", count), func(b *testing.B) {
 			service, panes := benchmarkService(b, count)
-			target := targetFor(b, service, panes[0], statusservice.OSC7501)
+			target := targetFor(b, service, panes[0], statusservice.Protocol)
 			sequence := uint64(1)
 			states := [...]status.State{status.Blocked, status.Working}
 			b.ReportAllocs()
@@ -91,7 +91,7 @@ func BenchmarkInventoryRefresh(b *testing.B) {
 
 func BenchmarkRepeatedEvidence(b *testing.B) {
 	service, panes := benchmarkService(b, 40)
-	target := targetFor(b, service, panes[0], statusservice.OSC7501)
+	target := targetFor(b, service, panes[0], statusservice.Protocol)
 	sequence := uint64(1)
 	b.ReportAllocs()
 

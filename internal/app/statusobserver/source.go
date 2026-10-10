@@ -7,14 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/protocols"
 	"github.com/MSmaili/hetki/internal/status/service"
 )
 
 // Selection is an immutable source choice made by application profile matching.
-// Zero selects generic OSC7501. A screen choice requires a generation and bounded
+// Zero selects protocol reports. A screen choice requires a generation and bounded
 // evaluator; changing its rules or region requires a new profile generation.
 type Selection struct {
 	Profile  service.Profile
@@ -34,6 +36,7 @@ type Source struct {
 	revision         uint64
 	nativeRevision   uint64
 	protocolSequence uint64
+	validatedUntil   time.Time
 	panes            map[string]sourcePane
 
 	core    *service.Service
@@ -196,9 +199,7 @@ func (s *Source) Reset(scope Scope) {
 	}
 
 	if row.protocol != nil && row.stream != scope {
-		retain := row.facts.Dead || scope.Connection != "" && scope.Connection == row.stream.Connection &&
-			scope.Root == row.stream.Root && scope.Foreground != row.stream.Foreground
-		row.protocol.resetInput(retain)
+		row.protocol.resetStream(row.stream, scope, row.facts.Dead)
 	}
 	row.stream = scope
 	row.pane.Scope = row.serviceScope()
@@ -214,7 +215,8 @@ func (s *Source) Reset(scope Scope) {
 }
 
 // Output dispatches attributed bytes to the selected source. Protocol framing
-// and reduction are synchronous; screen output only schedules a checked capture.
+// and reduction are synchronous. Screen-selected panes track shell boundaries
+// independently while output schedules a checked capture for activity evidence.
 func (s *Source) Output(scope Scope, data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -226,11 +228,12 @@ func (s *Source) Output(scope Scope, data []byte) error {
 
 	if row.selection.Profile.Source == service.Screen {
 		s.screens.Dirty(scope.Pane)
-		return nil
 	}
 
 	if row.protocol == nil {
-		row.protocol = &paneProtocol{}
+		row.protocol = &protocolBinding{
+			pane: protocols.New(protocols.Options{ProgramStatus: row.pane.EvidenceSource() == service.Protocol}),
+		}
 		s.panes[scope.Pane] = row
 	}
 	return s.protocolOutput(row, data)

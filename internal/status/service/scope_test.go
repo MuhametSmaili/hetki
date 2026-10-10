@@ -14,8 +14,8 @@ func TestScopeHandoffRevokesOnlyAffectedPane(t *testing.T) {
 	pane, peer := fixturePane(""), fixturePane("")
 	peer.Ref.ID = "%2"
 	core := fixtureService(t, pane, peer)
-	old := targetFor(t, core, pane, statusservice.OSC7501)
-	other := targetFor(t, core, peer, statusservice.OSC7501)
+	old := targetFor(t, core, pane, statusservice.Protocol)
+	other := targetFor(t, core, peer, statusservice.Protocol)
 	require.NoError(t, core.Apply(old, 1, status.Value{State: status.Working}))
 	require.NoError(t, core.Apply(other, 1, status.Value{State: status.Idle}))
 	changed := pane.Scope
@@ -42,12 +42,12 @@ func TestScopeUpdateCannotExtendInventoryValidation(t *testing.T) {
 		pane.Scope.Connection = "replacement"
 
 		require.NoError(t, core.UpdateScope(2, pane.Ref, pane.Scope))
-		target := targetFor(t, core, pane, statusservice.OSC7501)
+		target := targetFor(t, core, pane, statusservice.Protocol)
 		time.Sleep(time.Second)
 		err := core.Apply(target, 1, status.Value{State: status.Working})
 
 		require.ErrorIs(t, err, statusservice.ErrStale)
-		_, available := core.Target(pane.Ref, statusservice.OSC7501)
+		_, available := core.Target(pane.Ref, statusservice.Protocol)
 		require.False(t, available)
 	})
 }

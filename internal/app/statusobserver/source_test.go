@@ -115,12 +115,13 @@ func sourceFixture(t *testing.T) (*Source, sourcePane) {
 	t.Cleanup(cancel)
 
 	s := &Source{
-		server:   "server",
-		epoch:    "fixture",
-		core:     core,
-		ctx:      ctx,
-		cancel:   cancel,
-		revision: 1,
+		server:         "server",
+		epoch:          "fixture",
+		core:           core,
+		ctx:            ctx,
+		cancel:         cancel,
+		revision:       1,
+		validatedUntil: time.Now().Add(time.Minute),
 	}
 	row := s.reconcilePane(sourcePane{}, sourceFacts(), Selection{}, true)
 	s.panes = map[string]sourcePane{row.pane.Ref.ID: row}
@@ -138,7 +139,7 @@ func TestSourceResetRevokesEvidenceBeforeNewOutput(t *testing.T) {
 	s, row := sourceFixture(t)
 	scope := sourceScope(row.facts)
 	s.Reset(scope)
-	old, ok := s.core.Target(row.pane.Ref, service.OSC7501)
+	old, ok := s.core.Target(row.pane.Ref, service.Protocol)
 	require.True(t, ok)
 	require.NoError(t, s.core.Apply(old, 1, status.Value{State: status.Working}))
 
@@ -154,7 +155,7 @@ func TestSourceResetRevokesEvidenceBeforeNewOutput(t *testing.T) {
 	require.Equal(t, row.pane.Ref, s.panes[row.facts.ID].pane.Ref)
 
 	s.Reset(Scope{Pane: row.facts.ID})
-	_, available := s.core.Target(row.pane.Ref, service.OSC7501)
+	_, available := s.core.Target(row.pane.Ref, service.Protocol)
 	require.False(t, available)
 }
 
@@ -197,7 +198,7 @@ func TestSourceQueryFailureRevokesTargetsWithoutRetiringPane(t *testing.T) {
 	s, row := sourceFixture(t)
 	scope := sourceScope(row.facts)
 	s.Reset(scope)
-	target, available := s.core.Target(row.pane.Ref, service.OSC7501)
+	target, available := s.core.Target(row.pane.Ref, service.Protocol)
 	require.True(t, available)
 	require.NoError(t, s.core.Apply(target, 1, status.Value{State: status.Working}))
 

@@ -7,13 +7,91 @@ import (
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/adapters/osc7501"
+	"github.com/MSmaili/hetki/internal/status/protocols"
 	"github.com/MSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
 
 func protocolReport(payload string) []byte {
 	return []byte("\x1b]7501;" + payload + "\x1b\\")
+}
+
+func shellMarker(payload string) []byte { return []byte("\x1b]133;" + payload + "\a") }
+
+func TestShellInvocationSurvivesVerifiedForegroundHandoff(t *testing.T) {
+	s, row := sourceFixture(t)
+	scope := sourceScope(row.facts)
+	s.Reset(scope)
+	require.NoError(t, s.Output(scope, shellMarker("C")))
+	before := s.panes[row.facts.ID].protocol.pane.Snapshot().Shell
+	facts := row.facts
+	facts.Foreground.Birth = "child"
+
+	updateProtocolFacts(t, s, facts, Selection{}, true)
+	scope.Foreground = facts.Foreground
+	scope.Generation++
+	s.Reset(scope)
+	require.NoError(t, s.Output(scope, shellMarker("D;130")))
+	after := s.panes[row.facts.ID].protocol.pane.Snapshot().Shell
+
+	require.Equal(t, before.Invocation, after.Invocation)
+	require.Equal(t, protocols.Finished, after.Phase)
+	require.True(t, after.ExitKnown)
+	require.Equal(t, uint8(130), after.ExitCode)
+	requireSourceState(t, s, row.pane.Ref, status.Unreported)
+}
+
+func TestExpiredInventoryCannotPreserveCommandAcrossHandoff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s, row := sourceFixture(t)
+		scope := sourceScope(row.facts)
+		s.Reset(scope)
+		require.NoError(t, s.Output(scope, shellMarker("C")))
+		facts := row.facts
+		facts.Foreground.Birth = "next"
+
+		time.Sleep(time.Minute + time.Second)
+		updateProtocolFacts(t, s, facts, Selection{}, true)
+		scope.Foreground = facts.Foreground
+		scope.Generation++
+		s.Reset(scope)
+		require.NoError(t, s.Output(scope, shellMarker("D;0")))
+
+		require.Equal(t, protocols.Shell{}, s.panes[row.facts.ID].protocol.pane.Snapshot().Shell)
+	})
+}
+
+func TestShellResetDiscardsPartialMarkersAndCommandMatching(t *testing.T) {
+	s, row := sourceFixture(t)
+	scope := sourceScope(row.facts)
+	s.Reset(scope)
+	require.NoError(t, s.Output(scope, shellMarker("C")))
+	require.NoError(t, s.Output(scope, []byte("\x1b]133;D;")))
+
+	scope.Connection = "replacement"
+	scope.Generation++
+	s.Reset(scope)
+	require.NoError(t, s.Output(scope, []byte("0\a")))
+	require.NoError(t, s.Output(scope, shellMarker("D;0")))
+
+	require.Equal(t, protocols.Shell{}, s.panes[row.facts.ID].protocol.pane.Snapshot().Shell)
+}
+
+func TestScreenSelectionTracksShellWithoutAcceptingOSCActivity(t *testing.T) {
+	s, row := sourceFixture(t)
+	s.screens = newScreens(s.core, successfulScreens)
+	selection := Selection{Profile: service.Profile{Source: service.Screen, Generation: "rules"}}
+	updateProtocolFacts(t, s, row.facts, selection, true)
+	scope := sourceScope(row.facts)
+	s.Reset(scope)
+	input := append(shellMarker("C"), protocolReport("state=working")...)
+
+	require.NoError(t, s.Output(scope, input))
+
+	observation := s.panes[row.facts.ID].protocol.pane.Snapshot()
+	require.Equal(t, protocols.Running, observation.Shell.Phase)
+	require.Equal(t, status.Unreported, observation.Activity)
+	requireSourceState(t, s, row.pane.Ref, status.Unknown)
 }
 
 func requireSourceState(t *testing.T, s *Source, ref status.PaneRef, state status.State) {
@@ -115,6 +193,7 @@ func TestProtocolResizePreservesPartialInputAndRecords(t *testing.T) {
 
 func updateProtocolFacts(t *testing.T, s *Source, facts observe.Pane, selected Selection, valid bool) sourcePane {
 	t.Helper()
+	s.expireProtocols(time.Now())
 	row := s.reconcilePane(s.panes[facts.ID], facts, selected, valid)
 	s.revision++
 	err := s.core.UpdateInventory(service.Inventory{
@@ -124,6 +203,7 @@ func updateProtocolFacts(t *testing.T, s *Source, facts observe.Pane, selected S
 	})
 	require.NoError(t, err)
 	s.panes[facts.ID] = row
+	s.validatedUntil = time.Now().Add(time.Minute)
 	if row.pane.Scope.Connection != "" {
 		s.bindProtocol(row)
 	}
@@ -173,12 +253,9 @@ func TestProtocolOutcomeSurvivesConfirmedExitButNotRespawn(t *testing.T) {
 
 	dead := updateProtocolFacts(t, s, facts, Selection{}, false)
 	s.Reset(Scope{Pane: facts.ID, Generation: 2})
-	state, retained := dead.protocol.observer.Lookup("")
-	_, running := dead.protocol.observer.Lookup("child")
+	observation := dead.protocol.pane.Snapshot()
 
-	require.True(t, retained)
-	require.Equal(t, osc7501.Done, state)
-	require.False(t, running)
+	require.Equal(t, protocols.Completed, observation.Outcome)
 	requireSourceState(t, s, dead.pane.Ref, status.Unknown)
 	respawn := updateProtocolFacts(t, s, row.facts, Selection{}, true)
 	require.NotEqual(t, dead.pane.Ref, respawn.pane.Ref)
@@ -199,12 +276,9 @@ func TestProtocolForegroundHandoffRetainsOnlyOutcome(t *testing.T) {
 	scope.Generation++
 	s.Reset(scope)
 	require.NoError(t, s.Output(scope, []byte("text")))
-	state, retained := row.protocol.observer.Lookup("")
-	_, running := row.protocol.observer.Lookup("child")
+	observation := row.protocol.pane.Snapshot()
 
-	require.True(t, retained)
-	require.Equal(t, osc7501.Done, state)
-	require.False(t, running)
+	require.Equal(t, protocols.Completed, observation.Outcome)
 	requireSourceState(t, s, row.pane.Ref, status.Unknown)
 }
 
@@ -218,13 +292,13 @@ func TestMissingProcessMetadataDoesNotProveExitOrReviveOutcome(t *testing.T) {
 
 	missing := updateProtocolFacts(t, s, facts, Selection{}, false)
 	s.Reset(Scope{Pane: facts.ID, Root: facts.Root, Generation: 2})
-	_, retained := missing.protocol.observer.Lookup("")
+	outcome := missing.protocol.pane.Snapshot().Outcome
 	updateProtocolFacts(t, s, row.facts, Selection{}, true)
 	scope.Generation = 3
 	s.Reset(scope)
 	require.NoError(t, s.Output(scope, []byte("text")))
 
-	require.False(t, retained)
+	require.Equal(t, protocols.NoOutcome, outcome)
 	requireSourceState(t, s, row.pane.Ref, status.Unknown)
 }
 

@@ -22,7 +22,7 @@ type sourcePane struct {
 	selection Selection
 	stream    Scope
 	pane      service.Pane
-	protocol  *paneProtocol
+	protocol  *protocolBinding
 }
 
 func (s *Source) prepare(inventory observe.Inventory) error {
@@ -49,6 +49,8 @@ func (s *Source) prepare(inventory observe.Inventory) error {
 		return ErrStaleInventory
 	}
 
+	s.expireProtocols(time.Now())
+
 	rows := make(map[string]sourcePane)
 	panes := make([]service.Pane, 0)
 	for id, facts := range inventory.All() {
@@ -67,6 +69,7 @@ func (s *Source) prepare(inventory observe.Inventory) error {
 	}
 
 	s.panes = rows
+	s.validatedUntil = inventory.StartedAt().Add(sourceValidation)
 	for _, row := range rows {
 		if row.pane.Scope.Connection != "" {
 			s.bindProtocol(row)
@@ -161,7 +164,7 @@ func (s *Source) publishLocked(inventory observe.Inventory) error {
 	if inventory.Revision() == 0 {
 		for _, row := range s.panes {
 			if row.protocol != nil {
-				row.protocol.resetInput(false)
+				row.protocol.reset()
 			}
 		}
 		s.revision++
