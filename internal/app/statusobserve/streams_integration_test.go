@@ -36,7 +36,7 @@ func TestNativeInventoryWatchDiscoversSessionsAndJoinsOnPublisherFailure(t *test
 	var stop atomic.Bool
 	go func() {
 		defer close(joined)
-		done <- WatchInventory(ctx, sampler, streams, func(inventory observe.Inventory, err error) error {
+		done <- Watch(ctx, sampler, streams, nil, func(inventory observe.Inventory, err error) error {
 			if err != nil {
 				return err
 			}
