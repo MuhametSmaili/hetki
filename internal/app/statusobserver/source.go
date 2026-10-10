@@ -24,16 +24,17 @@ type Selection struct {
 
 // Source owns the watch, streams and cache for one server incarnation. Reads are
 // cache-only; Close cancels and joins acquisition before closing the cache.
-// Terminal protocol adapters are added separately; bare output is not evidence.
+// Bare output is not evidence; only the selected adapter can update status.
 type Source struct {
 	mu sync.Mutex
 
-	server         string
-	epoch          string
-	generation     uint64
-	revision       uint64
-	nativeRevision uint64
-	panes          map[string]sourcePane
+	server           string
+	epoch            string
+	generation       uint64
+	revision         uint64
+	nativeRevision   uint64
+	protocolSequence uint64
+	panes            map[string]sourcePane
 
 	core    *service.Service
 	streams *Streams
@@ -194,6 +195,11 @@ func (s *Source) Reset(scope Scope) {
 		return
 	}
 
+	if row.protocol != nil && row.stream != scope {
+		retain := row.facts.Dead || scope.Connection != "" && scope.Connection == row.stream.Connection &&
+			scope.Root == row.stream.Root && scope.Foreground != row.stream.Foreground
+		row.protocol.resetInput(retain)
+	}
 	row.stream = scope
 	row.pane.Scope = row.serviceScope()
 
@@ -204,11 +210,12 @@ func (s *Source) Reset(scope Scope) {
 	}
 
 	s.panes[scope.Pane] = row
+	s.bindProtocol(row)
 }
 
-// Output marks only selected screen panes dirty. OSC framing/reduction is a later
-// adapter integration; arbitrary terminal bytes never fabricate activity.
-func (s *Source) Output(scope Scope, _ []byte) error {
+// Output dispatches attributed bytes to the selected source. Protocol framing
+// and reduction are synchronous; screen output only schedules a checked capture.
+func (s *Source) Output(scope Scope, data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -219,6 +226,12 @@ func (s *Source) Output(scope Scope, _ []byte) error {
 
 	if row.selection.Profile.Source == service.Screen {
 		s.screens.Dirty(scope.Pane)
+		return nil
 	}
-	return nil
+
+	if row.protocol == nil {
+		row.protocol = &paneProtocol{}
+		s.panes[scope.Pane] = row
+	}
+	return s.protocolOutput(row, data)
 }

@@ -17,6 +17,13 @@ type Target struct {
 	service    *Service
 }
 
+// SameGeneration compares evidence validity, excluding display-only facts such
+// as protocol pane geometry. Zero targets never identify a valid generation.
+func (t Target) SameGeneration(other Target) bool {
+	return t.service != nil && t.service == other.service && t.generation == other.generation &&
+		t.Pane.Ref == other.Pane.Ref && t.Source == other.Source
+}
+
 func (s *Service) Target(pane status.PaneRef, source Source) (Target, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -22,6 +22,7 @@ type sourcePane struct {
 	selection Selection
 	stream    Scope
 	pane      service.Pane
+	protocol  *paneProtocol
 }
 
 func (s *Source) prepare(inventory observe.Inventory) error {
@@ -66,6 +67,11 @@ func (s *Source) prepare(inventory observe.Inventory) error {
 	}
 
 	s.panes = rows
+	for _, row := range rows {
+		if row.pane.Scope.Connection != "" {
+			s.bindProtocol(row)
+		}
+	}
 	s.nativeRevision = inventory.Revision()
 	return nil
 }
@@ -109,6 +115,7 @@ func (s *Source) reconcilePane(previous sourcePane, facts observe.Pane, selected
 	}
 
 	row.pane.Scope = row.serviceScope()
+	row.protocol = reconcileProtocol(previous, row)
 	return row
 }
 
@@ -152,6 +159,11 @@ func (s *Source) publish(inventory observe.Inventory, acquisitionErr error) erro
 
 func (s *Source) publishLocked(inventory observe.Inventory) error {
 	if inventory.Revision() == 0 {
+		for _, row := range s.panes {
+			if row.protocol != nil {
+				row.protocol.resetInput(false)
+			}
+		}
 		s.revision++
 		return s.core.Invalidate(s.revision)
 	}
