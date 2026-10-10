@@ -1,6 +1,6 @@
-// Package statusservice selects application evidence and owns a bounded status
+// Package service selects application evidence and owns a bounded status
 // cache. Callers supply validated inventory and normalized observations, not I/O.
-package statusservice
+package service
 
 import (
 	"context"

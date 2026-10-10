@@ -1,4 +1,4 @@
-package statusservice_test
+package service_test
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/app/statusservice"
 	"github.com/MSmaili/hetki/internal/status"
+	statusservice "github.com/MSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
 

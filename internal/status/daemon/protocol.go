@@ -1,4 +1,4 @@
-package statusdaemon
+package daemon
 
 import (
 	"bytes"

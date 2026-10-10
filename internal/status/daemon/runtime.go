@@ -1,6 +1,6 @@
-// Package statusdaemon owns the process lifetime and private snapshot transport
+// Package daemon owns the process lifetime and private snapshot transport
 // for one backend server incarnation. Composition supplies the bound source.
-package statusdaemon
+package daemon
 
 import (
 	"context"
