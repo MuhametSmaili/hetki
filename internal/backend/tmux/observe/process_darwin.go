@@ -11,13 +11,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func readProcessBirth(ctx context.Context, pid int) (string, error) {
+func readProcess(ctx context.Context, pid int) (processInfo, error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return processInfo{}, err
 	}
 
 	if pid <= 0 || pid > math.MaxInt32 {
-		return "", fmt.Errorf("invalid process PID")
+		return processInfo{}, fmt.Errorf("invalid process PID")
 	}
 
 	const kernProc, kernProcPID, processExiting = 14, 1, 0x00002000
@@ -30,17 +30,25 @@ func readProcessBirth(ctx context.Context, pid int) (string, error) {
 	runtime.KeepAlive(mib)
 	runtime.KeepAlive(&proc)
 	if errno != 0 {
-		return "", fmt.Errorf("read native process metadata: %w", errno)
+		return processInfo{}, fmt.Errorf("read native process metadata: %w", errno)
 	}
 
 	if size != unsafe.Sizeof(proc) || proc.Proc.P_pid != int32(pid) || proc.Proc.P_flag&processExiting != 0 {
-		return "", fmt.Errorf("native process unavailable or exiting")
+		return processInfo{}, fmt.Errorf("native process unavailable or exiting")
 	}
 
 	start := proc.Proc.P_starttime
 	if start.Sec <= 0 || start.Usec < 0 || start.Usec >= 1_000_000 {
-		return "", fmt.Errorf("invalid native process birth")
+		return processInfo{}, fmt.Errorf("invalid native process birth")
 	}
 
-	return fmt.Sprintf("%d:%d", start.Sec, start.Usec), ctx.Err()
+	info := processInfo{
+		Process:    Process{PID: pid, Birth: fmt.Sprintf("%d:%d", start.Sec, start.Usec)},
+		group:      int(proc.Eproc.Pgid),
+		foreground: int(proc.Eproc.Tpgid),
+	}
+	if proc.Eproc.Tdev != -1 {
+		info.terminal = uint64(uint32(proc.Eproc.Tdev)) + 1
+	}
+	return info, ctx.Err()
 }

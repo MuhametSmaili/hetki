@@ -7,10 +7,10 @@ import (
 	"fmt"
 )
 
-func readProcessBirth(ctx context.Context, _ int) (string, error) {
+func readProcess(ctx context.Context, _ int) (processInfo, error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return processInfo{}, err
 	}
 
-	return "", fmt.Errorf("native tmux status identity is unsupported on this platform")
+	return processInfo{}, fmt.Errorf("native tmux status identity is unsupported on this platform")
 }

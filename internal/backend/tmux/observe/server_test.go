@@ -128,14 +128,14 @@ func TestLinuxBirthParserHandlesNamesAndRejectsDeadProcesses(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			data := "42 (command ) with ( spaces) " + tc.state + " " + strings.Repeat("0 ", 18) + "9876"
 
-			birth, err := parseProcessBirth(data, tc.pid)
+			info, err := parseProcessStat(data, tc.pid)
 
 			if !tc.valid {
 				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, "9876", birth)
+			require.Equal(t, "9876", info.Birth)
 		})
 	}
 }

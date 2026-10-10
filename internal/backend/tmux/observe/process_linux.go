@@ -10,18 +10,18 @@ import (
 	"syscall"
 )
 
-func readProcessBirth(ctx context.Context, pid int) (birth string, err error) {
+func readProcess(ctx context.Context, pid int) (info processInfo, err error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return processInfo{}, err
 	}
 
 	if pid <= 0 || pid > math.MaxInt32 {
-		return "", fmt.Errorf("invalid process PID")
+		return processInfo{}, fmt.Errorf("invalid process PID")
 	}
 
 	file, err := os.OpenFile(fmt.Sprintf("/proc/%d/stat", pid), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return "", fmt.Errorf("open native process metadata: %w", err)
+		return processInfo{}, fmt.Errorf("open native process metadata: %w", err)
 	}
 	defer func() {
 		err = errors.Join(err, file.Close())
@@ -29,16 +29,16 @@ func readProcessBirth(ctx context.Context, pid int) (birth string, err error) {
 
 	data, err := io.ReadAll(io.LimitReader(file, 4097))
 	if err != nil {
-		return "", fmt.Errorf("read native process metadata: %w", err)
+		return processInfo{}, fmt.Errorf("read native process metadata: %w", err)
 	}
 
 	if len(data) > 4096 {
-		return "", fmt.Errorf("native process metadata exceeds limit")
+		return processInfo{}, fmt.Errorf("native process metadata exceeds limit")
 	}
 
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return processInfo{}, err
 	}
 
-	return parseProcessBirth(string(data), pid)
+	return parseProcessStat(string(data), pid)
 }
