@@ -58,6 +58,9 @@ type Inventory struct {
 
 func (i Inventory) Revision() uint64 { return i.revision }
 
+// Server identifies the exact server incarnation sampled by this inventory.
+func (i Inventory) Server() string { return i.server }
+
 func (i Inventory) StartedAt() time.Time { return i.started }
 
 func (i Inventory) All() iter.Seq2[string, Pane] { return maps.All(i.panes) }
