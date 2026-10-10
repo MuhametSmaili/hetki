@@ -216,12 +216,12 @@ func TestPreviewCancellationOnHideResizeAndQuit(t *testing.T) {
 	}
 }
 
-func TestPreviewShowsContentWithoutTitle(t *testing.T) {
+func TestPreviewShowsBottomRowsWithoutTitle(t *testing.T) {
 	m := previewModel(t)
 	m.preview.itemID, m.preview.ready = "a", true
 	m.preview.lines = terminal.ScreenLines("first\nsecond\nthird\n")
-	require.Equal(t, "first \\nsecond", terminal.Sanitize(m.viewPreview(6, 2)))
-	require.Equal(t, "first ", terminal.Sanitize(m.viewPreview(6, 1)))
+	require.Equal(t, "second\\nthird ", terminal.Sanitize(m.viewPreview(6, 2)))
+	require.Equal(t, "third ", terminal.Sanitize(m.viewPreview(6, 1)))
 }
 
 func TestPreviewLayoutFitsAndKeepsListHeight(t *testing.T) {

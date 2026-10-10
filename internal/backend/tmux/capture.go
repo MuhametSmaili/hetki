@@ -34,10 +34,10 @@ func (b *TmuxBackend) CapturePane(ctx context.Context, target string) (string, e
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	// ponytail: top 200 rows / 1 MiB; make viewport-aware if taller previews are needed.
-	// Nonnegative rows exclude scrollback; omit -a to capture the active screen.
-	// -p leaves paste buffers untouched.
-	output, err := b.client.RunLimited(ctx, 1<<20, "capture-pane", "-p", "-e", "-N", "-S", "0", "-E", "199", "-t", target)
+	// Capture the visible screen through its bottom (the default end row),
+	// bounded to 1 MiB. Starting at zero excludes scrollback; omitting -a
+	// selects the active screen. -p leaves paste buffers untouched.
+	output, err := b.client.RunLimited(ctx, 1<<20, "capture-pane", "-p", "-e", "-N", "-S", "0", "-t", target)
 	if err != nil {
 		return "", err
 	}

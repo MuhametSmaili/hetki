@@ -29,7 +29,7 @@ func TestCapturePaneUsesOneBoundedVisibleScreenRead(t *testing.T) {
 				RunLimitedFunc: func(ctx context.Context, limit int, args ...string) (string, error) {
 					calls++
 					assert.Equal(t, 1<<20, limit)
-					assert.Equal(t, []string{"capture-pane", "-p", "-e", "-N", "-S", "0", "-E", "199", "-t", target}, args)
+					assert.Equal(t, []string{"capture-pane", "-p", "-e", "-N", "-S", "0", "-t", target}, args)
 					deadline, ok := ctx.Deadline()
 					assert.True(t, ok)
 					assert.InDelta(t, 1, time.Until(deadline).Seconds(), 0.1)

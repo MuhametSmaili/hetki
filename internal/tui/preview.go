@@ -109,7 +109,8 @@ func (m model) viewPreview(width, height int) string {
 	if message != "" {
 		body = []string{m.theme.meta.Render(terminal.Truncate(message, width))}
 	}
-	for _, line := range body[:min(len(body), max(0, height))] {
+	start := max(0, len(body)-max(0, height))
+	for _, line := range body[start:] {
 		lines = append(lines, terminal.Cut(line, 0, width))
 	}
 	return lipgloss.NewStyle().Width(width).Height(height).Render(strings.Join(lines, "\n"))
