@@ -1,6 +1,6 @@
 //go:build integration
 
-package statusobserve
+package statusobserver
 
 import (
 	"context"

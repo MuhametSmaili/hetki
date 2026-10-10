@@ -33,15 +33,15 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func processFixtureSource(server string) func(context.Context) (Source, error) {
+func processFixtureSource(server string) SourceFactory {
 	if strings.HasPrefix(server, "failed-source-") {
-		return func(context.Context) (Source, error) {
+		return func(context.Context, func(error)) (Source, error) {
 			return nil, errors.New("fixture could not initialize its source")
 		}
 	}
 
 	if strings.HasPrefix(server, "panic-source-") {
-		return func(context.Context) (Source, error) {
+		return func(context.Context, func(error)) (Source, error) {
 			return fixtureSource{
 				read: func(context.Context) (status.Snapshot, error) {
 					panic("fixture source panic")

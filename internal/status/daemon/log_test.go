@@ -40,7 +40,7 @@ func TestLifecycleLogSurvivesDaemonShutdown(t *testing.T) {
 func TestRepeatedSourceFailuresProduceOneSafeBoundedRecord(t *testing.T) {
 	c := fixtureClient(t, "source-error-log")
 	failure := errors.New("unavailable\n\x1b[31m" + strings.Repeat("x", 1<<20))
-	startFixture(t, c, liveBinding(c.server), func(context.Context) (Source, error) {
+	startFixture(t, c, liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
 		return fixtureSource{
 			read: func(context.Context) (status.Snapshot, error) {
 				return status.Snapshot{}, failure
@@ -69,6 +69,29 @@ func TestRepeatedSourceFailuresProduceOneSafeBoundedRecord(t *testing.T) {
 	require.Contains(t, text, "(truncated)")
 	require.NotContains(t, text, "\x1b")
 	require.Less(t, len(data), 8192)
+}
+
+func TestAcquisitionDiagnosticsUseDaemonLogWithoutSnapshotRequests(t *testing.T) {
+	c := fixtureClient(t, "acquisition-log")
+	done := startFixture(t, c, liveBinding(c.server), func(_ context.Context, report func(error)) (Source, error) {
+		for range 10 {
+			report(errors.New("native acquisition unavailable"))
+		}
+		report(nil)
+
+		return fixtureSource{
+			read:  func(context.Context) (status.Snapshot, error) { return status.Snapshot{}, nil },
+			close: func() error { return nil },
+		}, nil
+	})
+
+	require.NoError(t, c.Stop(t.Context()))
+	require.NoError(t, receive(t, done))
+	data, err := os.ReadFile(c.LogPath())
+
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(string(data), `event="source_failed"`))
+	require.Contains(t, string(data), "native acquisition unavailable")
 }
 
 func TestLogRotationKeepsOnlyTwoBoundedFiles(t *testing.T) {

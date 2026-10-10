@@ -1,4 +1,4 @@
-package statusobserve
+package statusobserver
 
 import (
 	"math/rand/v2"

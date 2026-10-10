@@ -28,7 +28,12 @@ type Source interface {
 	Close() error
 }
 
-func Serve(ctx context.Context, binding Binding, start func(context.Context) (Source, error)) error {
+// SourceFactory creates the daemon-owned source. Report writes bounded,
+// rate-limited source failures to the daemon log and is safe for concurrent use.
+// The source must join every caller of report before Close returns.
+type SourceFactory func(ctx context.Context, report func(error)) (Source, error)
+
+func Serve(ctx context.Context, binding Binding, start SourceFactory) error {
 	if binding.Alive == nil || start == nil {
 		return fmt.Errorf("status daemon requires lifetime check and source factory")
 	}
@@ -62,7 +67,7 @@ func Serve(ctx context.Context, binding Binding, start func(context.Context) (So
 	return err
 }
 
-func serveLocked(ctx context.Context, path string, binding Binding, start func(context.Context) (Source, error), logs *daemonLog) (err error) {
+func serveLocked(ctx context.Context, path string, binding Binding, start SourceFactory, logs *daemonLog) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -74,7 +79,11 @@ func serveLocked(ctx context.Context, path string, binding Binding, start func(c
 		return err
 	}
 
-	source, err := start(ctx)
+	source, err := start(ctx, func(err error) {
+		if err != nil {
+			logs.repeatedFailure("source_failed", err)
+		}
+	})
 	if err != nil {
 		return err
 	}

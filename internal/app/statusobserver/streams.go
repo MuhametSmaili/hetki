@@ -1,5 +1,5 @@
-// Package statusobserve coordinates native acquisition for application composition.
-package statusobserve
+// Package statusobserver coordinates native acquisition for application composition.
+package statusobserver
 
 import (
 	"context"

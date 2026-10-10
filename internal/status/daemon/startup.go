@@ -12,7 +12,8 @@ import (
 
 // Ensure launches the same binary's internal composition entry point if absent.
 // Server is an opaque incarnation token interpreted only by that composition.
-func Ensure(ctx context.Context, server, executable string) (*Client, error) {
+// Arguments are passed unchanged after the server token to that entry point.
+func Ensure(ctx context.Context, server, executable string, arguments ...string) (*Client, error) {
 	c, err := Connect(server)
 	if err != nil {
 		return nil, err
@@ -31,7 +32,7 @@ func Ensure(ctx context.Context, server, executable string) (*Client, error) {
 		return nil, fmt.Errorf("prepare daemon log %s: %w", c.LogPath(), err)
 	}
 
-	exited, err := startProcess(ctx, server, executable)
+	exited, err := startProcess(ctx, server, executable, arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func prepareLog(path string) error {
 	return writer.file.Close()
 }
 
-func startProcess(ctx context.Context, server, executable string) (<-chan error, error) {
+func startProcess(ctx context.Context, server, executable string, arguments []string) (<-chan error, error) {
 	if executable == "" {
 		var err error
 		executable, err = os.Executable()
@@ -61,7 +62,8 @@ func startProcess(ctx context.Context, server, executable string) (<-chan error,
 		}
 	}
 
-	cmd := exec.Command(executable, "__status-daemon", server)
+	args := append([]string{"__status-daemon", server}, arguments...)
+	cmd := exec.Command(executable, args...)
 	cmd.Dir = filepath.Dir(executable)
 
 	for _, key := range []string{"PATH", "HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR", "LANG", "TMPDIR"} {

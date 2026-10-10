@@ -51,7 +51,7 @@ func fixtureClient(t testing.TB, server string) *Client {
 	return c
 }
 
-func startFixture(t testing.TB, c *Client, binding Binding, start func(context.Context) (Source, error)) <-chan error {
+func startFixture(t testing.TB, c *Client, binding Binding, start SourceFactory) <-chan error {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -88,8 +88,8 @@ func receive[T any](t testing.TB, ch <-chan T) T {
 	}
 }
 
-func staticSource(snapshot status.Snapshot) func(context.Context) (Source, error) {
-	return func(context.Context) (Source, error) {
+func staticSource(snapshot status.Snapshot) SourceFactory {
+	return func(context.Context, func(error)) (Source, error) {
 		return fixtureSource{
 			read:  func(context.Context) (status.Snapshot, error) { return snapshot, nil },
 			close: func() error { return nil },
@@ -127,7 +127,7 @@ func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 	reading := make(chan struct{})
 	canceled := make(chan struct{})
 	closed := make(chan bool, 1)
-	done := startFixture(t, c, liveBinding(c.server), func(ctx context.Context) (Source, error) {
+	done := startFixture(t, c, liveBinding(c.server), func(ctx context.Context, _ func(error)) (Source, error) {
 		return fixtureSource{
 			read: func(ctx context.Context) (status.Snapshot, error) {
 				close(reading)
@@ -169,7 +169,7 @@ func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 func TestClientCancellationReachesSource(t *testing.T) {
 	c := fixtureClient(t, "cancel")
 	reading, canceled := make(chan struct{}), make(chan struct{})
-	startFixture(t, c, liveBinding(c.server), func(context.Context) (Source, error) {
+	startFixture(t, c, liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
 		return fixtureSource{
 			read: func(ctx context.Context) (status.Snapshot, error) {
 				close(reading)
@@ -212,7 +212,7 @@ func TestServerReplacementDuringReadRejectsSnapshot(t *testing.T) {
 		Server: c.server,
 		Alive:  func(context.Context) bool { return alive.Load() },
 	}
-	done := startFixture(t, c, binding, func(context.Context) (Source, error) {
+	done := startFixture(t, c, binding, func(context.Context, func(error)) (Source, error) {
 		return fixtureSource{
 			read: func(ctx context.Context) (status.Snapshot, error) {
 				close(reading)
@@ -281,7 +281,7 @@ func TestCanceledLifetimeCheckDoesNotStopDaemon(t *testing.T) {
 func TestConcurrentRequestsAreBoundedAndSlotsRecover(t *testing.T) {
 	c := fixtureClient(t, "bounded")
 	reading := make(chan struct{}, maxClients)
-	startFixture(t, c, liveBinding(c.server), func(context.Context) (Source, error) {
+	startFixture(t, c, liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
 		return fixtureSource{
 			read: func(ctx context.Context) (status.Snapshot, error) {
 				reading <- struct{}{}
@@ -340,7 +340,7 @@ func TestSingletonDoesNotStartSecondSource(t *testing.T) {
 	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
 	started := false
 
-	err := Serve(context.Background(), liveBinding(c.server), func(context.Context) (Source, error) {
+	err := Serve(context.Background(), liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
 		started = true
 		return nil, errors.New("unexpected second source")
 	})
@@ -360,7 +360,7 @@ func TestStartupFailureReleasesEndpointAndClosesSource(t *testing.T) {
 		Alive:  func(context.Context) bool { return alive },
 	}
 
-	err := Serve(context.Background(), binding, func(context.Context) (Source, error) {
+	err := Serve(context.Background(), binding, func(context.Context, func(error)) (Source, error) {
 		alive = false
 		return fixtureSource{
 			close: func() error {
@@ -380,7 +380,7 @@ func TestStartupFailureReleasesEndpointAndClosesSource(t *testing.T) {
 
 func TestSourceFailureDoesNotBecomeEmptySuccess(t *testing.T) {
 	c := fixtureClient(t, "read-failure")
-	startFixture(t, c, liveBinding(c.server), func(context.Context) (Source, error) {
+	startFixture(t, c, liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
 		return fixtureSource{
 			read:  func(context.Context) (status.Snapshot, error) { return status.Snapshot{}, errors.New("fixture error") },
 			close: func() error { return nil },
