@@ -11,6 +11,7 @@ import (
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/screen"
 	"github.com/MSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
@@ -69,6 +70,51 @@ func paneScreenState(t *testing.T, screens *Screens, pane status.PaneRef) status
 	snapshot, err := screens.service.ReadStatus(t.Context())
 	require.NoError(t, err)
 	return snapshot.At(pane, time.Now())
+}
+
+func TestScreensCompiledRulesReplacePreviousEvidence(t *testing.T) {
+	evaluator, err := screen.Compile(screen.Config{
+		LastNonblankRows: 4,
+		Rules: []screen.Rule{
+			{State: status.Working, All: []screen.Matcher{{Contains: "working"}}},
+			{State: status.Idle, All: []screen.Matcher{{Contains: "ready"}}},
+		},
+	})
+	require.NoError(t, err)
+	cases := []struct {
+		name string
+		text string
+		want status.State
+		err  error
+	}{
+		{"new activity", "ready", status.Idle, nil},
+		{"no match", "different layout", status.Unknown, nil},
+		{"conflict", "working\nready", status.Unknown, nil},
+		{"invalid text", "\x1b[31mready", status.Unknown, screen.ErrInvalidScreen},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				screens, panes := screenFixture(t, 1)
+				screens.entries[panes[0].Ref.ID].plan.Evaluate = evaluator.Evaluate
+				time.Sleep(screenSettle)
+				require.NoError(t, screens.runBatch(t.Context()))
+				require.Equal(t, status.Working, paneScreenState(t, screens, panes[0].Ref))
+				screens.capture = func(ctx context.Context, targets []observe.CaptureTarget) ([]observe.Screen, error) {
+					captures, err := successfulScreens(ctx, targets)
+					captures[0].Text = tc.text
+					return captures, err
+				}
+				screens.Dirty(panes[0].Ref.ID)
+				time.Sleep(screenBatchGap)
+
+				err := screens.runBatch(t.Context())
+
+				require.ErrorIs(t, err, tc.err)
+				require.Equal(t, tc.want, paneScreenState(t, screens, panes[0].Ref))
+			})
+		})
+	}
 }
 
 func TestScreensBoundDirtyDelayAndRecoverQuietPanes(t *testing.T) {

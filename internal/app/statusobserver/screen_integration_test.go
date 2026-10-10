@@ -4,12 +4,12 @@ package statusobserver
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/screen"
 	"github.com/MSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +28,13 @@ func TestNativeScheduledScreenReachesServiceAndRevokesOnStop(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	_, err := runner.RunLimited(ctx, 4096, "send-keys", "-t", pane, "-l", "--", "NATIVE-SCREEN-READY\n")
+	require.NoError(t, err)
+	evaluator, err := screen.Compile(screen.Config{
+		LastNonblankRows: 4,
+		Rules: []screen.Rule{{
+			State: status.Idle, All: []screen.Matcher{{Contains: "NATIVE-SCREEN-READY"}},
+		}},
+	})
 	require.NoError(t, err)
 	core, err := service.New(server.Identity())
 	require.NoError(t, err)
@@ -51,7 +58,7 @@ func TestNativeScheduledScreenReachesServiceAndRevokesOnStop(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			return publishNativeScreen(core, screens, inventory, pane)
+			return publishNativeScreen(core, screens, inventory, pane, evaluator)
 		})
 	}()
 	defer func() {
@@ -77,7 +84,7 @@ func TestNativeScheduledScreenReachesServiceAndRevokesOnStop(t *testing.T) {
 	}
 }
 
-func publishNativeScreen(core *service.Service, screens *Screens, inventory observe.Inventory, id string) error {
+func publishNativeScreen(core *service.Service, screens *Screens, inventory observe.Inventory, id string, evaluator *screen.Evaluator) error {
 	facts, _ := inventory.Lookup(id)
 	pane := nativeScreenPane(inventory.Server(), facts)
 	if err := core.UpdateInventory(service.Inventory{
@@ -86,13 +93,8 @@ func publishNativeScreen(core *service.Service, screens *Screens, inventory obse
 		return err
 	}
 	return screens.Update(inventory, []ScreenPlan{{
-		Pane: pane.Ref,
-		Evaluate: func(text string) (status.State, error) {
-			if strings.Contains(text, "NATIVE-SCREEN-READY") {
-				return status.Idle, nil
-			}
-			return status.Unknown, nil
-		},
+		Pane:     pane.Ref,
+		Evaluate: evaluator.Evaluate,
 	}})
 }
 
