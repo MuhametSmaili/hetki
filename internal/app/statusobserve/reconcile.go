@@ -172,7 +172,7 @@ func (s *Streams) retire(selected []string) []*subscription {
 func (s *Streams) updateRoutes(inventory topology) {
 	for id := range s.panes {
 		if _, found := inventory.panes[id]; !found {
-			s.consumer.Reset(id)
+			s.consumer.Reset(Scope{Pane: id})
 			delete(s.panes, id)
 		}
 	}
@@ -234,7 +234,7 @@ func (s *Streams) assign(pane *route, owner *subscription) {
 	if owner != nil {
 		pane.scope.Connection = owner.connection.Generation()
 	}
-	s.consumer.Reset(pane.pane.ID)
+	s.consumer.Reset(pane.scope)
 }
 
 func (s *Streams) start(ctx context.Context, session string) error {

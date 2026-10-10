@@ -233,7 +233,7 @@ func TestInventoryAcquisitionFailureRevokesInputAndPreservesCause(t *testing.T) 
 			}
 			var reported error
 
-			failed, err := refreshInventory(t.Context(), acquire, streams, nil, 2, func(inventory observe.Inventory, err error) error {
+			failed, err := refreshInventory(t.Context(), acquire, streams, nil, 2, nil, func(inventory observe.Inventory, err error) error {
 				require.Zero(t, inventory.Revision())
 				reported = err
 				return nil

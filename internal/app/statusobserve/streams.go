@@ -33,9 +33,10 @@ type Scope struct {
 // Consumer is the application's terminal dispatcher, not a protocol adapter.
 // Calls are serialized and must be bounded, nonblocking and must not reenter
 // Streams. Output bytes are borrowed until return. Reset immediately revokes the
-// pane's decoder and evidence, including when no replacement stream is available.
+// pane's decoder and evidence and supplies its replacement scope. An empty
+// Connection means no validated input is available; removal supplies only Pane.
 type Consumer interface {
-	Reset(pane string)
+	Reset(scope Scope)
 	Output(scope Scope, data []byte) error
 }
 
@@ -135,7 +136,7 @@ func (s *Streams) Close() error {
 
 	s.closed = true
 	for id := range s.panes {
-		s.consumer.Reset(id)
+		s.consumer.Reset(Scope{Pane: id})
 	}
 	s.panes = nil
 	subscriptions := s.subscriptions

@@ -25,10 +25,10 @@ type recorder struct {
 	failure error
 }
 
-func (r *recorder) Reset(pane string) {
+func (r *recorder) Reset(scope Scope) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.resets = append(r.resets, pane)
+	r.resets = append(r.resets, scope.Pane)
 }
 
 func (r *recorder) Output(scope Scope, data []byte) error {

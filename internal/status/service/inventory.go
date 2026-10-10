@@ -121,6 +121,34 @@ func sameEvidenceScope(previous, next Pane) bool {
 	return next.source() != Screen || previous.Geometry == next.Geometry
 }
 
+// UpdateScope replaces one pane's validated stream scope without extending the
+// inventory deadline. Revision orders this change with complete inventories and
+// invalidations. Changed scopes revoke outstanding targets immediately.
+func (s *Service) UpdateScope(revision uint64, ref status.PaneRef, scope Scope) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return ErrClosed
+	}
+
+	previous, found := s.panes[ref.ID]
+	if revision <= s.revision || !found || previous.pane.Ref != ref {
+		return ErrStale
+	}
+
+	pane := previous.pane
+	pane.Scope = scope
+	if err := validatePane(s.server, pane); err != nil {
+		return err
+	}
+
+	s.panes[ref.ID] = s.reconcile(previous, pane, time.Now().Before(s.validUntil))
+	s.revision = revision
+	s.changed()
+	return nil
+}
+
 // Invalidate revokes outstanding targets immediately without retiring panes or
 // releasing a source claim. A newer inventory and fresh evidence are required.
 func (s *Service) Invalidate(revision uint64) error {

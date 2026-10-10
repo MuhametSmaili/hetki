@@ -24,7 +24,18 @@ const (
 // error for service updates and diagnostics. An acquisition failure has a zero
 // inventory. publish must be bounded; its own error terminates the watch. Optional
 // screens share this loop and timer; due inventory takes priority over a batch.
-func Watch(ctx context.Context, sampler *observe.Sampler, streams *Streams, screens *Screens, publish func(observe.Inventory, error) error) (err error) {
+func Watch(ctx context.Context, sampler *observe.Sampler, streams *Streams, screens *Screens, publish func(observe.Inventory, error) error) error {
+	return watch(ctx, sampler, streams, screens, nil, publish)
+}
+
+func watch(
+	ctx context.Context,
+	sampler *observe.Sampler,
+	streams *Streams,
+	screens *Screens,
+	prepare func(observe.Inventory) error,
+	publish func(observe.Inventory, error) error,
+) (err error) {
 	if sampler == nil || streams == nil || publish == nil {
 		return fmt.Errorf("inventory watch requires sampler, streams and publisher")
 	}
@@ -58,19 +69,32 @@ func Watch(ctx context.Context, sampler *observe.Sampler, streams *Streams, scre
 		screens:   screens,
 		refresh: func(ctx context.Context) (bool, error) {
 			revision++
-			return refreshInventory(ctx, sampler.Inventory, streams, screens, revision, publish)
+			return refreshInventory(ctx, sampler.Inventory, streams, screens, revision, prepare, publish)
 		},
 	}
 	return loop.run(ctx)
 }
 
-func refreshInventory(ctx context.Context, acquire func(context.Context, uint64) (observe.Inventory, error), streams *Streams, screens *Screens, revision uint64, publish func(observe.Inventory, error) error) (bool, error) {
+func refreshInventory(
+	ctx context.Context,
+	acquire func(context.Context, uint64) (observe.Inventory, error),
+	streams *Streams,
+	screens *Screens,
+	revision uint64,
+	prepare func(observe.Inventory) error,
+	publish func(observe.Inventory, error) error,
+) (bool, error) {
 	inventory, err := acquire(ctx, revision)
 	failed := err != nil
 	if failed {
 		streams.invalidate()
 		err = errors.Join(err, screens.clear())
 	} else {
+		if prepare != nil {
+			if err := prepare(inventory); err != nil {
+				return false, fmt.Errorf("prepare status inventory: %w", err)
+			}
+		}
 		err = streams.Reconcile(ctx, inventory)
 	}
 
