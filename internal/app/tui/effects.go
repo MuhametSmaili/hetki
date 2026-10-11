@@ -2,9 +2,12 @@ package tui
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/daemon"
 	ui "github.com/MSmaili/hetki/internal/tui"
 	"github.com/MSmaili/hetki/internal/tui/list"
 )
@@ -80,15 +83,49 @@ func (e *uiEffects) statusBindings() ui.StatusBindings {
 	return nil
 }
 
-func (e *uiEffects) readStatus(ctx context.Context, previous status.Snapshot) status.Snapshot {
+func (e *uiEffects) readStatus(ctx context.Context, previous status.Snapshot) ui.StatusUpdate {
 	if err := e.begin(); err != nil {
-		return previous.Invalidate()
+		return ui.StatusUpdate{Values: previous.Invalidate()}
 	}
 	defer e.active.Done()
 	readCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(e.ctx, cancel)
 	defer stop()
-	values, _ := ReadStatus(readCtx, e.reader, previous)
-	return values
+	if reader, ok := e.reader.(statusViewReader); ok {
+		return e.readView(readCtx, reader, previous)
+	}
+	values, err := ReadStatus(readCtx, e.reader, previous)
+	return ui.StatusUpdate{Values: values, Err: statusReadError(readCtx, err)}
+}
+
+type statusViewReader interface {
+	ReadView(context.Context) (daemon.View, error)
+}
+
+func (e *uiEffects) readView(ctx context.Context, reader statusViewReader, previous status.Snapshot) ui.StatusUpdate {
+	view, err := reader.ReadView(ctx)
+	if err != nil || ctx.Err() != nil {
+		return ui.StatusUpdate{Values: previous.Invalidate(), Err: statusReadError(ctx, err)}
+	}
+	update := ui.StatusUpdate{Values: view.Values, Bindings: make(ui.StatusBindings)}
+	if driver, ok := e.driver.(interface {
+		bindStatusView(daemon.View) ui.StatusBindings
+	}); ok {
+		update.Bindings = driver.bindStatusView(view)
+	}
+	return update
+}
+
+func statusReadError(ctx context.Context, err error) error {
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return nil
+	}
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("status unavailable: %w", err)
 }

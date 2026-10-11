@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/frecency"
 	ui "github.com/MSmaili/hetki/internal/tui"
 	"github.com/MSmaili/hetki/internal/tui/list"
@@ -16,6 +17,8 @@ type LiveAdapter struct {
 	mu            sync.RWMutex // Protects the index and backend instance; never held during capture.
 	cached        backend.Backend
 	index         itemIndex
+	statusServer  observe.Server
+	statusErr     error
 	projection    projectionKind
 	frecency      *frecency.Store
 	frecencyErr   error
@@ -48,27 +51,34 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 	}
 	switch request.ActionID {
 	case ui.ActionLastSession:
-		for _, item := range a.index {
-			if item.Last {
-				return a.openItem(ctx, item)
-			}
-		}
-		return ui.ActionResult{}, fmt.Errorf("no previous session available")
+		return a.openLastSession(ctx)
 	case ui.ActionRefresh:
 		snapshot, err := a.loadSnapshot(ctx)
 		return ui.ActionResult{Message: "refreshed", Snapshot: &snapshot}, err
 	case ui.ActionCreateSession:
 		return a.createSession(ctx, request)
-	case ui.ActionContextMenu:
-		if item.ID == "" {
-			return ui.ActionResult{}, fmt.Errorf("action requires a selected item")
-		}
-		menu, err := contextualMenu(item)
-		if err != nil {
-			return ui.ActionResult{}, err
-		}
-		return ui.ActionResult{Menu: &menu}, nil
+	default:
+		return a.executeItem(ctx, request, item)
 	}
+}
+
+func (a *LiveAdapter) openLastSession(ctx context.Context) (ui.ActionResult, error) {
+	a.mu.RLock()
+	var last liveItem
+	for _, item := range a.index {
+		if item.Last {
+			last = item
+			break
+		}
+	}
+	a.mu.RUnlock()
+	if last.ID == "" {
+		return ui.ActionResult{}, fmt.Errorf("no previous session available")
+	}
+	return a.openItem(ctx, last)
+}
+
+func (a *LiveAdapter) executeItem(ctx context.Context, request ui.ActionRequest, item liveItem) (ui.ActionResult, error) {
 	if item.ID == "" {
 		return ui.ActionResult{}, fmt.Errorf("action requires a selected item")
 	}
@@ -77,6 +87,12 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 		return ui.ActionResult{}, fmt.Errorf("item %q does not support a window action", item.ID)
 	}
 	switch request.ActionID {
+	case ui.ActionContextMenu:
+		menu, err := contextualMenu(item)
+		if err != nil {
+			return ui.ActionResult{}, err
+		}
+		return ui.ActionResult{Menu: &menu}, nil
 	case ui.ActionOpen:
 		return a.openItem(ctx, item)
 	case ui.ActionCreateWindow:

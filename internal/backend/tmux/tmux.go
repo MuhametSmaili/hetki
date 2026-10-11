@@ -48,7 +48,10 @@ func (b *TmuxBackend) QueryState(ctx context.Context) (backend.StateResult, erro
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 	result, err := RunQuery(ctx, b.client, LoadStateQuery{IncludeClients: isInsideTmux(), IncludeProgramInfo: true})
+	return projectLiveState(ctx, result, err)
+}
 
+func projectLiveState(ctx context.Context, result LoadStateResult, err error) (backend.StateResult, error) {
 	// tmux exits non-zero when list-panes runs against an empty server, after the
 	// chained show-options calls have already emitted valid base indexes.
 	var parseErr *queryParseError

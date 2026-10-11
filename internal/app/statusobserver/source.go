@@ -39,6 +39,7 @@ type Source struct {
 	protocolSequence uint64
 	validatedUntil   time.Time
 	panes            map[string]sourcePane
+	locations        []observe.Location
 
 	core    *service.Service
 	streams *Streams
@@ -183,6 +184,7 @@ func (s *Source) Close() error {
 		s.closed = true
 		s.closeErr = errors.Join(s.failure, s.core.Close())
 		s.panes = nil
+		s.locations = nil
 		s.mu.Unlock()
 	})
 	return s.closeErr

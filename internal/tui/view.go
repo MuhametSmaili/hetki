@@ -181,6 +181,9 @@ func headerRight(m model) string {
 	if notice := m.items.Snapshot().Notice; notice != "" {
 		return notice
 	}
+	if m.paneStatus.readErr != nil {
+		return m.paneStatus.readErr.Error()
+	}
 	query := m.items.Query()
 	if m.scope.tracked {
 		query = "tracked"

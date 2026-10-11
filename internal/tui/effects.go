@@ -44,6 +44,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.preview.invalidate()
 	m.paneStatus.options.Bindings = result.StatusBindings
+	m.paneStatus.bindingGeneration++
 	m.applyScope(m.items.Query(), time.Now())
 	if result.SelectItemID != "" {
 		m.items.Select(result.SelectItemID)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/MSmaili/hetki/internal/backend"
@@ -51,6 +52,16 @@ func (s Service) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if effects.reader == nil {
+		reader, statusErr := openStatus(effectsCtx, s.Driver)
+		if effectsCtx.Err() != nil {
+			return effectsCtx.Err()
+		}
+		effects.reader = reader
+		if statusErr != nil {
+			initial.Notice = strings.TrimSpace(initial.Notice + "\nstatus unavailable: " + statusErr.Error())
+		}
+	}
 	preview := ui.PreviewOptions{Width: s.PreviewWidth, Read: effects.preview}
 	navigation, err := s.RunUI(effectsCtx, initial, s.Keys, s.StartMode, effects.dispatch, preview, effects.statusOptions())
 	effects.stop()
@@ -67,6 +78,15 @@ func (s Service) Run(ctx context.Context) error {
 		return s.Driver.Navigate(ctx, navigation)
 	}
 	return nil
+}
+
+func openStatus(ctx context.Context, driver Driver) (StatusReader, error) {
+	if provider, ok := driver.(interface {
+		OpenStatus(context.Context) (StatusReader, error)
+	}); ok {
+		return provider.OpenStatus(ctx)
+	}
+	return nil, nil
 }
 
 func (s Service) resolveOptions() (Service, error) {

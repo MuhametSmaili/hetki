@@ -20,7 +20,15 @@ type StatusBindings map[list.ItemID][]status.PaneRef
 
 type StatusOptions struct {
 	Bindings StatusBindings
-	Read     func(context.Context, status.Snapshot) status.Snapshot
+	Read     func(context.Context, status.Snapshot) StatusUpdate
+}
+
+// StatusUpdate replaces cached values and, when non-nil, their row bindings.
+// Failed reads invalidate values while retaining the previous bindings.
+type StatusUpdate struct {
+	Values   status.Snapshot
+	Bindings StatusBindings
+	Err      error
 }
 
 func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time.Time) status.State {
@@ -50,15 +58,22 @@ func statusPriority(state status.State) int {
 }
 
 type paneStatusState struct {
-	options         StatusOptions
-	values          status.Snapshot
-	reading         bool
-	frameDue        time.Time
-	frameGeneration uint64
+	options           StatusOptions
+	values            status.Snapshot
+	reading           bool
+	frameDue          time.Time
+	frameGeneration   uint64
+	bindingGeneration uint64
+	readErr           error
 }
 
 type statusPollMsg struct{}
-type statusResultMsg struct{ values status.Snapshot }
+type statusResultMsg struct {
+	values     status.Snapshot
+	bindings   StatusBindings
+	generation uint64
+	err        error
+}
 type statusFrameMsg struct{ generation uint64 }
 
 func statusPoll(delay time.Duration) tea.Cmd {
@@ -74,10 +89,12 @@ func (m model) readPaneStatus() (tea.Model, tea.Cmd) {
 	}
 	m.paneStatus.reading = true
 	read, previous, parent := m.paneStatus.options.Read, m.paneStatus.values, m.ctx
+	generation := m.paneStatus.bindingGeneration
 	return m, func() tea.Msg {
 		ctx, cancel := context.WithTimeout(parent, statusReadTimeout)
 		defer cancel()
-		return statusResultMsg{values: read(ctx, previous)}
+		update := read(ctx, previous)
+		return statusResultMsg{values: update.Values, bindings: update.Bindings, generation: generation, err: update.Err}
 	}
 }
 
@@ -86,7 +103,14 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 	if m.quitting || m.navigation != "" {
 		return m, nil
 	}
+	if m.busy || msg.generation != m.paneStatus.bindingGeneration {
+		return m, statusPoll(0)
+	}
 	m.paneStatus.values = msg.values
+	m.paneStatus.readErr = msg.err
+	if msg.bindings != nil {
+		m.paneStatus.options.Bindings = msg.bindings
+	}
 	m.applyScope(m.items.Query(), time.Now())
 	return m, statusPoll(statusPollInterval)
 }

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -98,9 +99,9 @@ func TestStatusFramesStayLocalAndCoalesced(t *testing.T) {
 	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 	m := paneStatusModel(t, status.Working, now.Add(time.Minute))
 	reads := 0
-	m.paneStatus.options.Read = func(context.Context, status.Snapshot) status.Snapshot {
+	m.paneStatus.options.Read = func(context.Context, status.Snapshot) StatusUpdate {
 		reads++
-		return status.Snapshot{}
+		return StatusUpdate{}
 	}
 	m, scheduled := m.syncStatusFrame(now)
 
@@ -129,10 +130,10 @@ func TestStatusPollingIsSingleFlight(t *testing.T) {
 	reads := 0
 	var deadline time.Time
 	var hasDeadline bool
-	m.paneStatus.options.Read = func(ctx context.Context, previous status.Snapshot) status.Snapshot {
+	m.paneStatus.options.Read = func(ctx context.Context, previous status.Snapshot) StatusUpdate {
 		deadline, hasDeadline = ctx.Deadline()
 		reads++
-		return previous
+		return StatusUpdate{Values: previous}
 	}
 
 	next, cmd := m.readPaneStatus()
@@ -152,7 +153,7 @@ func TestStatusPollingIsSingleFlight(t *testing.T) {
 
 func TestStatusPollingStopsOnQuit(t *testing.T) {
 	m := paneStatusModel(t, status.Working, time.Now().Add(time.Minute))
-	m.paneStatus.options.Read = func(_ context.Context, previous status.Snapshot) status.Snapshot { return previous }
+	m.paneStatus.options.Read = func(_ context.Context, previous status.Snapshot) StatusUpdate { return StatusUpdate{Values: previous} }
 	m.quitting = true
 
 	_, read := m.readPaneStatus()
@@ -174,7 +175,7 @@ func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 			m := paneStatusModel(t, status.Working, now.Add(time.Minute))
-			pending := statusResultMsg{values: m.paneStatus.values}
+			pending := statusResultMsg{values: m.paneStatus.values, bindings: m.paneStatus.options.Bindings}
 			pane := m.paneStatus.options.Bindings["window"][0]
 			pane.Generation = test.generation
 			flat := list.Snapshot{Items: []list.Item{{ID: "pane", Primary: "pane"}}}
@@ -190,4 +191,24 @@ func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {
 			require.Equal(t, test.want, current.paneStatus.options.Bindings.StateAt("pane", current.paneStatus.values, now))
 		})
 	}
+}
+
+func TestStatusPollReplacesBindingsAndClearsReadFailure(t *testing.T) {
+	m := paneStatusModel(t, status.Working, time.Now().Add(time.Minute))
+	pane := m.paneStatus.options.Bindings["window"][0]
+	failed, _ := m.handleStatusResult(statusResultMsg{values: m.paneStatus.values.Invalidate(), err: errors.New("status unavailable")})
+	m = failed.(model)
+	require.Equal(t, status.Unknown, m.paneStatus.options.Bindings.StateAt("window", m.paneStatus.values, time.Now()))
+	require.ErrorContains(t, m.paneStatus.readErr, "status unavailable")
+	pane.Generation = "new daemon generation"
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: {State: status.Idle, ValidUntil: time.Now().Add(time.Minute)}})
+	require.NoError(t, err)
+
+	recovered, _ := m.handleStatusResult(statusResultMsg{values: values, bindings: StatusBindings{"window": {pane}}})
+	m = recovered.(model)
+
+	require.NoError(t, m.paneStatus.readErr)
+	require.Equal(t, status.Idle, m.paneStatus.options.Bindings.StateAt("window", m.paneStatus.values, time.Now()))
+	cleared, _ := m.handleStatusResult(statusResultMsg{bindings: StatusBindings{}})
+	require.Empty(t, cleared.(model).paneStatus.options.Bindings)
 }

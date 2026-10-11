@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/frecency"
 	ui "github.com/MSmaili/hetki/internal/tui"
 	"github.com/MSmaili/hetki/internal/tui/list"
@@ -34,29 +35,46 @@ func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
 	if err != nil {
 		return list.Snapshot{}, err
 	}
-	snapshot, index, err := projectState(result, a.projection, scores, notice)
+	snapshot, index, err := projectState(result.StateResult, a.projection, scores, notice)
 	if err != nil {
 		return list.Snapshot{}, err
 	}
 	a.mu.Lock()
 	a.index = index
+	a.statusServer, a.statusErr = result.server, result.statusErr
 	a.mu.Unlock()
 	return snapshot, nil
 }
 
-func (a *LiveAdapter) queryState(ctx context.Context) (backend.StateResult, error) {
+type liveStateResult struct {
+	backend.StateResult
+	server    observe.Server
+	statusErr error
+}
+
+func (a *LiveAdapter) queryState(ctx context.Context) (liveStateResult, error) {
 	if err := ctx.Err(); err != nil {
-		return backend.StateResult{}, err
+		return liveStateResult{}, err
 	}
 	b, err := a.detectBackend()
 	if err != nil {
-		return backend.StateResult{}, fmt.Errorf("failed to detect backend: %w", err)
+		return liveStateResult{}, fmt.Errorf("failed to detect backend: %w", err)
+	}
+	if provider, ok := b.(interface {
+		QueryStatusState(context.Context) (backend.StateResult, observe.Server, error)
+	}); ok {
+		state, server, statusErr := provider.QueryStatusState(ctx)
+		if statusErr == nil {
+			return liveStateResult{StateResult: state, server: server}, nil
+		}
+		result, err := b.QueryState(ctx)
+		return liveStateResult{StateResult: result, statusErr: statusErr}, err
 	}
 	result, err := b.QueryState(ctx)
 	if err != nil {
-		return backend.StateResult{}, fmt.Errorf("failed to query sessions: %w", err)
+		return liveStateResult{}, fmt.Errorf("failed to query sessions: %w", err)
 	}
-	return result, nil
+	return liveStateResult{StateResult: result}, nil
 }
 
 func (a *LiveAdapter) loadFrecency(ctx context.Context) (frecency.Scores, string, error) {
@@ -116,7 +134,7 @@ func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.Item
 	if err != nil {
 		return ui.ActionResult{}, err
 	}
-	snapshot, index, err := projectState(state, next, scores, notice)
+	snapshot, index, err := projectState(state.StateResult, next, scores, notice)
 	if err != nil {
 		return ui.ActionResult{}, err
 	}
@@ -124,6 +142,7 @@ func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.Item
 	a.projection = next
 	a.mu.Lock()
 	a.index = index
+	a.statusServer, a.statusErr = state.server, state.statusErr
 	a.mu.Unlock()
 	return ui.ActionResult{Message: message, Snapshot: &snapshot, SelectItemID: preferred}, nil
 }

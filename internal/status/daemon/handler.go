@@ -97,6 +97,13 @@ func (d *daemon) respond(ctx context.Context, action string) (reply, bool) {
 
 	switch action {
 	case "ping", "stop":
+	case "view":
+		if err := d.readView(ctx, &row); err != nil {
+			if ctx.Err() == nil {
+				d.logs.repeatedFailure("source_read_failed", err)
+			}
+			row.Entries, row.Locations, row.Error = nil, nil, "unavailable"
+		}
 	case "snapshot":
 		snapshot, err := d.source.ReadStatus(ctx)
 		if err == nil {

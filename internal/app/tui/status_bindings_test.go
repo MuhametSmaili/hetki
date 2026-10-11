@@ -157,7 +157,7 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 		pane: {State: status.Working, ValidUntil: now.Add(time.Minute)},
 	})
 	require.NoError(t, err)
-	var read func(context.Context, status.Snapshot) status.Snapshot
+	var read func(context.Context, status.Snapshot) ui.StatusUpdate
 	service := Service{Driver: &switchDriver{}, StatusReader: statusReaderFunc(func(ctx context.Context) (status.Snapshot, error) {
 		close(started)
 		<-ctx.Done()
@@ -165,7 +165,7 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 		return status.Snapshot{}, ctx.Err()
 	}), RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
 		read = options.Read
-		go func() { done <- read(context.Background(), previous) }()
+		go func() { done <- read(context.Background(), previous).Values }()
 		awaitChannel(t, started)
 		return "", nil
 	}}
@@ -180,5 +180,5 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 		t.Fatal("status reader outlived UI")
 	}
 	require.Equal(t, status.Unknown, awaitChannel(t, done).At(pane, now))
-	require.Equal(t, status.Unknown, late.At(pane, now))
+	require.Equal(t, status.Unknown, late.Values.At(pane, now))
 }

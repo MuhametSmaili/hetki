@@ -35,12 +35,13 @@ type request struct {
 }
 
 type reply struct {
-	Version int     `json:"version"`
-	Server  string  `json:"server"`
-	PID     int     `json:"pid"`
-	Epoch   string  `json:"epoch"`
-	Entries []entry `json:"entries,omitempty"`
-	Error   string  `json:"error,omitempty"`
+	Version   int        `json:"version"`
+	Server    string     `json:"server"`
+	PID       int        `json:"pid"`
+	Epoch     string     `json:"epoch"`
+	Entries   []entry    `json:"entries,omitempty"`
+	Locations []Location `json:"locations,omitempty"`
+	Error     string     `json:"error,omitempty"`
 }
 
 type entry struct {

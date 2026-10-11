@@ -3,6 +3,7 @@ package statusobserver
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -69,6 +70,7 @@ func (s *Source) prepare(inventory observe.Inventory) error {
 	}
 
 	s.panes = rows
+	s.locations = slices.Collect(inventory.Locations())
 	s.validatedUntil = inventory.StartedAt().Add(sourceValidation)
 	for _, row := range rows {
 		if row.pane.Scope.Connection != "" {
@@ -164,6 +166,7 @@ func (s *Source) publish(inventory observe.Inventory, acquisitionErr error) erro
 
 func (s *Source) publishLocked(inventory observe.Inventory) error {
 	if inventory.Revision() == 0 {
+		s.validatedUntil = time.Time{}
 		for _, row := range s.panes {
 			if row.protocol != nil {
 				row.protocol.reset()
