@@ -224,6 +224,29 @@ func TestPreviewShowsBottomRowsWithoutTitle(t *testing.T) {
 	require.Equal(t, "third ", terminal.Sanitize(m.viewPreview(6, 1)))
 }
 
+func TestPreviewEndsAtLastNonblankRow(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		capture string
+		want    string
+	}{
+		{"empty footer", "first\nsecond\nthird\n\n   \n\t\n", "second\\nthird "},
+		{"styled empty footer", "first\nsecond\n\x1b[32mthird\x1b[0m\n\x1b[41m   \x1b[0m\n\n", "second\\nthird "},
+		{"internal blank row", "first\n\nthird\n\n", "      \\nthird "},
+		{"all blank", "\n   \n\x1b[41m \x1b[0m\n", "      \\n      "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := previewModel(t)
+			m.preview.itemID = "a"
+
+			updated, _ := m.handlePreviewResult(previewResultMsg{generation: m.preview.generation, text: tc.capture})
+			m = updated.(model)
+
+			require.Equal(t, tc.want, terminal.Sanitize(m.viewPreview(6, 2)))
+		})
+	}
+}
+
 func TestPreviewLayoutFitsAndKeepsListHeight(t *testing.T) {
 	for _, width := range []int{1, 2, 3, 20, 48, 60, 120, 200} {
 		for _, height := range []int{1, 4, 12} {

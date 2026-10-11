@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/MSmaili/hetki/internal/terminal"
 	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const DefaultPreviewWidth = 70
@@ -87,6 +88,10 @@ func (m model) handlePreviewResult(msg previewResultMsg) (tea.Model, tea.Cmd) {
 		p.ready, p.err = true, msg.err
 		if msg.err == nil {
 			p.lines = terminal.ScreenLines(msg.text)
+			for len(p.lines) > 0 && strings.TrimSpace(ansi.Strip(p.lines[len(p.lines)-1])) == "" {
+				p.lines[len(p.lines)-1] = ""
+				p.lines = p.lines[:len(p.lines)-1]
+			}
 		}
 	}
 	return m, nil
