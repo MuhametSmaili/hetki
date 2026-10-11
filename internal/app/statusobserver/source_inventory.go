@@ -84,8 +84,10 @@ func validateSelection(selection Selection) error {
 		if selection.Evaluate == nil {
 			return fmt.Errorf("screen profile requires an evaluator")
 		}
-	} else if selection.Evaluate != nil || selection.Region != (observe.Region{}) {
-		return fmt.Errorf("screen evaluator or region requires screen source selection")
+		return validateScreenInterval(selection.PollInterval)
+	}
+	if selection.Evaluate != nil || selection.Region != (observe.Region{}) || selection.PollInterval != 0 {
+		return fmt.Errorf("screen evaluator, region or interval requires screen source selection")
 	}
 	return nil
 }
@@ -175,9 +177,10 @@ func (s *Source) publishLocked(inventory observe.Inventory) error {
 	for _, row := range s.panes {
 		if row.selection.Profile.Source == service.Screen {
 			plans = append(plans, ScreenPlan{
-				Pane:     row.pane.Ref,
-				Region:   row.selection.Region,
-				Evaluate: row.selection.Evaluate,
+				Pane:         row.pane.Ref,
+				Region:       row.selection.Region,
+				Evaluate:     row.selection.Evaluate,
+				PollInterval: row.selection.PollInterval,
 			})
 		}
 	}

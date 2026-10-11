@@ -141,6 +141,39 @@ func TestScreensBoundDirtyDelayAndRecoverQuietPanes(t *testing.T) {
 	})
 }
 
+func TestScreensUseProfileRecoveryAndFreshness(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		screens, panes := screenFixture(t, 1)
+		entry := screens.entries[panes[0].Ref.ID]
+		entry.plan.PollInterval = 30 * time.Second
+		time.Sleep(screenSettle)
+		started := time.Now()
+
+		err := screens.runBatch(t.Context())
+
+		require.NoError(t, err)
+		require.Equal(t, started.Add(30*time.Second), screens.nextCapture())
+		time.Sleep(30 * time.Second)
+		require.Equal(t, status.Working, paneScreenState(t, screens, panes[0].Ref))
+		time.Sleep(screenGrace)
+		require.Equal(t, status.Unknown, paneScreenState(t, screens, panes[0].Ref))
+	})
+}
+
+func TestSelectionRejectsInvalidRecoveryIntervals(t *testing.T) {
+	for _, interval := range []time.Duration{-time.Second, time.Millisecond, time.Minute + time.Second} {
+		selection := Selection{
+			Profile:      service.Profile{Source: service.Screen, Generation: "fixture"},
+			Evaluate:     func(string) (status.State, error) { return status.Idle, nil },
+			PollInterval: interval,
+		}
+
+		err := validateSelection(selection)
+
+		require.Error(t, err)
+	}
+}
+
 func TestScreensServeMoreThanOneBatchWithoutHotPaneStarvation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		screens, panes := screenFixture(t, 300)

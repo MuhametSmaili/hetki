@@ -123,6 +123,7 @@ func buildDaemonExecutable(t *testing.T) string {
 
 func daemonClientFixture(t *testing.T, identity string) *daemon.Client {
 	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	client, err := daemon.Connect(identity)
 	require.NoError(t, err)

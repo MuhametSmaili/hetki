@@ -1,0 +1,25 @@
+# Kiro CLI 2.28.0 local TUI/V2, default English UI/keybindings.
+# Inferred screen activity; no completion inference or version auto-detection.
+version: 2
+id: kiro-2.28
+match:
+  command: kiro-cli
+source:
+  type: screen
+  screen:
+    poll_interval: 2s
+    region:
+      last_nonblank_rows: 12
+    rules:
+      - state: needs-input
+        all:
+          - regex: '(?m)^ [a-zA-Z0-9_. -]+ requires approval *$'
+          - contains: 'Yes, single permission'
+          - regex: '(?m)^ esc to close · ↑↓ to navigate · ↵ to select · Tab to edit\z'
+      - state: working
+        all:
+          - regex: '(?m)^›  Kiro is working · [^\n]+\z'
+      - state: idle
+        all:
+          - regex: '(?m)^›  ask a question or describe a task ↵ *$'
+          - regex: '(?m)^ +/copy to clipboard\z'

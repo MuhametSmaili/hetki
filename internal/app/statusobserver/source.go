@@ -19,9 +19,10 @@ import (
 // Zero selects protocol reports. A screen choice requires a generation and bounded
 // evaluator; changing its rules or region requires a new profile generation.
 type Selection struct {
-	Profile  service.Profile
-	Region   observe.Region
-	Evaluate func(string) (status.State, error)
+	Profile      service.Profile
+	Region       observe.Region
+	Evaluate     func(string) (status.State, error)
+	PollInterval time.Duration
 }
 
 // Source owns the watch, streams and cache for one server incarnation. Reads are

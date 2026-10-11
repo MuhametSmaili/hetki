@@ -73,7 +73,7 @@ func (s *Screens) takeBatch() []screenJob {
 		s.sequence++
 		jobs = append(jobs, screenJob{entry: entry, native: entry.native, sequence: s.sequence})
 		entry.firstDirty, entry.lastDirty = time.Time{}, time.Time{}
-		entry.recovery = now.Add(screenRecovery)
+		entry.recovery = now.Add(entry.plan.interval())
 	}
 	return jobs
 }
@@ -175,7 +175,7 @@ func evaluateScreen(plan ScreenPlan, screen observe.Screen, captureErr error) (s
 		return unknown, fmt.Errorf("capture pane %s: %w", plan.Pane.ID, screen.Err)
 	}
 
-	if screen.StartedAt.IsZero() || !time.Now().Before(screen.StartedAt.Add(screenFreshness)) {
+	if screen.StartedAt.IsZero() || !time.Now().Before(screen.StartedAt.Add(plan.freshness())) {
 		return unknown, fmt.Errorf("screen acquisition expired for pane %s", plan.Pane.ID)
 	}
 
@@ -190,7 +190,7 @@ func evaluateScreen(plan ScreenPlan, screen observe.Screen, captureErr error) (s
 
 	switch state {
 	case status.Working, status.Idle, status.Blocked:
-		return status.Value{State: state, ValidUntil: screen.StartedAt.Add(screenFreshness)}, nil
+		return status.Value{State: state, ValidUntil: screen.StartedAt.Add(plan.freshness())}, nil
 	default:
 		return unknown, fmt.Errorf("screen evaluator returned an unsupported state for pane %s", plan.Pane.ID)
 	}

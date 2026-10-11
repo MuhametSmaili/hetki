@@ -19,16 +19,34 @@ const (
 	screenMaxDirtyAge = 250 * time.Millisecond
 	screenBatchGap    = 100 * time.Millisecond
 	screenRecovery    = 2 * time.Second
-	screenFreshness   = 5 * time.Second
+	screenGrace       = 3 * time.Second
+	screenFreshness   = screenRecovery + screenGrace
 )
 
 // ScreenPlan binds an immutable evaluator and region to a selected service pane.
 // Composition must change the service profile generation whenever rules change.
 // Evaluate must be bounded and must not retain text; it performs no acquisition.
 type ScreenPlan struct {
-	Pane     status.PaneRef
-	Region   observe.Region
-	Evaluate func(string) (status.State, error)
+	Pane         status.PaneRef
+	Region       observe.Region
+	Evaluate     func(string) (status.State, error)
+	PollInterval time.Duration // Zero uses the default two-second recovery interval.
+}
+
+func (p ScreenPlan) interval() time.Duration {
+	if p.PollInterval == 0 {
+		return screenRecovery
+	}
+	return p.PollInterval
+}
+
+func (p ScreenPlan) freshness() time.Duration { return p.interval() + screenGrace }
+
+func validateScreenInterval(interval time.Duration) error {
+	if interval != 0 && (interval < time.Second || interval > time.Minute) {
+		return fmt.Errorf("screen recovery interval must be between 1s and 1m")
+	}
+	return nil
 }
 
 type screenEntry struct {
@@ -61,7 +79,8 @@ type Screens struct {
 
 // NewScreens creates a screen-work owner. report receives capture/evaluation
 // failures from the watch outside locks and must remain bounded. Each accepted
-// activity expires five seconds after capture start, independently of inventory.
+// activity expires one recovery interval plus three seconds after capture start,
+// independently of inventory. Native validation can expire it sooner.
 func NewScreens(sampler *observe.Sampler, core *service.Service, report func(error)) (*Screens, error) {
 	if sampler == nil || core == nil || report == nil {
 		return nil, fmt.Errorf("screen scheduling requires sampler, status service and error reporter")
@@ -140,6 +159,9 @@ func validateScreenPlans(inventory observe.Inventory, plans []ScreenPlan) error 
 		if seen[plan.Pane.ID] {
 			return fmt.Errorf("duplicate screen plan %s", plan.Pane.ID)
 		}
+		if err := validateScreenInterval(plan.PollInterval); err != nil {
+			return err
+		}
 		seen[plan.Pane.ID] = true
 	}
 	return nil
@@ -151,7 +173,7 @@ func (s *Screens) replace(revision uint64, entries map[string]*screenEntry) erro
 	now := time.Now()
 	for id, next := range entries {
 		previous := s.entries[id]
-		if previous != nil && previous.target == next.target && previous.plan.Region == next.plan.Region && previous.native.Pane() == next.native.Pane() {
+		if previous != nil && previous.target == next.target && previous.plan.Region == next.plan.Region && previous.plan.interval() == next.plan.interval() && previous.native.Pane() == next.native.Pane() {
 			previous.native = next.native
 			entries[id] = previous
 		} else {

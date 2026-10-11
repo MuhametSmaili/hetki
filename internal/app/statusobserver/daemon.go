@@ -20,6 +20,18 @@ func EnsureDaemon(ctx context.Context, server observe.Server, executable string)
 		return nil, fmt.Errorf("validate status daemon server: %w", err)
 	}
 
+	existing, err := daemon.Connect(server.Identity())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := existing.Ping(ctx); err == nil {
+		return existing, nil
+	}
+
+	if _, err := loadProfiles(ctx); err != nil {
+		return nil, err
+	}
+
 	descriptor, err := json.Marshal(server)
 	if err != nil {
 		return nil, fmt.Errorf("encode status daemon server: %w", err)
@@ -87,6 +99,11 @@ func decodeServer(identity, descriptor string) (observe.Server, error) {
 }
 
 func startDaemonSource(ctx context.Context, server observe.Server, report func(error)) (*Source, error) {
+	catalog, err := loadProfiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := tmux.New()
 	if err != nil {
 		return nil, fmt.Errorf("create status tmux client: %w", err)
@@ -98,7 +115,7 @@ func startDaemonSource(ctx context.Context, server observe.Server, report func(e
 		return nil, fmt.Errorf("create status sampler: %w", err)
 	}
 
-	return NewSource(ctx, server, sampler, nil, report)
+	return NewSource(ctx, server, sampler, profileSelector(catalog), report)
 }
 
 type socketRunner struct {
