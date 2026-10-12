@@ -123,10 +123,9 @@ func TestCapturePaneVisibleCoordinatesOnIsolatedServer(t *testing.T) {
 	output, err := b.CapturePane(context.Background(), pane)
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
-	require.Len(t, lines, 200)
+	require.Len(t, lines, 240)
 	assert.Equal(t, "row-021", strings.TrimRight(lines[0], " "), "start at visible coordinate zero")
-	assert.Equal(t, "row-220", strings.TrimRight(lines[199], " "), "end at visible coordinate 199")
+	assert.Equal(t, "row-259", strings.TrimRight(lines[238], " "))
+	assert.Equal(t, "BOTTOM-ONLY", strings.TrimRight(lines[239], " "), "include the last visible row")
 	assert.NotContains(t, output, "HISTORY-ONLY")
-	assert.NotContains(t, output, "BOTTOM-ONLY", "do not read rows after 199")
-
 }
