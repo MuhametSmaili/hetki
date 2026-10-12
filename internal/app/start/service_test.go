@@ -25,6 +25,7 @@ type stubBackend struct {
 
 	applyCalls  int
 	attachCalls int
+	switchCalls int
 	dryRunCalls int
 	lastActions []backend.Action
 	allActions  [][]backend.Action
@@ -61,7 +62,10 @@ func (s *stubBackend) Attach(context.Context, string) error {
 	return nil
 }
 
-func (s *stubBackend) Switch(context.Context, string) error { return nil }
+func (s *stubBackend) Switch(context.Context, string) error {
+	s.switchCalls++
+	return nil
+}
 
 func TestServiceRunCancellationAfterLoadPreventsBackendDetection(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -109,6 +113,44 @@ func TestServiceRunDryRunOutputsPlan(t *testing.T) {
 	assert.Zero(t, stub.attachCalls)
 	if assert.Len(t, stub.lastActions, 1) {
 		assert.IsType(t, backend.CreateSessionAction{}, stub.lastActions[0])
+	}
+}
+
+func TestServiceRunDryRunIsReadOnlyWhenPlanIsEmpty(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		force bool
+	}{
+		{name: "merge"},
+		{name: "force", force: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := &manifest.Workspace{Sessions: []manifest.Session{{
+				Name:    "dev",
+				Windows: []manifest.Window{{Name: "editor", Path: "/work/hetki"}},
+			}}}
+			stub := &stubBackend{queryResult: backend.StateResult{
+				Sessions: []backend.Session{{
+					Name:    "dev",
+					Windows: []backend.Window{{Name: "editor", Path: "/work/hetki"}},
+				}},
+			}}
+			service := NewService(func(...string) (backend.Backend, error) { return stub, nil })
+			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
+				return workspace, "/work/hetki/.hetki.yaml", nil
+			}
+			var err error
+
+			output := captureLoggerOutput(t, func() {
+				err = service.Run(context.Background(), Options{DryRun: true, Force: tc.force})
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, "Workspace already up to date")
+			assert.Zero(t, stub.applyCalls)
+			assert.Zero(t, stub.attachCalls)
+			assert.Zero(t, stub.switchCalls)
+		})
 	}
 }
 

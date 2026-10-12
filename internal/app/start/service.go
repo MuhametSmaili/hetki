@@ -99,6 +99,10 @@ func selectStrategy(force bool) plan.Strategy {
 func executePlan(ctx context.Context, b backend.Backend, p *plan.Plan, workspace *manifest.Workspace, workspacePath string, dryRun bool) error {
 	if p.IsEmpty() {
 		logger.Info("Workspace already up to date")
+		if dryRun {
+			return nil
+		}
+
 		warnIfMetadataStampFails(ctx, b, workspace, workspacePath)
 		return attachToSession(ctx, b, workspace)
 	}
