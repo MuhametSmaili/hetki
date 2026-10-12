@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	maxCaptureTargets = 128
-	maxCaptureRows    = 200
-	maxCaptureColumns = 1000
-	maxScreenBytes    = 256 << 10
-	maxCaptureBytes   = 4 << 20
+	maxCaptureTargets    = 128
+	maxCaptureRows       = 200
+	maxCaptureColumns    = 1000
+	maxScreenBytes       = 256 << 10
+	maxCaptureBytes      = 4 << 20
+	maxCaptureBatchBytes = maxCaptureBytes + maxInventoryBytes
 )
 
 // Region selects visible rows, never scrollback. Zero means the whole viewport.
@@ -105,8 +106,9 @@ type Screen struct {
 	Err       error
 }
 
-// Capture batches mixed-application targets using at most three CLI requests:
-// facts before, screens, facts after. It retains no text after returning. Failures
+// Capture batches mixed-application targets using at most two CLI requests:
+// facts before, then screens and facts after together. Native process checks
+// still bracket capture. It retains no text after returning. Failures
 // of the batch framing/query discard the entire batch rather than return partial
 // text. Per-pane scope changes are returned in Screen.Err.
 func (s *Sampler) Capture(ctx context.Context, targets []CaptureTarget) ([]Screen, error) {
@@ -131,12 +133,7 @@ func (s *Sampler) Capture(ctx context.Context, targets []CaptureTarget) ([]Scree
 	}
 
 	started := time.Now()
-	texts, err := s.captureText(ctx, eligible)
-	if err != nil {
-		return nil, err
-	}
-
-	after, err := s.sample(ctx, ids)
+	texts, after, err := s.captureBatch(ctx, eligible)
 	if err != nil {
 		return nil, err
 	}
@@ -197,28 +194,69 @@ func finishCaptures(results []Screen, texts map[string]string, after Inventory, 
 	}
 }
 
-func (s *Sampler) captureText(ctx context.Context, targets []CaptureTarget) (map[string]string, error) {
+func (s *Sampler) captureBatch(ctx context.Context, targets []CaptureTarget) (map[string]string, Inventory, error) {
+	processes := processSample{read: s.process, cache: make(map[int]processResult)}
+	if err := s.validateProcess(ctx, &processes); err != nil {
+		return nil, Inventory{}, err
+	}
+
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
-		return nil, err
+		return nil, Inventory{}, err
 	}
 	marker := "hetki-capture-" + hex.EncodeToString(nonce[:])
+	args, ids := captureBatchArgs(targets, marker)
+	out, err := s.run(ctx, maxCaptureBatchBytes, args...)
+	if err != nil {
+		return nil, Inventory{}, fmt.Errorf("capture tmux batch: %w", err)
+	}
+	texts, after, err := s.parseCaptureBatch(out, marker, targets, ids)
+	if err != nil {
+		return nil, Inventory{}, err
+	}
+	after, err = s.sampleProcesses(ctx, after, &processes)
+	if err != nil {
+		return nil, Inventory{}, err
+	}
+	return texts, after, nil
+}
+
+func captureBatchArgs(targets []CaptureTarget, marker string) ([]string, []string) {
 	args := []string{"display-message", "-p", "#{pid}|#{start_time}|#{version}"}
+	ids := make([]string, 0, len(targets))
 	for _, target := range targets {
+		ids = append(ids, target.pane.ID)
 		key := strings.TrimPrefix(target.pane.ID, "%")
 		args = appendCommand(args, "display-message", "-p", marker+"-begin-"+key)
 		args = appendCommand(args, "capture-pane", "-p", "-N", "-S", strconv.Itoa(target.first), "-E", strconv.Itoa(target.last), "-t", target.pane.ID)
 		args = appendCommand(args, "display-message", "-p", marker+"-end-"+key)
 	}
-	out, err := s.run(ctx, maxCaptureBytes, args...)
-	if err != nil {
-		return nil, fmt.Errorf("capture tmux batch: %w", err)
+	args = appendCommand(args, "display-message", "-p", marker+"-facts")
+	args = appendCommand(args, "display-message", "-p", "#{pid}|#{start_time}|#{version}")
+	for _, id := range ids {
+		args = appendCommand(args, "display-message", "-p", "-t", id, inventoryFormat)
 	}
-	header, rest, ok := strings.Cut(out, "\n")
+	return args, ids
+}
+
+func (s *Sampler) parseCaptureBatch(out, marker string, targets []CaptureTarget, ids []string) (map[string]string, Inventory, error) {
+	screens, facts, ok := strings.Cut(out, marker+"-facts\n")
+	if !ok || len(screens) > maxCaptureBytes || len(facts) > maxInventoryBytes {
+		return nil, Inventory{}, fmt.Errorf("missing or oversized capture batch section")
+	}
+	header, rest, ok := strings.Cut(screens, "\n")
 	if !ok || header != fmt.Sprintf("%d|%d|%s", s.server.PID, s.server.Started, s.server.Version) {
-		return nil, ErrServerChanged
+		return nil, Inventory{}, ErrServerChanged
 	}
-	return splitScreens(rest, marker, targets)
+	texts, err := splitScreens(rest, marker, targets)
+	if err != nil {
+		return nil, Inventory{}, err
+	}
+	after, err := s.parseInventory(facts, ids)
+	if err != nil {
+		return nil, Inventory{}, fmt.Errorf("parse post-capture inventory: %w", err)
+	}
+	return texts, after, nil
 }
 
 func splitScreens(out, marker string, targets []CaptureTarget) (map[string]string, error) {

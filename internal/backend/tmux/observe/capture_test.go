@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func captureFixtureReply(t *testing.T, args []string) string {
+func captureFixtureReply(t *testing.T, args []string, rows string) string {
 	t.Helper()
 	var out strings.Builder
 	out.WriteString(testInventoryOutput(""))
@@ -27,6 +27,7 @@ func captureFixtureReply(t *testing.T, args []string) string {
 			out.WriteString(strings.Repeat(args[n+8]+" content\n", last-first+1))
 		}
 	}
+	out.WriteString(testInventoryOutput(rows))
 	return out.String()
 }
 
@@ -36,10 +37,10 @@ func TestCaptureBatchesMixedTargetsAndRetainsRevision(t *testing.T) {
 	s := testSampler(t, func(_ context.Context, limit int, args ...string) (string, error) {
 		if slices.Contains(args, "capture-pane") {
 			captures++
-			require.Equal(t, maxCaptureBytes, limit)
+			require.Equal(t, maxCaptureBatchBytes, limit)
 			require.False(t, slices.Contains(args, "-e"))
 			require.False(t, slices.Contains(args, "-a"))
-			return captureFixtureReply(t, args), nil
+			return captureFixtureReply(t, args, rows), nil
 		}
 		queries++
 		return testInventoryOutput(rows), nil
@@ -56,7 +57,7 @@ func TestCaptureBatchesMixedTargetsAndRetainsRevision(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, results, 2)
-	require.Equal(t, 2, queries)
+	require.Equal(t, 1, queries)
 	require.Equal(t, 1, captures)
 	require.Equal(t, "%1 content\n%1 content\n", results[0].Text)
 	require.Equal(t, "%2 content\n", results[1].Text)
@@ -90,16 +91,19 @@ func TestCaptureRejectsChangesBeforeAndAfterAcquisition(t *testing.T) {
 
 func testCaptureFactChange(t *testing.T, old, replacement, stage string) {
 	t.Helper()
-	queries, captures := 0, 0
+	captures := 0
 	change := false
 	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
 		if slices.Contains(args, "capture-pane") {
 			captures++
-			return captureFixtureReply(t, args), nil
+			row := testPaneRow
+			if change && stage == "after" {
+				row = strings.Replace(row, old, replacement, 1)
+			}
+			return captureFixtureReply(t, args, row), nil
 		}
-		queries++
 		row := testPaneRow
-		if change && (stage == "before" || queries == 2) {
+		if change && stage == "before" {
 			row = strings.Replace(row, old, replacement, 1)
 		}
 		return testInventoryOutput(row), nil
@@ -108,7 +112,7 @@ func testCaptureFactChange(t *testing.T, old, replacement, stage string) {
 	require.NoError(t, err)
 	target, err := inventory.Target("%1", Region{})
 	require.NoError(t, err)
-	queries, change = 0, true
+	change = true
 
 	results, err := s.Capture(t.Context(), []CaptureTarget{target})
 
@@ -129,7 +133,7 @@ func TestCapturePreservesOtherPaneWhenNativeOwnerChanges(t *testing.T) {
 	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
 		if slices.Contains(args, "capture-pane") {
 			captured = true
-			return captureFixtureReply(t, args), nil
+			return captureFixtureReply(t, args, rows), nil
 		}
 		return testInventoryOutput(rows), nil
 	})
@@ -146,6 +150,37 @@ func TestCapturePreservesOtherPaneWhenNativeOwnerChanges(t *testing.T) {
 	require.NoError(t, err)
 	second, err := inventory.Target("%2", Region{Rows: 1})
 	require.NoError(t, err)
+
+	results, err := s.Capture(t.Context(), []CaptureTarget{first, second})
+
+	require.NoError(t, err)
+	require.ErrorIs(t, results[0].Err, ErrChanged)
+	require.Empty(t, results[0].Text)
+	require.NoError(t, results[1].Err)
+	require.Equal(t, "%2 content\n", results[1].Text)
+}
+
+func TestCaptureOmitsRejectedPaneFromCombinedBatch(t *testing.T) {
+	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
+	changed := false
+	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+		if slices.Contains(args, "capture-pane") {
+			require.NotContains(t, args, "%1")
+			return captureFixtureReply(t, args, peer), nil
+		}
+		first := testPaneRow
+		if changed {
+			first = strings.Replace(first, "|cat|", "|replacement|", 1)
+		}
+		return testInventoryOutput(first + peer), nil
+	})
+	inventory, err := s.Inventory(t.Context(), 1)
+	require.NoError(t, err)
+	first, err := inventory.Target("%1", Region{Rows: 1})
+	require.NoError(t, err)
+	second, err := inventory.Target("%2", Region{Rows: 1})
+	require.NoError(t, err)
+	changed = true
 
 	results, err := s.Capture(t.Context(), []CaptureTarget{first, second})
 
@@ -207,7 +242,7 @@ func TestCaptureCancellationDiscardsCollectedText(t *testing.T) {
 	defer cancel()
 	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
 		if slices.Contains(args, "capture-pane") {
-			out := captureFixtureReply(t, args)
+			out := captureFixtureReply(t, args, testPaneRow)
 			cancel()
 			return out, nil
 		}
@@ -222,6 +257,93 @@ func TestCaptureCancellationDiscardsCollectedText(t *testing.T) {
 
 	require.ErrorIs(t, err, context.Canceled)
 	require.Nil(t, results)
+}
+
+func TestCaptureRejectsIncompletePostCaptureFacts(t *testing.T) {
+	cases := []struct {
+		name  string
+		facts string
+	}{
+		{"missing pane", testInventoryOutput("")},
+		{"wrong pane", testInventoryOutput(strings.Replace(testPaneRow, "%1", "%2", 1))},
+		{"duplicate pane", testInventoryOutput(testPaneRow + testPaneRow)},
+		{"truncated facts", testInventoryOutput(strings.TrimSuffix(testPaneRow, "\n"))},
+		{"changed server", "43|123|3.8\n" + testPaneRow},
+		{"oversized facts", strings.Repeat("x", maxInventoryBytes+1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+				if !slices.Contains(args, "capture-pane") {
+					return testInventoryOutput(testPaneRow), nil
+				}
+				out := captureFixtureReply(t, args, testPaneRow)
+				return strings.TrimSuffix(out, testInventoryOutput(testPaneRow)) + tc.facts, nil
+			})
+			inventory, err := s.Inventory(t.Context(), 1)
+			require.NoError(t, err)
+			target, err := inventory.Target("%1", Region{Rows: 1})
+			require.NoError(t, err)
+
+			results, err := s.Capture(t.Context(), []CaptureTarget{target})
+
+			require.Error(t, err)
+			require.Nil(t, results, "valid text alone must not survive failed post-capture validation")
+		})
+	}
+}
+
+func TestCaptureChecksNativeLifetimesAfterCombinedBatch(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		pid  int
+	}{
+		{"server PID reused", 42},
+		{"root PID reused", 100},
+		{"foreground PID reused", 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := captureLifetimeFixture(t, tc.pid)
+			inventory, err := s.Inventory(t.Context(), 1)
+			require.NoError(t, err)
+			target, err := inventory.Target("%1", Region{Rows: 1})
+			require.NoError(t, err)
+
+			results, err := s.Capture(t.Context(), []CaptureTarget{target})
+
+			if tc.pid == 42 {
+				require.ErrorIs(t, err, ErrServerChanged)
+				require.Nil(t, results)
+			} else {
+				require.NoError(t, err)
+				require.ErrorIs(t, results[0].Err, ErrChanged)
+				require.Empty(t, results[0].Text)
+			}
+		})
+	}
+}
+
+func captureLifetimeFixture(t *testing.T, replacedPID int) *Sampler {
+	t.Helper()
+	captured := false
+	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+		if slices.Contains(args, "capture-pane") {
+			captured = true
+			return captureFixtureReply(t, args, testPaneRow), nil
+		}
+		return testInventoryOutput(testPaneRow), nil
+	})
+	s.process = func(ctx context.Context, pid int) (processInfo, error) {
+		info, err := fixtureProcess(ctx, pid)
+		if pid == 100 {
+			info.foreground = 200
+		}
+		if captured && pid == replacedPID {
+			info.Birth = "replacement"
+		}
+		return info, err
+	}
+	return s
 }
 
 func TestCaptureRegions(t *testing.T) {
@@ -277,6 +399,31 @@ func TestScreenFramingRejectsAmbiguousOrTruncatedText(t *testing.T) {
 
 			require.Error(t, err)
 			require.Nil(t, texts)
+		})
+	}
+}
+
+func TestCaptureBatchRejectsAmbiguousSections(t *testing.T) {
+	s := testSampler(t, nil)
+	targets := []CaptureTarget{{pane: Pane{ID: "%1"}, first: 0, last: 1}}
+	screens := testInventoryOutput("m-begin-1\na\nb\nm-end-1\n")
+	facts := "m-facts\n" + testInventoryOutput(testPaneRow)
+	cases := []struct {
+		name string
+		out  string
+	}{
+		{"missing facts boundary", screens + testInventoryOutput(testPaneRow)},
+		{"trailing screen data", screens + "extra\n" + facts},
+		{"embedded facts marker", testInventoryOutput("m-begin-1\nm-facts\nb\nm-end-1\n") + facts},
+		{"oversized screen section", strings.Repeat("x", maxCaptureBytes+1) + facts},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			texts, inventory, err := s.parseCaptureBatch(tc.out, "m", targets, []string{"%1"})
+
+			require.Error(t, err)
+			require.Nil(t, texts)
+			require.Empty(t, inventory.panes)
 		})
 	}
 }

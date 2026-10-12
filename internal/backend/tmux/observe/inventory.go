@@ -148,15 +148,21 @@ func (s *Sampler) sample(ctx context.Context, ids []string) (Inventory, error) {
 	if err != nil {
 		return Inventory{}, err
 	}
+	return s.sampleProcesses(ctx, inventory, &processes)
+}
 
+// sampleProcesses adds fresh native facts to a tmux query. The caller validates
+// the server before the query; the final validation bypasses the per-pass cache.
+func (s *Sampler) sampleProcesses(ctx context.Context, inventory Inventory, processes *processSample) (Inventory, error) {
 	for id, pane := range inventory.panes {
 		if pane.Dead {
 			continue
 		}
-		pane.Root, pane.Foreground, err = processes.paneProcesses(ctx, pane.RootPID)
+		root, foreground, err := processes.paneProcesses(ctx, pane.RootPID)
 		if err != nil {
 			inventory.problems[id] = err
 		}
+		pane.Root, pane.Foreground = root, foreground
 		inventory.panes[id] = pane
 	}
 
