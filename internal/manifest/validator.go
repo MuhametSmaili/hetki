@@ -98,12 +98,12 @@ func validateSession(sess Session, i int, seen map[string]bool, errs []Validatio
 	}
 
 	for j, win := range sess.Windows {
-		errs = validateWindow(win, sess, i, j, errs)
+		errs = validateWindow(win, i, j, errs)
 	}
 	return errs
 }
 
-func validateWindow(win Window, sess Session, i, j int, errs []ValidationError) []ValidationError {
+func validateWindow(win Window, i, j int, errs []ValidationError) []ValidationError {
 	at := func(field string) string { return fmt.Sprintf("sessions[%d].windows[%d].%s", i, j, field) }
 
 	if win.Index != nil {
@@ -117,30 +117,7 @@ func validateWindow(win Window, sess Session, i, j int, errs []ValidationError) 
 			errs = append(errs, ValidationError{Field: at("name"), Message: err})
 		}
 	}
-	if win.Path == "" && sess.Root == "" && !(len(win.Panes) > 0 && win.Panes[0].Path != "") {
-		errs = append(errs, ValidationError{Field: at("path"), Message: "window has no path and the session has no root"})
-	}
-	if len(win.Path) > MaxPathLength {
-		errs = append(errs, ValidationError{Field: at("path"), Message: "window path is too long"})
-	}
-	if err := checkPath(win.Path); err != "" {
-		errs = append(errs, ValidationError{Field: at("path"), Message: err})
-	}
-	if win.Command != "" && len(win.Panes) > 0 && win.Panes[0].Command != "" {
-		errs = append(errs, ValidationError{Field: at("command"), Message: "window command conflicts with the first pane command; set only one"})
-	}
-	if win.Layout != "" && !namedLayouts[win.Layout] && !isLayoutDump(win.Layout) && len(win.Layout) <= MaxPathLength {
-		errs = append(errs, ValidationError{Field: at("layout"), Message: fmt.Sprintf("unknown layout %q (named layout or saved layout dump)", win.Layout)})
-	}
-	if len(win.Layout) > MaxPathLength {
-		errs = append(errs, ValidationError{Field: at("layout"), Message: "layout is too long"})
-	}
-	if len(win.Command) > MaxCommandLength {
-		errs = append(errs, ValidationError{Field: at("command"), Message: "window command is too long"})
-	}
-	if err := checkCommand(win.Command); err != "" {
-		errs = append(errs, ValidationError{Field: at("command"), Message: err})
-	}
+	errs = validateWindowValues(win, at(""), errs)
 	if len(win.Panes) > MaxPanesPerWindow {
 		errs = append(errs, ValidationError{Field: at("panes"), Message: fmt.Sprintf("too many panes (%d, max %d)", len(win.Panes), MaxPanesPerWindow)})
 	}
@@ -148,30 +125,60 @@ func validateWindow(win Window, sess Session, i, j int, errs []ValidationError) 
 	zoomed := 0
 	for k, pane := range win.Panes {
 		atPane := func(field string) string { return fmt.Sprintf("%spanes[%d].%s", at(""), k, field) }
-		if pane.Split != nil {
-			errs = append(errs, ValidationError{Field: atPane("split"), Message: "unsupported field: pane split is not implemented; remove it"})
-		}
-		if pane.Size != nil {
-			errs = append(errs, ValidationError{Field: atPane("size"), Message: "unsupported field: pane size is not implemented; remove it"})
-		}
-		if len(pane.Path) > MaxPathLength {
-			errs = append(errs, ValidationError{Field: atPane("path"), Message: "pane path is too long"})
-		}
-		if err := checkPath(pane.Path); err != "" {
-			errs = append(errs, ValidationError{Field: atPane("path"), Message: err})
-		}
-		if len(pane.Command) > MaxCommandLength {
-			errs = append(errs, ValidationError{Field: atPane("command"), Message: "pane command is too long"})
-		}
-		if err := checkCommand(pane.Command); err != "" {
-			errs = append(errs, ValidationError{Field: atPane("command"), Message: err})
-		}
+		errs = validatePane(pane, atPane(""), errs)
 		if pane.Zoom {
 			zoomed++
 		}
 	}
 	if zoomed > 1 {
 		errs = append(errs, ValidationError{Field: at("panes"), Message: fmt.Sprintf("%d panes with zoom=true (only one allowed per window)", zoomed)})
+	}
+	return errs
+}
+
+func validateWindowValues(win Window, at string, errs []ValidationError) []ValidationError {
+	if len(win.Path) > MaxPathLength {
+		errs = append(errs, ValidationError{Field: at + "path", Message: "window path is too long"})
+	}
+	if err := checkPath(win.Path); err != "" {
+		errs = append(errs, ValidationError{Field: at + "path", Message: err})
+	}
+	if win.Command != "" && len(win.Panes) > 0 && win.Panes[0].Command != "" {
+		errs = append(errs, ValidationError{Field: at + "command", Message: "window command conflicts with the first pane command; set only one"})
+	}
+	if win.Layout != "" && !namedLayouts[win.Layout] && !isLayoutDump(win.Layout) && len(win.Layout) <= MaxPathLength {
+		errs = append(errs, ValidationError{Field: at + "layout", Message: fmt.Sprintf("unknown layout %q (named layout or saved layout dump)", win.Layout)})
+	}
+	if len(win.Layout) > MaxPathLength {
+		errs = append(errs, ValidationError{Field: at + "layout", Message: "layout is too long"})
+	}
+	if len(win.Command) > MaxCommandLength {
+		errs = append(errs, ValidationError{Field: at + "command", Message: "window command is too long"})
+	}
+	if err := checkCommand(win.Command); err != "" {
+		errs = append(errs, ValidationError{Field: at + "command", Message: err})
+	}
+	return errs
+}
+
+func validatePane(pane Pane, at string, errs []ValidationError) []ValidationError {
+	if pane.Split != nil {
+		errs = append(errs, ValidationError{Field: at + "split", Message: "unsupported field: pane split is not implemented; remove it"})
+	}
+	if pane.Size != nil {
+		errs = append(errs, ValidationError{Field: at + "size", Message: "unsupported field: pane size is not implemented; remove it"})
+	}
+	if len(pane.Path) > MaxPathLength {
+		errs = append(errs, ValidationError{Field: at + "path", Message: "pane path is too long"})
+	}
+	if err := checkPath(pane.Path); err != "" {
+		errs = append(errs, ValidationError{Field: at + "path", Message: err})
+	}
+	if len(pane.Command) > MaxCommandLength {
+		errs = append(errs, ValidationError{Field: at + "command", Message: "pane command is too long"})
+	}
+	if err := checkCommand(pane.Command); err != "" {
+		errs = append(errs, ValidationError{Field: at + "command", Message: err})
 	}
 	return errs
 }

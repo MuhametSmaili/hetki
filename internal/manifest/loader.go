@@ -64,69 +64,96 @@ func prepare(raw *Workspace) (*Workspace, error) {
 	if errs := Validate(raw); len(errs) > 0 {
 		return nil, ToError(errs)
 	}
-	normalized := normalize(raw)
+
+	normalized, err := normalize(raw)
+	if err != nil {
+		return nil, err
+	}
 	if errs := validateNormalized(normalized); len(errs) > 0 {
 		return nil, ToError(errs)
 	}
 	return normalized, nil
 }
 
-// normalize applies root/path inheritance, resolves paths, infers window
-// names, and compiles every window into an explicit first pane carrying the
-// window command. A window's start path always equals its first pane's path;
-// conflicting explicit values are rejected by validateNormalized.
-func normalize(cfg *Workspace) *Workspace {
+// normalize compiles directory inheritance and commands without changing the
+// authored workspace. Relative roots and rootless windows use the caller's
+// working directory, not the manifest file's location.
+func normalize(cfg *Workspace) (*Workspace, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("resolve working directory: %w", err)
+	}
+
+	cwd, err = filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return nil, fmt.Errorf("resolve working directory: %w", err)
+	}
 	out := &Workspace{Sessions: make([]Session, len(cfg.Sessions))}
 
 	for i, sess := range cfg.Sessions {
-		sess.Root = resolvePath(sess.Root)
-		normalized := make([]Window, len(sess.Windows))
-
-		for j, w := range sess.Windows {
-			w.Path = resolvePath(w.Path)
-			if w.Path == "" && len(w.Panes) > 0 {
-				// An explicit first-pane path overrides the inherited session root.
-				w.Path = resolvePath(w.Panes[0].Path)
+		base := cwd
+		if sess.Root != "" {
+			sess.Root, err = resolveSessionRoot(sess.Root, cwd)
+			if err != nil {
+				return nil, fmt.Errorf("sessions[%d].root: %w", i, err)
 			}
-			if w.Path == "" {
-				w.Path = sess.Root
-			}
-			w.Panes = compilePanes(w)
-			w.Command = "" // compiled into the first pane; keep one source of truth
-			if w.Name == "" {
-				w.Name = inferNameFromPath(w.Path)
-			}
-			normalized[j] = w
+			base = sess.Root
 		}
-		sess.Windows = normalized
+		windows := make([]Window, len(sess.Windows))
+		for j, window := range sess.Windows {
+			windows[j], err = normalizeWindow(window, base)
+			if err != nil {
+				return nil, fmt.Errorf("sessions[%d].windows[%d].%w", i, j, err)
+			}
+		}
+		sess.Windows = windows
 		out.Sessions[i] = sess
 	}
-
-	return out
+	return out, nil
 }
 
-func compilePanes(w Window) []Pane {
+func normalizeWindow(w Window, base string) (Window, error) {
+	directory, err := resolveDirectory(w.Path, base)
+	if err != nil {
+		return Window{}, fmt.Errorf("path: %w", err)
+	}
+	w.Path = directory
+	w.Panes, err = compilePanes(w)
+	if err != nil {
+		return Window{}, err
+	}
+
+	// All panes resolve against the declared window base; only creation and
+	// comparison use the first pane's final directory.
+	w.Path = w.Panes[0].Path
+	w.Command = ""
+	if w.Name == "" {
+		w.Name = inferNameFromPath(w.Path)
+	}
+	return w, nil
+}
+
+func compilePanes(w Window) ([]Pane, error) {
 	if len(w.Panes) == 0 {
-		return []Pane{{Path: w.Path, Command: w.Command}}
+		return []Pane{{Path: w.Path, Command: w.Command}}, nil
 	}
 	panes := make([]Pane, len(w.Panes))
 	for k, p := range w.Panes {
-		p.Path = resolvePath(p.Path)
-		if p.Path == "" {
-			p.Path = w.Path
+		path, err := resolveDirectory(p.Path, w.Path)
+		if err != nil {
+			return nil, fmt.Errorf("panes[%d].path: %w", k, err)
 		}
+		p.Path = path
 		if k == 0 && p.Command == "" {
 			p.Command = w.Command
 		}
 		panes[k] = p
 	}
-	return panes
+	return panes, nil
 }
 
-// validateNormalized re-checks values produced by normalization: inferred
-// names and expanded/resolved paths must satisfy the same limits raw input
-// does, and every window's start path must equal its first pane's path so
-// creation and comparison always agree.
+// validateNormalized re-checks inferred names and resolved directories against
+// the raw-input limits, including values produced by symlink resolution.
 func validateNormalized(ws *Workspace) []ValidationError {
 	var errs []ValidationError
 	for i, sess := range ws.Sessions {
@@ -139,32 +166,36 @@ func validateNormalized(ws *Workspace) []ValidationError {
 		}
 		for j, w := range sess.Windows {
 			at := fmt.Sprintf("%s.windows[%d]", sessionAt, j)
-			if w.Name == "" {
-				errs = append(errs, ValidationError{Field: at + ".name", Message: "inferred window name cannot be empty"})
-			} else if len(w.Name) > MaxNameLength {
-				errs = append(errs, ValidationError{Field: at + ".name", Message: nameTooLong("inferred window")})
-			}
-			if err := checkName(w.Name); err != "" {
-				errs = append(errs, ValidationError{Field: at + ".name", Message: err + " (inferred from path)"})
-			}
-			if len(w.Path) > MaxPathLength {
-				errs = append(errs, ValidationError{Field: at + ".path", Message: "resolved window path is too long"})
-			}
-			if err := checkPath(w.Path); err != "" {
-				errs = append(errs, ValidationError{Field: at + ".path", Message: err})
-			}
-			if len(w.Panes) > 0 && w.Panes[0].Path != w.Path {
-				errs = append(errs, ValidationError{Field: at + ".panes[0].path", Message: fmt.Sprintf("first pane path %q conflicts with window path %q; a window starts wherever its first pane starts", w.Panes[0].Path, w.Path)})
-			}
-			for k, pane := range w.Panes {
-				paneAt := fmt.Sprintf("%s.panes[%d].path", at, k)
-				if len(pane.Path) > MaxPathLength {
-					errs = append(errs, ValidationError{Field: paneAt, Message: "resolved pane path is too long"})
-				}
-				if err := checkPath(pane.Path); err != "" {
-					errs = append(errs, ValidationError{Field: paneAt, Message: err})
-				}
-			}
+			errs = append(errs, validateNormalizedWindow(w, at)...)
+		}
+	}
+	return errs
+}
+
+func validateNormalizedWindow(w Window, at string) []ValidationError {
+	var errs []ValidationError
+	if w.Name == "" {
+		errs = append(errs, ValidationError{Field: at + ".name", Message: "inferred window name cannot be empty"})
+	} else if len(w.Name) > MaxNameLength {
+		errs = append(errs, ValidationError{Field: at + ".name", Message: nameTooLong("inferred window")})
+	}
+	if err := checkName(w.Name); err != "" {
+		errs = append(errs, ValidationError{Field: at + ".name", Message: err + " (inferred from path)"})
+	}
+	if len(w.Path) > MaxPathLength {
+		errs = append(errs, ValidationError{Field: at + ".path", Message: "resolved window path is too long"})
+	}
+	if err := checkPath(w.Path); err != "" {
+		errs = append(errs, ValidationError{Field: at + ".path", Message: err})
+	}
+
+	for k, pane := range w.Panes {
+		paneAt := fmt.Sprintf("%s.panes[%d].path", at, k)
+		if len(pane.Path) > MaxPathLength {
+			errs = append(errs, ValidationError{Field: paneAt, Message: "resolved pane path is too long"})
+		}
+		if err := checkPath(pane.Path); err != "" {
+			errs = append(errs, ValidationError{Field: paneAt, Message: err})
 		}
 	}
 	return errs
@@ -186,19 +217,6 @@ func expandPath(p string) string {
 	if strings.HasPrefix(p, "~") {
 		home, _ := os.UserHomeDir()
 		return filepath.Join(home, strings.TrimPrefix(p, "~"))
-	}
-	return p
-}
-
-// resolvePath expands and canonicalizes to the physical path so desired
-// paths compare equal to what tmux reports (macOS /var → /private/var etc.).
-func resolvePath(p string) string {
-	p = expandPath(p)
-	if p == "" {
-		return p
-	}
-	if resolved, err := filepath.EvalSymlinks(p); err == nil {
-		return resolved
 	}
 	return p
 }

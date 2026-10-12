@@ -41,7 +41,7 @@ func TestForceReplacementPreservesSessionOnIsolatedTmux(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := newForceTestBackend(t)
+			b := newIsolatedStartBackend(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 
@@ -101,7 +101,7 @@ func TestForceReplacementFailurePreservesOldWindows(t *testing.T) {
 		{name: "follow-up fails", failCommand: "split-window", windowCount: 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := newForceTestBackend(t)
+			b := newIsolatedStartBackend(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 
@@ -153,7 +153,7 @@ func forceReplacementWorkspace(directory string, names []string) *manifest.Works
 	return &manifest.Workspace{Sessions: []manifest.Session{{Name: "dev", Windows: windows}}}
 }
 
-func newForceTestBackend(t *testing.T) *backendtmux.TmuxBackend {
+func newIsolatedStartBackend(t *testing.T) *backendtmux.TmuxBackend {
 	t.Helper()
 	realTmux, err := exec.LookPath("tmux")
 	if err != nil {

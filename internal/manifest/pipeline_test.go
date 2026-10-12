@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,12 +94,16 @@ func TestParseRejectsWindowIndexField(t *testing.T) {
 }
 
 func TestParseCompilesFirstPaneAndCommandInheritance(t *testing.T) {
-	ws, err := Parse([]byte("sessions:\n  - name: dev\n    root: /repo\n    windows:\n      - name: editor\n        command: vim\n      - name: server\n        path: /srv\n        panes:\n          - {}\n          - command: npm run dev\n"), "w.yaml")
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	source := fmt.Sprintf("sessions:\n  - name: dev\n    root: %q\n    windows:\n      - name: editor\n        command: vim\n      - name: server\n        path: /srv\n        panes:\n          - {}\n          - command: npm run dev\n", root)
+
+	ws, err := Parse([]byte(source), "w.yaml")
 	require.NoError(t, err)
 
 	editor := ws.Sessions[0].Windows[0]
 	require.Len(t, editor.Panes, 1, "window without panes gets an explicit first pane")
-	assert.Equal(t, "/repo", editor.Panes[0].Path, "first pane inherits root-resolved window path")
+	assert.Equal(t, root, editor.Panes[0].Path, "first pane inherits root-resolved window path")
 	assert.Equal(t, "vim", editor.Panes[0].Command, "window command compiles into the first pane")
 
 	server := ws.Sessions[0].Windows[1]
@@ -148,7 +153,8 @@ func TestMarshalRejectsOversizedOutput(t *testing.T) {
 }
 
 func TestManifestRoundTrip(t *testing.T) {
-	source := "sessions:\n  - name: dev\n    root: /repo\n    windows:\n      - name: editor\n        command: vim\n      - name: server\n        path: /srv\n        panes:\n          - command: npm run dev\n          - command: make watch\n            zoom: true\n"
+	root := t.TempDir()
+	source := fmt.Sprintf("sessions:\n  - name: dev\n    root: %q\n    windows:\n      - name: editor\n        command: vim\n      - name: server\n        path: /srv\n        panes:\n          - command: npm run dev\n          - command: make watch\n            zoom: true\n", root)
 	ws, err := Parse([]byte(source), "w.yaml")
 	require.NoError(t, err)
 
@@ -172,18 +178,24 @@ func TestStrictDecodeRejectsTrailingDocuments(t *testing.T) {
 	assert.ErrorContains(t, err, "only one document")
 }
 
-func TestParseRejectsConflictingFirstPanePath(t *testing.T) {
-	_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /a\n        panes:\n          - path: /b\n"), "w.yaml")
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "first pane path \"/b\" conflicts with window path \"/a\"")
+func TestParseAllowsFirstPaneToOverrideWindowDirectory(t *testing.T) {
+	workspace, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: /a\n        panes:\n          - path: /b\n          - {}\n"), "w.yaml")
+
+	require.NoError(t, err)
+	window := workspace.Sessions[0].Windows[0]
+	assert.Equal(t, "/b", window.Path)
+	assert.Equal(t, []Pane{{Path: "/b"}, {Path: "/a"}}, window.Panes)
 }
 
 func TestParseAdoptsFirstPanePathWhenWindowPathEmpty(t *testing.T) {
-	ws, err := Parse([]byte("sessions:\n  - name: dev\n    root: /root\n    windows:\n      - name: editor\n        panes:\n          - path: /tmp\n"), "w.yaml")
+	source := fmt.Sprintf("sessions:\n  - name: dev\n    root: %q\n    windows:\n      - name: editor\n        panes:\n          - path: /tmp\n", t.TempDir())
+	ws, err := Parse([]byte(source), "w.yaml")
 	require.NoError(t, err)
 	editor := ws.Sessions[0].Windows[0]
-	assert.Equal(t, resolvePath("/tmp"), editor.Path, "window start path adopts the first pane path")
-	assert.Equal(t, resolvePath("/tmp"), editor.Panes[0].Path)
+	directory, err := filepath.EvalSymlinks("/tmp")
+	require.NoError(t, err)
+	assert.Equal(t, directory, editor.Path, "window start path adopts the first pane path")
+	assert.Equal(t, directory, editor.Panes[0].Path)
 	assert.Equal(t, "editor", editor.Name)
 }
 
@@ -229,12 +241,14 @@ func TestParseValidatesNormalizedValues(t *testing.T) {
 	t.Setenv("HETKI_LONG_PATH", "/"+strings.Repeat("x", MaxPathLength))
 	_, err := Parse([]byte("sessions:\n  - name: dev\n    root: $HETKI_LONG_PATH\n    windows:\n      - name: editor\n"), "w.yaml")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "resolved session root path is too long")
+	assert.ErrorContains(t, err, "sessions[0].root: resolved path is too long")
 
 	longBase := strings.Repeat("x", MaxNameLength+1)
 	_, err = Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /tmp/"+longBase+"\n"), "w.yaml")
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "inferred window name")
+	assert.ErrorContains(t, err, "windows[0].path")
+	var pathError *os.PathError
+	assert.ErrorAs(t, err, &pathError)
 }
 
 func TestParseResolvesExplicitPanePaths(t *testing.T) {
