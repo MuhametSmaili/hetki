@@ -194,8 +194,16 @@ func TestProtocolResizePreservesPartialInputAndRecords(t *testing.T) {
 
 func updateProtocolFacts(t *testing.T, s *Source, facts observe.Pane, selected Selection, valid bool) sourcePane {
 	t.Helper()
+	return updateProtocolFactsAt(t, s, facts, selected, valid, time.Now())
+}
+
+func updateProtocolFactsAt(t *testing.T, s *Source, facts observe.Pane, selected Selection, valid bool, startedAt time.Time) sourcePane {
+	t.Helper()
 	s.expireProtocols(time.Now())
 	row := s.reconcilePane(s.panes[facts.ID], facts, selected, valid)
+	if valid {
+		row.protocol.resolvePrompt(startedAt, facts.Foreground == facts.Root)
+	}
 	s.revision++
 	err := s.core.UpdateInventory(service.Inventory{
 		Revision:   s.revision,

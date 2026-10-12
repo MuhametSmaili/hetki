@@ -19,11 +19,12 @@ type Options struct {
 // Pane owns the state of all supported protocols in one pane lifetime. Construct
 // it with New, serialize calls and do not copy it after use. It owns no workers.
 type Pane struct {
-	options   Options
-	decoder   terminalstream.Decoder
-	program   osc7501.Observer
-	shell     osc133.Observer
-	withdrawn bool
+	options       Options
+	decoder       terminalstream.Decoder
+	program       osc7501.Observer
+	shell         osc133.Observer
+	withdrawn     bool
+	promptPending bool
 }
 
 // New creates an independent pane observer with immutable source selection.
@@ -52,6 +53,7 @@ func (p *Pane) Reset() {
 	p.program.Reset()
 	p.shell.Reset()
 	p.withdrawn = false
+	p.promptPending = false
 }
 
 // ForegroundChanged ends application activity attribution while preserving shell
@@ -59,6 +61,7 @@ func (p *Pane) Reset() {
 func (p *Pane) ForegroundChanged() {
 	p.decoder.Reset()
 	p.program.EndActivity()
+	p.promptPending = false
 }
 
 // ProcessExited ends the attached process lifetime, retaining explicit outcomes
@@ -74,6 +77,7 @@ func (p *Pane) handleFrame(frame terminalstream.Frame) bool {
 		p.program.Reset()
 		p.shell.Reset()
 		p.withdrawn = p.withdrawn || observed
+		p.promptPending = false
 		return observed
 	}
 
@@ -88,7 +92,11 @@ func (p *Pane) handleFrame(frame terminalstream.Frame) bool {
 
 	switch string(selector) {
 	case "7501":
-		return p.options.ProgramStatus && p.program.Handle(payload) == osc7501.Applied
+		if p.options.ProgramStatus && p.program.Handle(payload) == osc7501.Applied {
+			p.promptPending = false
+			return true
+		}
+		return false
 	case "133":
 		return p.shellBoundary(payload)
 	default:
@@ -97,12 +105,32 @@ func (p *Pane) handleFrame(frame terminalstream.Frame) bool {
 }
 
 func (p *Pane) shellBoundary(payload []byte) bool {
-	if p.shell.Handle(payload) != osc133.Prompt {
+	kind := p.shell.Handle(payload)
+	if kind == osc133.Execute {
+		p.promptPending = false
+	}
+	if kind != osc133.Prompt {
 		return false
 	}
 
-	p.program.EndActivity()
-	return p.program.Observed()
+	activity, _ := p.application()
+	p.promptPending = activity == status.Working || activity == status.Idle || activity == status.Blocked
+	return false
+}
+
+// PromptPending reports an unattributed prompt marker after application activity.
+// Applications also emit OSC133 zones; the marker alone cannot establish shell return.
+func (p *Pane) PromptPending() bool { return p.promptPending }
+
+// ResolvePrompt applies or dismisses a candidate after the caller validates its
+// native context. A newer application report or lifetime reset cancels the candidate.
+// The result says whether application records changed and need publication.
+func (p *Pane) ResolvePrompt(atRoot bool) bool {
+	if !p.promptPending {
+		return false
+	}
+	p.promptPending = false
+	return atRoot && p.program.EndActivity()
 }
 
 // Snapshot returns copied observations without exposing adapter records or buffers.

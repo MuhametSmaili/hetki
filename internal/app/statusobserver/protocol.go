@@ -12,27 +12,36 @@ import (
 // protocolBinding joins an encapsulated pane observer to the cache target. All
 // access is serialized by Source.mu; native identities stay in this package.
 type protocolBinding struct {
-	pane              *protocols.Pane
-	target            service.Target
-	pendingWithdrawal bool // Carried only across a continuous foreground handoff until rebinding.
+	pane               *protocols.Pane
+	target             service.Target
+	pendingPublication bool // A continuous launch or withdrawal awaiting validated rebinding.
+	promptAfter        time.Time
 }
 
 func (p *protocolBinding) reset() {
-	p.pendingWithdrawal = false
+	p.promptAfter = time.Time{}
+	p.pendingPublication = false
 	p.target = service.Target{}
 	p.pane.Reset()
 }
 
 func (p *protocolBinding) processExited() {
-	p.pendingWithdrawal = false
+	p.promptAfter = time.Time{}
+	p.pendingPublication = false
 	p.target = service.Target{}
 	p.pane.ProcessExited()
 }
 
-func (p *protocolBinding) foregroundChanged() {
+func (p *protocolBinding) foregroundChanged(startingChild bool) {
 	p.target = service.Target{}
-	p.pane.ForegroundChanged()
-	p.pendingWithdrawal = p.pane.Snapshot().Activity == status.Withdrawn
+	// Output can report the child's activity before inventory discovers its group.
+	// Entering that group refines attribution on the same uninterrupted pane stream.
+	if !startingChild {
+		p.pane.ForegroundChanged()
+		p.promptAfter = time.Time{}
+	}
+	activity := p.pane.Snapshot().Activity
+	p.pendingPublication = activity == status.Withdrawn || startingChild && activity != status.Unreported
 }
 
 func (s *Source) expireProtocols(now time.Time) {
@@ -55,7 +64,7 @@ func (p *protocolBinding) resetStream(previous, next Scope, dead bool) {
 
 	if next.Connection != "" && next.Connection == previous.Connection && next.Root == previous.Root &&
 		next.Foreground != previous.Foreground {
-		p.foregroundChanged()
+		p.foregroundChanged(previous.Foreground == previous.Root)
 		return
 	}
 	p.reset()
@@ -73,7 +82,7 @@ func reconcileProtocol(previous, next sourcePane) *protocolBinding {
 		continuous := previous.valid && next.valid && previous.facts.Root == next.facts.Root &&
 			next.facts.Foreground.Identity() != "" && previous.facts.Foreground.Identity() != ""
 		if continuous {
-			p.foregroundChanged()
+			p.foregroundChanged(previous.facts.Foreground == previous.facts.Root && next.facts.Foreground != next.facts.Root)
 		} else {
 			p.reset()
 		}
@@ -114,12 +123,12 @@ func (s *Source) bindProtocol(row sourcePane) (bool, error) {
 		p.reset()
 	}
 	p.target = target
-	if !p.pendingWithdrawal {
+	if !p.pendingPublication {
 		return true, nil
 	}
 
-	p.pendingWithdrawal = false
-	return s.applyProtocol(p, status.Withdrawn)
+	p.pendingPublication = false
+	return s.applyProtocol(p, p.pane.Snapshot().Activity)
 }
 
 func (s *Source) protocolOutput(row sourcePane, data []byte) error {
@@ -130,12 +139,32 @@ func (s *Source) protocolOutput(row sourcePane, data []byte) error {
 
 	p := row.protocol
 	observation, publish := p.pane.Feed(data)
+	p.trackPrompt(publish)
 	if !publish {
 		return nil
 	}
 
 	_, err = s.applyProtocol(p, observation.Activity)
 	return err
+}
+
+func (p *protocolBinding) trackPrompt(reported bool) {
+	if reported || !p.pane.PromptPending() {
+		p.promptAfter = time.Time{}
+	}
+	if p.pane.PromptPending() && p.promptAfter.IsZero() {
+		p.promptAfter = time.Now()
+	}
+}
+
+func (p *protocolBinding) resolvePrompt(startedAt time.Time, atRoot bool) {
+	if p == nil || p.promptAfter.IsZero() || startedAt.Before(p.promptAfter) {
+		return
+	}
+	p.promptAfter = time.Time{}
+	if p.pane.ResolvePrompt(atRoot) {
+		p.pendingPublication = true
+	}
 }
 
 func (s *Source) applyProtocol(p *protocolBinding, activity status.State) (bool, error) {

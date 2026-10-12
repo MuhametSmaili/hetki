@@ -28,10 +28,14 @@ func TestPromptCleansActivityAndRetainsOutcomes(t *testing.T) {
 			pane := protocols.New(protocols.Options{ProgramStatus: true})
 			pane.Feed(report("state=" + tc.state))
 
-			observation, publish := pane.Feed(marker("A;cl=line"))
-			repeated, _ := pane.Feed(marker("A"))
+			_, publish := pane.Feed(marker("A;cl=line"))
+			pane.ResolvePrompt(true)
+			observation := pane.Snapshot()
+			pane.Feed(marker("A"))
+			pane.ResolvePrompt(true)
+			repeated := pane.Snapshot()
 
-			require.True(t, publish)
+			require.False(t, publish, "a marker requires native confirmation before clearing activity")
 			require.Equal(t, tc.want, observation.Activity)
 			require.Equal(t, tc.outcome, observation.Outcome)
 			require.Equal(t, observation, repeated)
