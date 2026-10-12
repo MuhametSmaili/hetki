@@ -214,7 +214,10 @@ func (s *Source) Reset(scope Scope) {
 	}
 
 	s.panes[scope.Pane] = row
-	s.bindProtocol(row)
+	if _, err := s.bindProtocol(row); err != nil {
+		s.failure = errors.Join(s.failure, err)
+		s.cancel()
+	}
 }
 
 // Output dispatches attributed bytes to the selected source. Protocol framing

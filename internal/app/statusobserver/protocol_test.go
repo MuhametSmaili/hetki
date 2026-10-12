@@ -205,7 +205,8 @@ func updateProtocolFacts(t *testing.T, s *Source, facts observe.Pane, selected S
 	s.panes[facts.ID] = row
 	s.validatedUntil = time.Now().Add(time.Minute)
 	if row.pane.Scope.Connection != "" {
-		s.bindProtocol(row)
+		_, err := s.bindProtocol(row)
+		require.NoError(t, err)
 	}
 	return row
 }
@@ -322,5 +323,5 @@ func TestScreenSelectionPreventsProtocolEvidenceAndRetirementClearsRecords(t *te
 	requireSourceState(t, s, row.pane.Ref, status.Unknown)
 	updateProtocolFacts(t, s, row.facts, Selection{}, true)
 	require.NoError(t, s.Output(scope, []byte("text")))
-	requireSourceState(t, s, row.pane.Ref, status.Unknown)
+	requireSourceState(t, s, row.pane.Ref, status.Unreported)
 }

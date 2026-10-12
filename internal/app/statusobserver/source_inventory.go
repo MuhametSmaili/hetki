@@ -72,11 +72,10 @@ func (s *Source) prepare(inventory observe.Inventory) error {
 	s.panes = rows
 	s.locations = slices.Collect(inventory.Locations())
 	s.validatedUntil = inventory.StartedAt().Add(sourceValidation)
-	for _, row := range rows {
-		if row.pane.Scope.Connection != "" {
-			s.bindProtocol(row)
-		}
+	if err := s.bindProtocols(); err != nil {
+		return err
 	}
+
 	s.nativeRevision = inventory.Revision()
 	return nil
 }
@@ -103,6 +102,11 @@ func (s *Source) reconcilePane(previous sourcePane, facts observe.Pane, selected
 			ID:         facts.ID,
 			Generation: s.epoch + ":" + strconv.FormatUint(s.generation, 10),
 		}
+	}
+
+	// Missing native facts cannot establish that this pane's profile stopped matching.
+	if !valid && ref == previous.pane.Ref {
+		selected = previous.selection
 	}
 
 	row := sourcePane{

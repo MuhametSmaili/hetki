@@ -121,6 +121,31 @@ func TestScreenClaimDoesNotFallBackToProtocol(t *testing.T) {
 	require.Equal(t, status.Unknown, snapshot.At(pane.Ref, time.Now()))
 }
 
+func TestProfileRemovalReleasesClaimAndRejectsOldEvidence(t *testing.T) {
+	for _, source := range []statusservice.Source{statusservice.Screen, statusservice.Protocol} {
+		t.Run(string(source), func(t *testing.T) {
+			pane := fixturePane(source)
+			service := fixtureService(t, pane)
+			old := targetFor(t, service, pane, source)
+			require.NoError(t, service.Apply(old, 1, status.Value{State: status.Unknown}))
+			pane.Profile = statusservice.Profile{}
+
+			require.NoError(t, service.UpdateInventory(inventory(2, pane)))
+			require.NoError(t, service.UpdateInventory(inventory(3, pane)))
+			snapshot, err := service.ReadStatus(t.Context())
+
+			require.NoError(t, err)
+			require.Equal(t, status.Unreported, snapshot.At(pane.Ref, time.Now()))
+			require.ErrorIs(t, service.Apply(old, 2, status.Value{State: status.Unknown}), statusservice.ErrStale)
+			fresh := targetFor(t, service, pane, statusservice.Protocol)
+			require.NoError(t, service.Apply(fresh, 1, status.Value{State: status.Blocked}))
+			snapshot, err = service.ReadStatus(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, status.Blocked, snapshot.At(pane.Ref, time.Now()))
+		})
+	}
+}
+
 func TestChangedAndRestoredScopeRejectsOldCapture(t *testing.T) {
 	cases := []struct {
 		name   string

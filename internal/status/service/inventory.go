@@ -102,7 +102,8 @@ func (s *Service) reconcile(previous record, pane Pane, continuous bool) record 
 	row.generation = s.generation
 	row.sequence = 0
 	row.value = status.Value{}
-	if pane.Profile.Source != "" || previous.pane.Ref == pane.Ref && previous.value.State != status.Unreported {
+	sameClaim := previous.pane.Ref == pane.Ref && previous.pane.Profile == pane.Profile
+	if pane.Profile.Source != "" || sameClaim && previous.value.State != status.Unreported {
 		row.value.State = status.Unknown
 	}
 
