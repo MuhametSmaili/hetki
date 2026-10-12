@@ -22,6 +22,7 @@ type Location struct {
 type View struct {
 	Values    status.Snapshot
 	Locations []Location
+	Cursor    Cursor
 }
 
 func (v View) validate(server string) error {
@@ -51,11 +52,18 @@ func (c *Client) ReadView(ctx context.Context) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
+	return c.decodeView(row)
+}
+
+func (c *Client) decodeView(row reply) (View, error) {
 	values, err := row.snapshot()
 	if err != nil {
 		return View{}, err
 	}
 	view := View{Values: values, Locations: row.Locations}
+	if row.Revision != 0 {
+		view.Cursor = Cursor{Epoch: row.Epoch, Revision: row.Revision}
+	}
 	if err := view.validate(c.server); err != nil {
 		return View{}, err
 	}
@@ -73,13 +81,17 @@ func (d *daemon) readView(ctx context.Context, row *reply) error {
 	if err != nil {
 		return err
 	}
+	return d.encodeView(row, view)
+}
+
+func (d *daemon) encodeView(row *reply, view View) error {
 	if err := view.validate(d.binding.Server); err != nil {
 		return err
 	}
-	row.Entries, err = snapshotEntries(d.binding.Server, view.Values)
+	entries, err := snapshotEntries(d.binding.Server, view.Values)
 	if err != nil {
 		return err
 	}
-	row.Locations = view.Locations
+	row.Entries, row.Locations = entries, view.Locations
 	return nil
 }

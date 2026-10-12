@@ -33,6 +33,9 @@ func TestViewRoundTripPreservesLinkedOccurrences(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, values.Lookup(ref), view.Values.Lookup(ref))
 	require.Equal(t, locations, view.Locations)
+	watch, err := client.SupportsWatch(t.Context())
+	require.NoError(t, err)
+	require.False(t, watch, "read-only sources do not advertise change delivery")
 }
 
 func TestViewRejectsAmbiguousOrUnboundLocations(t *testing.T) {

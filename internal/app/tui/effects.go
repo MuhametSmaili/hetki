@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/status/daemon"
@@ -70,7 +71,11 @@ func (e *uiEffects) statusOptions() ui.StatusOptions {
 	if e.reader == nil {
 		return ui.StatusOptions{}
 	}
-	return ui.StatusOptions{Bindings: e.statusBindings(), Read: e.readStatus}
+	options := ui.StatusOptions{Bindings: e.statusBindings(), Read: e.readStatus}
+	if _, ok := e.reader.(statusViewWatcher); ok {
+		options.ReadTimeout = daemon.WatchTimeout + time.Second
+	}
+	return options
 }
 
 func (e *uiEffects) statusBindings() ui.StatusBindings {
@@ -103,12 +108,21 @@ type statusViewReader interface {
 	ReadView(context.Context) (daemon.View, error)
 }
 
+type statusViewWatcher interface {
+	statusViewReader
+	WatchView(context.Context) (daemon.View, error)
+}
+
 func (e *uiEffects) readView(ctx context.Context, reader statusViewReader, previous status.Snapshot) ui.StatusUpdate {
-	view, err := reader.ReadView(ctx)
+	read := reader.ReadView
+	if watcher, ok := reader.(statusViewWatcher); ok {
+		read = watcher.WatchView
+	}
+	view, err := read(ctx)
 	if err != nil || ctx.Err() != nil {
 		return ui.StatusUpdate{Values: previous.Invalidate(), Err: statusReadError(ctx, err)}
 	}
-	update := ui.StatusUpdate{Values: view.Values, Bindings: make(ui.StatusBindings)}
+	update := ui.StatusUpdate{Values: view.Values, Bindings: make(ui.StatusBindings), Watching: view.Cursor.Revision != 0}
 	if driver, ok := e.driver.(interface {
 		bindStatusView(daemon.View) ui.StatusBindings
 	}); ok {

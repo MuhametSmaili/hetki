@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/MSmaili/hetki/internal/status"
@@ -161,6 +162,40 @@ func TestStatusPollingStopsOnQuit(t *testing.T) {
 
 	require.Nil(t, read)
 	require.Nil(t, poll)
+}
+
+func TestWatchReadBudgetAndRetryCadence(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		watching bool
+		err      error
+		delay    time.Duration
+	}{
+		{name: "watch rearms immediately", watching: true},
+		{name: "older daemon keeps polling", delay: statusPollInterval},
+		{name: "watch failure backs off", watching: true, err: errors.New("offline"), delay: statusPollInterval},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				m := newModel(viewSnapshot(), nil)
+				m.paneStatus.options.ReadTimeout = 23 * time.Second
+				m.paneStatus.options.Read = func(ctx context.Context, previous status.Snapshot) StatusUpdate {
+					deadline, ok := ctx.Deadline()
+					require.True(t, ok)
+					require.Equal(t, 23*time.Second, time.Until(deadline))
+					return StatusUpdate{Values: previous, Watching: tc.watching, Err: tc.err}
+				}
+
+				next, read := m.readPaneStatus()
+				_, retry := next.(model).handleStatusResult(read().(statusResultMsg))
+				start := time.Now()
+				message := retry()
+
+				require.IsType(t, statusPollMsg{}, message)
+				require.Equal(t, tc.delay, time.Since(start))
+			})
+		})
+	}
 }
 
 func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {

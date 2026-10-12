@@ -29,6 +29,8 @@ type Service struct {
 	snapshot   status.Snapshot
 	dirty      bool
 	closed     bool
+	version    uint64
+	changes    chan struct{}
 }
 
 type record struct {
@@ -43,7 +45,11 @@ func New(server string) (*Service, error) {
 		return nil, fmt.Errorf("status service requires a bounded server identity")
 	}
 
-	return &Service{server: strings.Clone(server)}, nil
+	return &Service{
+		server:  strings.Clone(server),
+		version: 1,
+		changes: make(chan struct{}),
+	}, nil
 }
 
 // ReadStatus performs no collection. Unchanged reads share an immutable snapshot;
@@ -102,15 +108,38 @@ func earlierDeadline(evidence, inventory time.Time) time.Time {
 }
 
 func (s *Service) changed() {
+	s.invalidateSnapshot()
+	s.version++
+	close(s.changes)
+	s.changes = make(chan struct{})
+}
+
+func (s *Service) invalidateSnapshot() {
 	s.snapshot = status.Snapshot{}
 	s.dirty = true
+}
+
+// Changes returns an atomic revision and broadcast signal. Inventory renewals
+// wake readers to refresh deadlines; identical reports and capture-deadline-only
+// extensions do not. Callers must read again after wakeup, not replay events.
+func (s *Service) Changes() (uint64, <-chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.version, s.changes
 }
 
 func (s *Service) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.closed {
+		return nil
+	}
+
 	s.closed = true
+	s.version++
+	close(s.changes)
 	s.panes = nil
 	s.snapshot = status.Snapshot{}
 	return nil

@@ -299,7 +299,7 @@ func TestConcurrentRequestsAreBoundedAndSlotsRecover(t *testing.T) {
 			_ = conn.Close()
 		})
 		connections = append(connections, conn)
-		require.NoError(t, writeFrame(conn, maxRequestBytes, request{protocolVersion, c.server, "snapshot"}))
+		require.NoError(t, writeFrame(conn, maxRequestBytes, request{Version: protocolVersion, Server: c.server, Action: "snapshot"}))
 		receive(t, reading)
 	}
 

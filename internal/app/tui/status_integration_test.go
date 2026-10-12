@@ -40,6 +40,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
 		require.NotNil(t, options.Read)
 		idle := awaitPickerStatus(t, ctx, options, status.Idle)
+		require.True(t, idle.Watching, "native daemon must use change delivery")
 		require.Len(t, idle.Bindings, 2, "linked window occurrences share one pane")
 		before := firstPaneRef(t, idle.Values)
 		_, err := dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})

@@ -10,11 +10,12 @@ import (
 const maxClients = 16
 
 type daemon struct {
-	binding Binding
-	source  Source
-	cancel  context.CancelFunc
-	info    Info
-	logs    *daemonLog
+	binding  Binding
+	source   Source
+	cancel   context.CancelFunc
+	info     Info
+	logs     *daemonLog
+	watchers chan struct{}
 }
 
 func (d *daemon) run(ctx context.Context, listener *net.UnixListener) error {

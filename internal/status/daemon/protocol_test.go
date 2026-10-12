@@ -81,8 +81,8 @@ func TestDaemonRejectsWrongVersionAndServer(t *testing.T) {
 	c := fixtureClient(t, "compatible")
 	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
 	for _, req := range []request{
-		{protocolVersion + 1, c.server, "snapshot"},
-		{protocolVersion, "another-server", "snapshot"},
+		{Version: protocolVersion + 1, Server: c.server, Action: "snapshot"},
+		{Version: protocolVersion, Server: "another-server", Action: "snapshot"},
 	} {
 		conn, err := net.Dial("unix", c.path)
 		require.NoError(t, err)
@@ -128,7 +128,7 @@ func TestSnapshotTransportRejectsForeignServer(t *testing.T) {
 
 func FuzzReadFrame(f *testing.F) {
 	var seed bytes.Buffer
-	_ = writeFrame(&seed, maxRequestBytes, request{protocolVersion, "server", "ping"})
+	_ = writeFrame(&seed, maxRequestBytes, request{Version: protocolVersion, Server: "server", Action: "ping"})
 	f.Add(seed.Bytes())
 	f.Add([]byte{255, 255, 255, 255})
 

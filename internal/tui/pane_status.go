@@ -21,6 +21,9 @@ type StatusBindings map[list.ItemID][]status.PaneRef
 type StatusOptions struct {
 	Bindings StatusBindings
 	Read     func(context.Context, status.Snapshot) StatusUpdate
+
+	// ReadTimeout bounds blocking change reads; zero uses the normal poll budget.
+	ReadTimeout time.Duration
 }
 
 // StatusUpdate replaces cached values and, when non-nil, their row bindings.
@@ -29,6 +32,9 @@ type StatusUpdate struct {
 	Values   status.Snapshot
 	Bindings StatusBindings
 	Err      error
+
+	// Watching means the next read waits for change rather than polling immediately.
+	Watching bool
 }
 
 func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time.Time) status.State {
@@ -73,6 +79,7 @@ type statusResultMsg struct {
 	bindings   StatusBindings
 	generation uint64
 	err        error
+	watching   bool
 }
 type statusFrameMsg struct{ generation uint64 }
 
@@ -90,11 +97,16 @@ func (m model) readPaneStatus() (tea.Model, tea.Cmd) {
 	m.paneStatus.reading = true
 	read, previous, parent := m.paneStatus.options.Read, m.paneStatus.values, m.ctx
 	generation := m.paneStatus.bindingGeneration
+	timeout := m.paneStatus.options.ReadTimeout
+	if timeout <= 0 {
+		timeout = statusReadTimeout
+	}
+
 	return m, func() tea.Msg {
-		ctx, cancel := context.WithTimeout(parent, statusReadTimeout)
+		ctx, cancel := context.WithTimeout(parent, timeout)
 		defer cancel()
 		update := read(ctx, previous)
-		return statusResultMsg{values: update.Values, bindings: update.Bindings, generation: generation, err: update.Err}
+		return statusResultMsg{values: update.Values, bindings: update.Bindings, generation: generation, err: update.Err, watching: update.Watching}
 	}
 }
 
@@ -112,6 +124,10 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 		m.paneStatus.options.Bindings = msg.bindings
 	}
 	m.applyScope(m.items.Query(), time.Now())
+	if msg.watching && msg.err == nil {
+		return m, statusPoll(0)
+	}
+
 	return m, statusPoll(statusPollInterval)
 }
 

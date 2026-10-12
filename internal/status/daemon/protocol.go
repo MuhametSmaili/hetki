@@ -29,9 +29,10 @@ var (
 )
 
 type request struct {
-	Version int    `json:"version"`
-	Server  string `json:"server"`
-	Action  string `json:"action"`
+	Version int     `json:"version"`
+	Server  string  `json:"server"`
+	Action  string  `json:"action"`
+	After   *Cursor `json:"after,omitempty"`
 }
 
 type reply struct {
@@ -42,6 +43,8 @@ type reply struct {
 	Entries   []entry    `json:"entries,omitempty"`
 	Locations []Location `json:"locations,omitempty"`
 	Error     string     `json:"error,omitempty"`
+	Revision  uint64     `json:"revision,omitempty"`
+	Watch     bool       `json:"watch,omitempty"`
 }
 
 type entry struct {

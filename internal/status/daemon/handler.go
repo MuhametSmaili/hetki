@@ -6,13 +6,29 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 )
 
 func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 	defer d.logs.recordPanic()
 	defer conn.Close()
 
-	ctx, cancel := context.WithTimeout(parent, requestTimeout)
+	stopParent := context.AfterFunc(parent, func() {
+		_ = conn.Close()
+	})
+	defer stopParent()
+
+	req, ok := d.readRequest(parent, conn)
+	if !ok {
+		return
+	}
+
+	timeout := requestTimeout
+	if req.Action == "watch" {
+		timeout = WatchTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	deadline, _ := ctx.Deadline()
@@ -21,19 +37,6 @@ func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 		_ = conn.Close()
 	})
 	defer stop()
-
-	var req request
-	if err := readFrame(conn, maxRequestBytes, &req); err != nil {
-		if ctx.Err() == nil && !errors.Is(err, io.EOF) {
-			d.logs.repeatedFailure("request_read_failed", err)
-		}
-		return
-	}
-
-	if req.Version != protocolVersion || req.Server != d.binding.Server {
-		d.logs.repeatedFailure("request_rejected", fmt.Errorf("version or server identity mismatch"))
-		return
-	}
 
 	disconnected := make(chan struct{})
 	go func() {
@@ -52,7 +55,7 @@ func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 		return
 	}
 
-	row, ok := d.respond(ctx, req.Action)
+	row, ok := d.respond(ctx, req)
 	if !ok || ctx.Err() != nil {
 		return
 	}
@@ -74,6 +77,29 @@ func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 	}
 }
 
+func (d *daemon) readRequest(ctx context.Context, conn *net.UnixConn) (request, bool) {
+	_ = conn.SetDeadline(time.Now().Add(requestTimeout))
+	var req request
+	if err := readFrame(conn, maxRequestBytes, &req); err != nil {
+		if ctx.Err() == nil && !errors.Is(err, io.EOF) {
+			d.logs.repeatedFailure("request_read_failed", err)
+		}
+		return request{}, false
+	}
+
+	if req.Version != protocolVersion || req.Server != d.binding.Server {
+		d.logs.repeatedFailure("request_rejected", fmt.Errorf("version or server identity mismatch"))
+		return request{}, false
+	}
+
+	if req.After != nil && (req.Action != "watch" || len(req.After.Epoch) > maxIdentityBytes) {
+		d.logs.repeatedFailure("request_rejected", fmt.Errorf("invalid watch cursor"))
+		return request{}, false
+	}
+
+	return req, true
+}
+
 func (d *daemon) checkLifetime(ctx context.Context) bool {
 	if bindingAlive(ctx, d.binding) {
 		return true
@@ -87,7 +113,7 @@ func (d *daemon) checkLifetime(ctx context.Context) bool {
 	return false
 }
 
-func (d *daemon) respond(ctx context.Context, action string) (reply, bool) {
+func (d *daemon) respond(ctx context.Context, req request) (reply, bool) {
 	row := reply{
 		Version: protocolVersion,
 		Server:  d.binding.Server,
@@ -95,10 +121,12 @@ func (d *daemon) respond(ctx context.Context, action string) (reply, bool) {
 		Epoch:   d.info.Epoch,
 	}
 
-	switch action {
+	switch req.Action {
+	case "capabilities":
+		_, row.Watch = d.source.(viewWatcher)
 	case "ping", "stop":
-	case "view":
-		if err := d.readView(ctx, &row); err != nil {
+	case "view", "watch":
+		if err := d.requestView(ctx, req, &row); err != nil {
 			if ctx.Err() == nil {
 				d.logs.repeatedFailure("source_read_failed", err)
 			}
@@ -123,4 +151,12 @@ func (d *daemon) respond(ctx context.Context, action string) (reply, bool) {
 	}
 
 	return row, true
+}
+
+func (d *daemon) requestView(ctx context.Context, req request, row *reply) error {
+	if req.Action == "watch" {
+		return d.readWatchedView(ctx, req.After, row)
+	}
+
+	return d.readView(ctx, row)
 }

@@ -112,10 +112,11 @@ func serveLocked(ctx context.Context, path string, binding Binding, start Source
 	}
 
 	d := daemon{
-		binding: binding,
-		source:  source,
-		cancel:  cancel,
-		logs:    logs,
+		binding:  binding,
+		source:   source,
+		cancel:   cancel,
+		logs:     logs,
+		watchers: make(chan struct{}, maxWatchers),
 		info: Info{
 			PID:   os.Getpid(),
 			Epoch: hex.EncodeToString(epoch[:]),

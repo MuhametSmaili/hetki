@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/MSmaili/hetki/internal/status"
 )
@@ -30,7 +31,11 @@ func Connect(server string) (*Client, error) {
 }
 
 func (c *Client) call(ctx context.Context, action string) (reply, error) {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	return c.callRequest(ctx, request{Version: protocolVersion, Server: c.server, Action: action}, requestTimeout)
+}
+
+func (c *Client) callRequest(ctx context.Context, req request, timeout time.Duration) (reply, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	if err := ctx.Err(); err != nil {
@@ -59,7 +64,7 @@ func (c *Client) call(ctx context.Context, action string) (reply, error) {
 	})
 	defer stop()
 
-	result, err := c.exchange(conn, action)
+	result, err := c.exchangeRequest(conn, req)
 	if ctx.Err() != nil {
 		return reply{}, ctx.Err()
 	}
@@ -68,7 +73,11 @@ func (c *Client) call(ctx context.Context, action string) (reply, error) {
 }
 
 func (c *Client) exchange(conn net.Conn, action string) (reply, error) {
-	if err := writeFrame(conn, maxRequestBytes, request{protocolVersion, c.server, action}); err != nil {
+	return c.exchangeRequest(conn, request{Version: protocolVersion, Server: c.server, Action: action})
+}
+
+func (c *Client) exchangeRequest(conn net.Conn, req request) (reply, error) {
+	if err := writeFrame(conn, maxRequestBytes, req); err != nil {
 		return reply{}, err
 	}
 

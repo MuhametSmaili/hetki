@@ -72,7 +72,11 @@ func (s *Service) Apply(target Target, sequence uint64, value status.Value) erro
 
 	if row.value != value {
 		value.State = status.State(strings.Clone(string(value.State)))
-		s.changed()
+		if row.value.State != value.State || row.value.At(now) != value.At(now) || value.ValidUntil.Before(row.value.ValidUntil) {
+			s.changed()
+		} else {
+			s.invalidateSnapshot()
+		}
 		row.value = value
 	}
 	row.sequence = sequence

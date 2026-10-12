@@ -32,11 +32,19 @@ type daemonReader struct {
 	once   sync.Once
 	client *daemon.Client
 	err    error
+	watch  bool
+	mu     sync.Mutex
+	cursor daemon.Cursor
 }
 
 func (r *daemonReader) connect(ctx context.Context) error {
 	r.once.Do(func() {
 		r.client, r.err = statusobserver.EnsureDaemon(ctx, r.server, "")
+		if r.err != nil {
+			return
+		}
+
+		r.watch, r.err = r.client.SupportsWatch(ctx)
 	})
 	return r.err
 }
@@ -53,6 +61,32 @@ func (r *daemonReader) ReadView(ctx context.Context) (daemon.View, error) {
 		return daemon.View{}, err
 	}
 	return r.client.ReadView(ctx)
+}
+
+// WatchView retains the last delivered cursor. Old development daemons that do
+// not advertise watches keep using ordinary reads and the UI's polling cadence.
+func (r *daemonReader) WatchView(ctx context.Context) (daemon.View, error) {
+	if err := r.connect(ctx); err != nil {
+		return daemon.View{}, err
+	}
+
+	if !r.watch {
+		return r.client.ReadView(ctx)
+	}
+
+	r.mu.Lock()
+	after := r.cursor
+	r.mu.Unlock()
+
+	view, err := r.client.WatchView(ctx, after)
+
+	r.mu.Lock()
+	if r.cursor == after {
+		r.cursor = view.Cursor
+	}
+	r.mu.Unlock()
+
+	return view, err
 }
 
 func (a *LiveAdapter) bindStatusView(view daemon.View) ui.StatusBindings {

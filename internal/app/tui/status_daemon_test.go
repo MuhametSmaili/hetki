@@ -129,3 +129,32 @@ func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {
 	require.Nil(t, reader)
 	require.ErrorIs(t, statusErr, observe.ErrServerChanged)
 }
+
+type blockingViewWatcher struct {
+	failingViewReader
+	started chan struct{}
+}
+
+func (r blockingViewWatcher) WatchView(ctx context.Context) (daemon.View, error) {
+	close(r.started)
+	<-ctx.Done()
+	return daemon.View{}, ctx.Err()
+}
+
+func TestPickerShutdownCancelsAndJoinsOutstandingWatch(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	reader := blockingViewWatcher{started: make(chan struct{})}
+	effects := uiEffects{ctx: ctx, cancel: cancel, reader: reader}
+	options := effects.statusOptions()
+	finished := make(chan ui.StatusUpdate, 1)
+	go func() { finished <- options.Read(ctx, status.Snapshot{}) }()
+	awaitChannel(t, reader.started)
+
+	effects.stop()
+	update := awaitChannel(t, finished)
+
+	require.Equal(t, daemon.WatchTimeout+time.Second, options.ReadTimeout)
+	require.NoError(t, update.Err, "picker cancellation stays quiet")
+	require.False(t, update.Watching)
+}
