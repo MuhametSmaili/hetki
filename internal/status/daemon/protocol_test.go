@@ -105,6 +105,8 @@ func TestSnapshotRejectsDuplicateInvalidAndOversizedEntries(t *testing.T) {
 	for _, entries := range [][]entry{
 		{valid, valid},
 		{{ID: "%1", Generation: "birth", State: "done"}},
+		{{ID: "%1", Generation: "birth", State: status.Unknown, Outcome: "future-result"}},
+		{{ID: "%1", Generation: "birth", State: status.Working, Outcome: status.Completed}},
 		{{ID: "%1", State: status.Unknown}},
 		{{ID: strings.Repeat("x", maxIdentityBytes+1), Generation: "birth", State: status.Idle}},
 		make([]entry, status.MaxPanes+1),
@@ -124,6 +126,28 @@ func TestSnapshotTransportRejectsForeignServer(t *testing.T) {
 	_, err = snapshotEntries("server", snapshot)
 
 	require.ErrorIs(t, err, ErrIdentity)
+}
+
+func TestOutcomeSurvivesSocketTransport(t *testing.T) {
+	c := fixtureClient(t, "outcomes")
+	deadline := time.Now().Add(time.Minute)
+	values := make(map[status.PaneRef]status.Value)
+	for _, outcome := range []status.Outcome{status.Completed, status.Failed} {
+		pane := status.PaneRef{Server: c.server, ID: string(outcome), Generation: "birth"}
+		values[pane] = status.Value{State: status.Unknown, Outcome: outcome, ValidUntil: deadline}
+	}
+	snapshot, err := status.NewSnapshot(values)
+	require.NoError(t, err)
+	startFixture(t, c, liveBinding(c.server), staticSource(snapshot))
+
+	got, err := c.ReadStatus(t.Context())
+
+	require.NoError(t, err)
+	for pane, value := range values {
+		require.Equal(t, value.Outcome, got.Lookup(pane).OutcomeAt(time.Now()))
+		require.Equal(t, status.Unknown, got.At(pane, time.Now()))
+		require.True(t, deadline.Equal(got.Lookup(pane).ValidUntil))
+	}
 }
 
 func FuzzReadFrame(f *testing.F) {

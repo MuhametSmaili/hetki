@@ -27,6 +27,41 @@ func TestValueFreshness(t *testing.T) {
 	require.Equal(t, status.Unknown, (status.Value{State: "future-state", ValidUntil: deadline}).At(deadline.Add(-time.Hour)))
 }
 
+func TestOutcomeFreshnessDoesNotImplyIdle(t *testing.T) {
+	deadline := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	for _, outcome := range []status.Outcome{status.Completed, status.Failed} {
+		t.Run(string(outcome), func(t *testing.T) {
+			value := status.Value{State: status.Unknown, Outcome: outcome, ValidUntil: deadline}
+			pane := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
+			snapshot, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: value})
+			require.NoError(t, err)
+
+			require.Equal(t, status.Unknown, value.At(deadline.Add(-time.Second)))
+			require.Equal(t, outcome, value.OutcomeAt(deadline.Add(-time.Second)))
+			require.Equal(t, status.NoOutcome, value.OutcomeAt(deadline))
+			require.Equal(t, status.NoOutcome, snapshot.Invalidate().Lookup(pane).OutcomeAt(deadline.Add(-time.Second)))
+			value.ValidUntil = time.Time{}
+			require.Equal(t, status.NoOutcome, value.OutcomeAt(deadline))
+		})
+	}
+}
+
+func TestSnapshotRejectsInvalidOutcomeCombinations(t *testing.T) {
+	pane := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
+	for _, value := range []status.Value{
+		{State: status.Unknown, Outcome: "future-result"},
+		{State: status.Working, Outcome: status.Completed},
+		{State: status.Idle, Outcome: status.Completed},
+		{State: status.Withdrawn, Outcome: status.Failed},
+	} {
+		t.Run(string(value.State)+"/"+string(value.Outcome), func(t *testing.T) {
+			_, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: value})
+
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestSnapshotIdentityAndOwnership(t *testing.T) {
 	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 	pane := status.PaneRef{Server: "server-1", ID: "%1", Generation: "birth-1"}

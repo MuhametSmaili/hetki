@@ -11,20 +11,24 @@ import (
 
 var statusSpinnerFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-func statusIndicator(state status.State, now time.Time) (string, string) {
-	switch state {
+func statusIndicator(value status.Value, now time.Time) (string, string) {
+	switch value.State {
 	case status.Working:
 		frame := now.Nanosecond() / int(statusSpinnerPeriod)
 		return statusSpinnerFrames[frame], colorAccent
 	case status.Blocked:
-		if now.UnixMilli()/statusBlinkPeriod.Milliseconds()%2 != 0 {
-			return " ", colorBlocked
-		}
-		return "●", colorBlocked
+		return "?", colorBlocked
 	case status.Idle:
-		return "●", colorIdle
+		return "○", colorIdle
 	case status.Unknown:
-		return "●", colorMuted
+		switch value.Outcome {
+		case status.Completed:
+			return "✓", colorSuccess
+		case status.Failed:
+			return "×", colorError
+		default:
+			return "·", colorMuted
+		}
 	default:
 		return "", ""
 	}

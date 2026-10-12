@@ -34,8 +34,8 @@ func (m *model) applyScope(query string, now time.Time) {
 func (m model) trackedItems(now time.Time) map[list.ItemID]struct{} {
 	included := make(map[list.ItemID]struct{})
 	for id := range m.paneStatus.options.Bindings {
-		state := m.paneStatus.options.Bindings.StateAt(id, m.paneStatus.values, now)
-		if statusPriority(state) > 0 {
+		value := m.paneStatus.options.Bindings.ValueAt(id, m.paneStatus.values, now)
+		if statusPriority(value) > 0 {
 			included[id] = struct{}{}
 		}
 	}

@@ -83,7 +83,7 @@ func (s *Service) refreshSnapshot() error {
 		}
 
 		value := row.value
-		if value.State == status.Working || value.State == status.Blocked || value.State == status.Idle {
+		if value.State == status.Working || value.State == status.Blocked || value.State == status.Idle || value.Outcome != status.NoOutcome {
 			value.ValidUntil = earlierDeadline(value.ValidUntil, s.validUntil)
 		}
 		values[row.pane.Ref] = value

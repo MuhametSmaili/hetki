@@ -14,14 +14,14 @@ func marker(payload string) []byte { return []byte("\x1b]133;" + payload + "\a")
 func TestPromptCleansActivityAndRetainsOutcomes(t *testing.T) {
 	cases := []struct {
 		state   string
-		outcome protocols.Outcome
+		outcome status.Outcome
 		want    status.State
 	}{
-		{"idle", protocols.NoOutcome, status.Withdrawn},
-		{"working", protocols.NoOutcome, status.Withdrawn},
-		{"blocked", protocols.NoOutcome, status.Withdrawn},
-		{"done", protocols.Completed, status.Unknown},
-		{"error", protocols.Failed, status.Unknown},
+		{"idle", status.NoOutcome, status.Withdrawn},
+		{"working", status.NoOutcome, status.Withdrawn},
+		{"blocked", status.NoOutcome, status.Withdrawn},
+		{"done", status.Completed, status.Unknown},
+		{"error", status.Failed, status.Unknown},
 	}
 	for _, tc := range cases {
 		t.Run(tc.state, func(t *testing.T) {
@@ -83,7 +83,7 @@ func TestResetAndProcessExitHaveDifferentLifetimes(t *testing.T) {
 	pane.Reset()
 	afterGap := pane.Snapshot()
 
-	require.Equal(t, protocols.Completed, afterExit.Outcome)
+	require.Equal(t, status.Completed, afterExit.Outcome)
 	require.Equal(t, protocols.Shell{}, afterExit.Shell)
 	require.Equal(t, protocols.Observation{Activity: status.Unreported}, afterGap)
 }

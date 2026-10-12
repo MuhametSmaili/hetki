@@ -265,7 +265,7 @@ func TestProtocolOutcomeSurvivesConfirmedExitButNotRespawn(t *testing.T) {
 	s.Reset(Scope{Pane: facts.ID, Generation: 2})
 	observation := dead.protocol.pane.Snapshot()
 
-	require.Equal(t, protocols.Completed, observation.Outcome)
+	require.Equal(t, status.Completed, observation.Outcome)
 	requireSourceState(t, s, dead.pane.Ref, status.Unknown)
 	respawn := updateProtocolFacts(t, s, row.facts, Selection{}, true)
 	require.NotEqual(t, dead.pane.Ref, respawn.pane.Ref)
@@ -288,7 +288,7 @@ func TestProtocolForegroundHandoffRetainsOnlyOutcome(t *testing.T) {
 	require.NoError(t, s.Output(scope, []byte("text")))
 	observation := row.protocol.pane.Snapshot()
 
-	require.Equal(t, protocols.Completed, observation.Outcome)
+	require.Equal(t, status.Completed, observation.Outcome)
 	requireSourceState(t, s, row.pane.Ref, status.Unknown)
 }
 
@@ -308,7 +308,7 @@ func TestMissingProcessMetadataDoesNotProveExitOrReviveOutcome(t *testing.T) {
 	s.Reset(scope)
 	require.NoError(t, s.Output(scope, []byte("text")))
 
-	require.Equal(t, protocols.NoOutcome, outcome)
+	require.Equal(t, status.NoOutcome, outcome)
 	requireSourceState(t, s, row.pane.Ref, status.Unknown)
 }
 

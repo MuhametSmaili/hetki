@@ -143,27 +143,27 @@ func (p *Pane) Snapshot() Observation {
 	}
 }
 
-func (p *Pane) application() (status.State, Outcome) {
+func (p *Pane) application() (status.State, status.Outcome) {
 	state, found := p.program.Lookup("")
 	if !found {
 		if p.program.Observed() || p.withdrawn {
-			return status.Withdrawn, NoOutcome
+			return status.Withdrawn, status.NoOutcome
 		}
-		return status.Unreported, NoOutcome
+		return status.Unreported, status.NoOutcome
 	}
 
 	switch state {
 	case osc7501.Idle:
-		return status.Idle, NoOutcome
+		return status.Idle, status.NoOutcome
 	case osc7501.Working:
-		return status.Working, NoOutcome
+		return status.Working, status.NoOutcome
 	case osc7501.Blocked:
-		return status.Blocked, NoOutcome
+		return status.Blocked, status.NoOutcome
 	case osc7501.Done:
-		return status.Unknown, Completed
+		return status.Unknown, status.Completed
 	case osc7501.Error:
-		return status.Unknown, Failed
+		return status.Unknown, status.Failed
 	default:
-		return status.Unknown, NoOutcome
+		return status.Unknown, status.NoOutcome
 	}
 }

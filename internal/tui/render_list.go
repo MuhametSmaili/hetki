@@ -15,7 +15,7 @@ type rowProps struct {
 	Primary    string
 	Secondary  string
 	Trailing   string
-	Status     status.State
+	Status     status.Value
 	StatusTime time.Time
 	JumpLabel  string
 	Depth      int

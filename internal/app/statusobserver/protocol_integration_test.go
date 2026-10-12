@@ -60,7 +60,7 @@ func TestNativeProtocolReportsReachCacheAndSurviveAttachedExit(t *testing.T) {
 	source.mu.Unlock()
 
 	require.Equal(t, ref, row.pane.Ref)
-	require.Equal(t, protocols.Completed, observation.Outcome)
+	require.Equal(t, status.Completed, observation.Outcome)
 	requireSourceState(t, source, ref, status.Unknown)
 	_, err = runner.RunLimited(ctx, 4096, "respawn-pane", "-k", "-t", id, "stty -echo; exec cat")
 	require.NoError(t, err)

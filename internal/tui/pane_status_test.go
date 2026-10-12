@@ -75,7 +75,7 @@ func TestStatusFrameScheduling(t *testing.T) {
 		want      time.Time
 	}{
 		{"working animates", status.Working, time.Minute, false, now.Add(100 * time.Millisecond)},
-		{"blocked blinks", status.Blocked, time.Minute, false, now.Add(750 * time.Millisecond)},
+		{"blocked waits for expiry", status.Blocked, time.Minute, false, now.Add(time.Minute)},
 		{"idle waits for expiry", status.Idle, time.Minute, false, now.Add(time.Minute)},
 		{"unknown stays still", status.Unknown, time.Minute, false, time.Time{}},
 		{"withdrawn stays still", status.Withdrawn, time.Minute, false, time.Time{}},

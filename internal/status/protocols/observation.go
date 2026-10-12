@@ -5,15 +5,6 @@ import (
 	"github.com/MSmaili/hetki/internal/status/protocols/internal/osc133"
 )
 
-// Outcome is an explicit application result, separate from current activity.
-type Outcome uint8
-
-const (
-	NoOutcome Outcome = iota
-	Completed
-	Failed
-)
-
 // ShellPhase describes observed boundaries, not application activity.
 type ShellPhase uint8
 
@@ -38,7 +29,7 @@ type Shell struct {
 // projected; child records remain private. Outcomes do not imply idle activity.
 type Observation struct {
 	Activity status.State
-	Outcome  Outcome
+	Outcome  status.Outcome
 	Shell    Shell
 }
 

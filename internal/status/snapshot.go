@@ -24,10 +24,8 @@ func NewSnapshot(values map[PaneRef]Value) (Snapshot, error) {
 			return Snapshot{}, fmt.Errorf("status snapshot requires server, pane and generation")
 		}
 
-		switch value.State {
-		case Withdrawn, Unknown, Idle, Working, Blocked:
-		default:
-			return Snapshot{}, fmt.Errorf("invalid pane status %q", value.State)
+		if err := value.Validate(); err != nil {
+			return Snapshot{}, err
 		}
 	}
 

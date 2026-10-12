@@ -26,10 +26,7 @@ import (
 
 func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	b, client, run := pickerDaemonFixture(t)
-	executable := filepath.Join(t.TempDir(), "hetki")
-	build := exec.CommandContext(t.Context(), "go", "build", "-race", "-o", executable, "../../..")
-	output, err := build.CombinedOutput()
-	require.NoError(t, err, "%s", output)
+	executable := buildPickerExecutable(t)
 
 	runPickerPTY(t, executable, client)
 	first, err := client.Ping(t.Context())
@@ -39,16 +36,16 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	service := Service{Driver: adapter}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
 		require.NotNil(t, options.Read)
-		idle := awaitPickerStatus(t, ctx, options, status.Idle)
+		idle := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
 		require.True(t, idle.Watching, "native daemon must use change delivery")
 		require.Len(t, idle.Bindings, 2, "linked window occurrences share one pane")
 		before := firstPaneRef(t, idle.Values)
 		_, err := dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})
 		require.NoError(t, err)
-		flat := awaitPickerStatus(t, ctx, options, status.Idle)
+		flat := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
 		require.Contains(t, flat.Bindings, destinationItemID("$0", "@0", "%0"))
 		run("send-keys", "-t", "%0", "-l", "--", "\x1b[2J\x1b[HAPPROVAL\n")
-		awaitPickerStatus(t, ctx, options, status.Blocked)
+		awaitPickerValue(t, ctx, options, status.Value{State: status.Blocked}, nil)
 		run("respawn-pane", "-k", "-t", "%0", "stty -echo; printf 'READY\n'; exec cat")
 		require.Eventually(t, func() bool {
 			update := options.Read(ctx, status.Snapshot{})
@@ -68,6 +65,85 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	require.Equal(t, first, second)
 }
 
+func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
+	b, client, run := pickerDaemonFixture(t)
+	require.NoError(t, os.Remove(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hetki", "status.d", "cat.yaml")))
+	executable := buildPickerExecutable(t)
+	runPickerPTY(t, executable, client)
+	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return b, nil }, nil, nil)
+	adapter.projection = projectionTree
+	service := Service{Driver: adapter}
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
+		// Only the readiness probe repeats; every transition below is sent once.
+		ready := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, func() {
+			run("send-keys", "-t", "%0", "-l", "--", "\x1b]7501;state=idle\a\n")
+		})
+		require.Len(t, ready.Bindings, 2, "both linked occurrences must receive the report")
+
+		for _, tc := range []struct {
+			report string
+			want   status.Value
+		}{
+			{"working", status.Value{State: status.Working}},
+			{"done", status.Value{State: status.Unknown, Outcome: status.Completed}},
+			{"error", status.Value{State: status.Unknown, Outcome: status.Failed}},
+			{"working", status.Value{State: status.Working}},
+			{"clear", status.Value{}},
+		} {
+			run("send-keys", "-t", "%0", "-l", "--", "\x1b]7501;state="+tc.report+"\a\n")
+			awaitPickerValue(t, ctx, options, tc.want, nil)
+		}
+		return "", nil
+	}
+
+	require.NoError(t, service.Run(t.Context()))
+}
+
+func awaitPickerValue(t *testing.T, ctx context.Context, options ui.StatusOptions, want status.Value, probe func()) ui.StatusUpdate {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	var lastErr error
+	var lastGood ui.StatusUpdate
+	var observed map[list.ItemID]status.Value
+	for {
+		if probe != nil {
+			probe()
+		}
+		readCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		update := options.Read(readCtx, status.Snapshot{})
+		cancel()
+		if update.Err != nil {
+			lastErr = update.Err
+		} else {
+			lastGood = update
+			observed = pickerRowValues(update, time.Now())
+			matched := len(observed) > 0
+			for _, value := range observed {
+				matched = matched && value == want
+			}
+			if matched {
+				return update
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for picker value %+v: %v; last read error: %v; observed: %+v; bindings: %+v", want, ctx.Err(), lastErr, observed, lastGood.Bindings)
+		case <-ticker.C:
+		}
+	}
+}
+
+func pickerRowValues(update ui.StatusUpdate, now time.Time) map[list.ItemID]status.Value {
+	values := make(map[list.ItemID]status.Value, len(update.Bindings))
+	for id := range update.Bindings {
+		values[id] = update.Bindings.ValueAt(id, update.Values, now)
+	}
+	return values
+}
+
 func firstPaneRef(t *testing.T, values status.Snapshot) status.PaneRef {
 	t.Helper()
 	for ref := range values.All() {
@@ -77,22 +153,13 @@ func firstPaneRef(t *testing.T, values status.Snapshot) status.PaneRef {
 	return status.PaneRef{}
 }
 
-func awaitPickerStatus(t *testing.T, ctx context.Context, options ui.StatusOptions, want status.State) ui.StatusUpdate {
+func buildPickerExecutable(t *testing.T) string {
 	t.Helper()
-	var update ui.StatusUpdate
-	require.Eventually(t, func() bool {
-		update = options.Read(ctx, status.Snapshot{})
-		if len(update.Bindings) == 0 {
-			return false
-		}
-		for id := range update.Bindings {
-			if update.Bindings.StateAt(id, update.Values, time.Now()) != want {
-				return false
-			}
-		}
-		return true
-	}, 5*time.Second, 20*time.Millisecond)
-	return update
+	executable := filepath.Join(t.TempDir(), "hetki")
+	build := exec.CommandContext(t.Context(), "go", "build", "-race", "-o", executable, "../../..")
+	output, err := build.CombinedOutput()
+	require.NoError(t, err, "%s", output)
+	return executable
 }
 
 func pickerDaemonFixture(t testing.TB) (*tmux.TmuxBackend, *daemon.Client, func(...string) string) {

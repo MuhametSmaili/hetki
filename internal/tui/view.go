@@ -56,7 +56,7 @@ func (m model) viewList(layout layoutMetrics) string {
 		visibleRows = append(visibleRows, rowProps{
 			ItemID: string(row.Item.ID), Primary: row.Item.Primary, Secondary: row.Item.Secondary,
 			Trailing:   row.Item.Trailing,
-			Status:     m.paneStatus.options.Bindings.StateAt(row.Item.ID, m.paneStatus.values, now),
+			Status:     m.paneStatus.options.Bindings.ValueAt(row.Item.ID, m.paneStatus.values, now),
 			StatusTime: now,
 			JumpLabel:  m.jumpLabel(row.Item.ID),
 			Depth:      row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,

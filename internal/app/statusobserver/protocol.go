@@ -40,8 +40,8 @@ func (p *protocolBinding) foregroundChanged(startingChild bool) {
 		p.pane.ForegroundChanged()
 		p.promptAfter = time.Time{}
 	}
-	activity := p.pane.Snapshot().Activity
-	p.pendingPublication = activity == status.Withdrawn || startingChild && activity != status.Unreported
+	observation := p.pane.Snapshot()
+	p.pendingPublication = observation.Activity == status.Withdrawn || observation.Outcome != status.NoOutcome || startingChild && observation.Activity != status.Unreported
 }
 
 func (s *Source) expireProtocols(now time.Time) {
@@ -128,7 +128,7 @@ func (s *Source) bindProtocol(row sourcePane) (bool, error) {
 	}
 
 	p.pendingPublication = false
-	return s.applyProtocol(p, p.pane.Snapshot().Activity)
+	return s.applyProtocol(p, p.pane.Snapshot())
 }
 
 func (s *Source) protocolOutput(row sourcePane, data []byte) error {
@@ -144,7 +144,7 @@ func (s *Source) protocolOutput(row sourcePane, data []byte) error {
 		return nil
 	}
 
-	_, err = s.applyProtocol(p, observation.Activity)
+	_, err = s.applyProtocol(p, observation)
 	return err
 }
 
@@ -167,9 +167,9 @@ func (p *protocolBinding) resolvePrompt(startedAt time.Time, atRoot bool) {
 	}
 }
 
-func (s *Source) applyProtocol(p *protocolBinding, activity status.State) (bool, error) {
+func (s *Source) applyProtocol(p *protocolBinding, observation protocols.Observation) (bool, error) {
 	s.protocolSequence++
-	err := s.core.Apply(p.target, s.protocolSequence, status.Value{State: activity})
+	err := s.core.Apply(p.target, s.protocolSequence, status.Value{State: observation.Activity, Outcome: observation.Outcome})
 	if errors.Is(err, service.ErrStale) {
 		p.reset()
 		return false, nil

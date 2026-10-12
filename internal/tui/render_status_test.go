@@ -20,14 +20,14 @@ func TestStatusIndicatorFrames(t *testing.T) {
 		want   []string
 	}{
 		{"spinner wraps after ten frames", status.Working, 100 * time.Millisecond, []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "⠋"}},
-		{"blocked alternates with a blank", status.Blocked, 750 * time.Millisecond, []string{"●", " ", "●"}},
+		{"blocked stays visible", status.Blocked, 750 * time.Millisecond, []string{"?", "?", "?"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 			frames := make([]string, len(test.want))
 
 			for i := range frames {
-				frames[i], _ = statusIndicator(test.state, now.Add(time.Duration(i)*test.period))
+				frames[i], _ = statusIndicator(status.Value{State: test.state}, now.Add(time.Duration(i)*test.period))
 			}
 
 			require.Equal(t, test.want, frames)
@@ -43,21 +43,24 @@ func TestStatusRenderingPreservesSelectionAndTrailingContent(t *testing.T) {
 		offset  time.Duration
 		glyph   string
 		color   string
+		outcome status.Outcome
 	}{
-		{"working without command", status.Working, "", 0, "⠋", colorAccent},
-		{"blocked without command", status.Blocked, "", 0, "●", colorBlocked},
-		{"idle without command", status.Idle, "", 0, "●", colorIdle},
-		{"unknown without command", status.Unknown, "", 0, "●", colorMuted},
-		{"working with command", status.Working, "opencode", 0, "⠋", colorAccent},
-		{"blink off without command", status.Blocked, "", 750 * time.Millisecond, " ", colorBlocked},
-		{"blink off with command", status.Blocked, "opencode", 750 * time.Millisecond, " ", colorBlocked},
+		{"working without command", status.Working, "", 0, "⠋", colorAccent, status.NoOutcome},
+		{"blocked without command", status.Blocked, "", 0, "?", colorBlocked, status.NoOutcome},
+		{"idle without command", status.Idle, "", 0, "○", colorIdle, status.NoOutcome},
+		{"unknown without command", status.Unknown, "", 0, "·", colorMuted, status.NoOutcome},
+		{"working with command", status.Working, "opencode", 0, "⠋", colorAccent, status.NoOutcome},
+		{"blocked later without command", status.Blocked, "", 750 * time.Millisecond, "?", colorBlocked, status.NoOutcome},
+		{"blocked later with command", status.Blocked, "opencode", 750 * time.Millisecond, "?", colorBlocked, status.NoOutcome},
+		{"success with command", status.Unknown, "pi", 0, "✓", colorSuccess, status.Completed},
+		{"error with command", status.Unknown, "pi", 750 * time.Millisecond, "×", colorError, status.Failed},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stamp := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC).Add(test.offset)
 			styles := defaultTheme()
 			row := rowProps{
 				Primary: "editor", Depth: 1, TreePrefix: "└─ ", Selected: true,
-				Status: test.state, StatusTime: stamp, Trailing: test.command,
+				Status: status.Value{State: test.state, Outcome: test.outcome}, StatusTime: stamp, Trailing: test.command,
 			}
 			wantTrailing := test.glyph
 			if test.command != "" {
@@ -92,7 +95,7 @@ func TestAbsentStatusRendersWithoutIndicator(t *testing.T) {
 		{"withdrawn", status.Withdrawn},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			row := rowProps{Primary: "editor", Status: test.state}
+			row := rowProps{Primary: "editor", Status: status.Value{State: test.state}}
 
 			line := renderList(listProps{Width: 40, Rows: []rowProps{row}})[0]
 
@@ -106,7 +109,7 @@ func TestStatusRowsFitNarrowWidths(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			row := rowProps{
 				Primary: "中👨‍👩‍👧éditor", Secondary: "~/src",
-				Trailing: "\x1b]0;bad\aopencode", Status: status.Working,
+				Trailing: "\x1b]0;bad\aopencode", Status: status.Value{State: status.Working},
 			}
 
 			line := renderList(listProps{Width: width, Rows: []rowProps{row}})[0]

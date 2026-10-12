@@ -12,6 +12,8 @@ const (
 	colorAccent           = "110" // #87afd7 — soft blue
 	colorBlocked          = "214"
 	colorIdle             = "114"
+	colorSuccess          = "78"
+	colorError            = "203"
 	colorSelection        = "238" // #444444 — quiet selection
 	colorPromptText       = "235" // #262626 — dark prompt text
 	colorPromptBackground = "181" // #d7afaf — dusty rose

@@ -13,7 +13,6 @@ const (
 	statusPollInterval  = 2 * time.Second
 	statusReadTimeout   = 2 * time.Second
 	statusSpinnerPeriod = 100 * time.Millisecond
-	statusBlinkPeriod   = 750 * time.Millisecond
 )
 
 type StatusBindings map[list.ItemID][]status.PaneRef
@@ -38,24 +37,38 @@ type StatusUpdate struct {
 }
 
 func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time.Time) status.State {
-	state := status.Unreported
-	for _, pane := range b[id] {
-		candidate := values.At(pane, now)
-		if statusPriority(candidate) > statusPriority(state) {
-			state = candidate
-		}
-	}
-	return state
+	return b.ValueAt(id, values, now).State
 }
 
-func statusPriority(state status.State) int {
-	switch state {
+// ValueAt returns a row's current activity and outcome, with freshness resolved.
+// Attention and ongoing work take precedence over completed results in other panes.
+func (b StatusBindings) ValueAt(id list.ItemID, values status.Snapshot, now time.Time) status.Value {
+	var value status.Value
+	for _, pane := range b[id] {
+		reported := values.Lookup(pane)
+		candidate := status.Value{State: reported.At(now), Outcome: reported.OutcomeAt(now)}
+		if statusPriority(candidate) > statusPriority(value) {
+			value = candidate
+		}
+	}
+	return value
+}
+
+func statusPriority(value status.Value) int {
+	switch value.State {
 	case status.Blocked:
-		return 4
+		return 6
 	case status.Working:
-		return 3
+		return 5
 	case status.Unknown:
-		return 2
+		switch value.Outcome {
+		case status.Failed:
+			return 4
+		case status.Completed:
+			return 2
+		default:
+			return 3
+		}
 	case status.Idle:
 		return 1
 	default:
@@ -160,12 +173,10 @@ func (m model) nextStatusFrame(now time.Time) time.Time {
 		switch p.options.Bindings.StateAt(row.Item.ID, p.values, now) {
 		case status.Working:
 			due = earlierStatusTime(due, now.Truncate(statusSpinnerPeriod).Add(statusSpinnerPeriod))
-		case status.Blocked:
-			due = earlierStatusTime(due, now.Truncate(statusBlinkPeriod).Add(statusBlinkPeriod))
 		}
 		for _, pane := range p.options.Bindings[row.Item.ID] {
 			value := p.values.Lookup(pane)
-			if value.ValidUntil.After(now) && value.At(now) != status.Unknown && value.State != status.Withdrawn {
+			if value.ValidUntil.After(now) && (value.At(now) != status.Unknown && value.State != status.Withdrawn || value.OutcomeAt(now) != status.NoOutcome) {
 				due = earlierStatusTime(due, value.ValidUntil)
 			}
 		}

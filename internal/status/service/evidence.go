@@ -72,7 +72,8 @@ func (s *Service) Apply(target Target, sequence uint64, value status.Value) erro
 
 	if row.value != value {
 		value.State = status.State(strings.Clone(string(value.State)))
-		if row.value.State != value.State || row.value.At(now) != value.At(now) || value.ValidUntil.Before(row.value.ValidUntil) {
+		value.Outcome = status.Outcome(strings.Clone(string(value.Outcome)))
+		if row.value.State != value.State || row.value.Outcome != value.Outcome || row.value.At(now) != value.At(now) || value.ValidUntil.Before(row.value.ValidUntil) {
 			s.changed()
 		} else {
 			s.invalidateSnapshot()
@@ -95,14 +96,11 @@ func validateEvidence(source Source, sequence uint64, value status.Value) error 
 		return fmt.Errorf("status evidence requires a sequence")
 	}
 
-	switch value.State {
-	case status.Unknown, status.Withdrawn:
-		if !value.ValidUntil.IsZero() {
-			return fmt.Errorf("inactive status evidence cannot have a deadline")
-		}
-	case status.Idle, status.Working, status.Blocked:
-	default:
-		return fmt.Errorf("invalid status evidence state")
+	if err := value.Validate(); err != nil {
+		return err
+	}
+	if (value.State == status.Unknown || value.State == status.Withdrawn) && !value.ValidUntil.IsZero() {
+		return fmt.Errorf("inactive status evidence cannot have a deadline")
 	}
 
 	switch source {
@@ -111,6 +109,9 @@ func validateEvidence(source Source, sequence uint64, value status.Value) error 
 			return fmt.Errorf("protocol evidence cannot have a heartbeat lease")
 		}
 	case Screen:
+		if value.Outcome != status.NoOutcome {
+			return fmt.Errorf("screen evidence cannot infer a completion outcome")
+		}
 		if value.State == status.Withdrawn || value.State != status.Unknown && value.ValidUntil.IsZero() {
 			return fmt.Errorf("screen evidence requires activity with a deadline or unknown")
 		}
