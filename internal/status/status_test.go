@@ -53,6 +53,7 @@ func TestSnapshotRejectsInvalidOutcomeCombinations(t *testing.T) {
 		{State: status.Working, Outcome: status.Completed},
 		{State: status.Idle, Outcome: status.Completed},
 		{State: status.Withdrawn, Outcome: status.Failed},
+		{State: status.Idle, OutcomeSince: time.Now()},
 	} {
 		t.Run(string(value.State)+"/"+string(value.Outcome), func(t *testing.T) {
 			_, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: value})

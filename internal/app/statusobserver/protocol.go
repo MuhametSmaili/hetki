@@ -169,7 +169,11 @@ func (p *protocolBinding) resolvePrompt(startedAt time.Time, atRoot bool) {
 
 func (s *Source) applyProtocol(p *protocolBinding, observation protocols.Observation) (bool, error) {
 	s.protocolSequence++
-	err := s.core.Apply(p.target, s.protocolSequence, status.Value{State: observation.Activity, Outcome: observation.Outcome})
+	err := s.core.Apply(p.target, s.protocolSequence, status.Value{
+		State:        observation.Activity,
+		Outcome:      observation.Outcome,
+		OutcomeSince: observation.OutcomeSince,
+	})
 	if errors.Is(err, service.ErrStale) {
 		p.reset()
 		return false, nil

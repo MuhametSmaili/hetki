@@ -1,6 +1,8 @@
 package protocols
 
 import (
+	"time"
+
 	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/status/protocols/internal/osc133"
 )
@@ -30,7 +32,10 @@ type Shell struct {
 type Observation struct {
 	Activity status.State
 	Outcome  status.Outcome
-	Shell    Shell
+	// Start of the current root outcome, preserved across repeated reports.
+	// Captured before chunk coalescing so intervening resets are not lost.
+	OutcomeSince time.Time
+	Shell        Shell
 }
 
 func shellObservation(snapshot osc133.Snapshot) Shell {

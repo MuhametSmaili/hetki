@@ -4,6 +4,7 @@ package protocols
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/status/protocols/internal/osc133"
@@ -25,6 +26,7 @@ type Pane struct {
 	shell         osc133.Observer
 	withdrawn     bool
 	promptPending bool
+	outcomeSince  time.Time
 }
 
 // New creates an independent pane observer with immutable source selection.
@@ -37,7 +39,9 @@ func New(options Options) *Pane { return &Pane{options: options} }
 func (p *Pane) Feed(data []byte) (Observation, bool) {
 	publish := false
 	p.decoder.Feed(data, func(frame terminalstream.Frame) {
+		_, previous := p.application()
 		if p.handleFrame(frame) {
+			p.observeOutcome(previous)
 			publish = true
 		}
 	})
@@ -47,6 +51,18 @@ func (p *Pane) Feed(data []byte) (Observation, bool) {
 	return p.Snapshot(), true
 }
 
+func (p *Pane) observeOutcome(previous status.Outcome) {
+	_, outcome := p.application()
+	if outcome == previous {
+		return
+	}
+
+	p.outcomeSince = time.Time{}
+	if outcome != status.NoOutcome {
+		p.outcomeSince = time.Now()
+	}
+}
+
 // Reset discards partial input and all evidence after loss of continuity.
 func (p *Pane) Reset() {
 	p.decoder.Reset()
@@ -54,6 +70,7 @@ func (p *Pane) Reset() {
 	p.shell.Reset()
 	p.withdrawn = false
 	p.promptPending = false
+	p.outcomeSince = time.Time{}
 }
 
 // ForegroundChanged ends application activity attribution while preserving shell
@@ -137,9 +154,10 @@ func (p *Pane) ResolvePrompt(atRoot bool) bool {
 func (p *Pane) Snapshot() Observation {
 	activity, outcome := p.application()
 	return Observation{
-		Activity: activity,
-		Outcome:  outcome,
-		Shell:    shellObservation(p.shell.Snapshot()),
+		Activity:     activity,
+		Outcome:      outcome,
+		OutcomeSince: p.outcomeSince,
+		Shell:        shellObservation(p.shell.Snapshot()),
 	}
 }
 

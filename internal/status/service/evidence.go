@@ -48,6 +48,7 @@ func (s *Service) Target(pane status.PaneRef, source Source) (Target, bool) {
 // Apply accepts only the selected source. Sequence increases in pane/source order
 // and is assigned before acquisition, not when asynchronous work finishes.
 // Protocol values have no lease; screen activity carries a capture deadline.
+// Sources timestamp outcome transitions before coalescing observations.
 func (s *Service) Apply(target Target, sequence uint64, value status.Value) error {
 	if err := validateEvidence(target.Source, sequence, value); err != nil {
 		return err
@@ -73,7 +74,9 @@ func (s *Service) Apply(target Target, sequence uint64, value status.Value) erro
 	if row.value != value {
 		value.State = status.State(strings.Clone(string(value.State)))
 		value.Outcome = status.Outcome(strings.Clone(string(value.Outcome)))
-		if row.value.State != value.State || row.value.Outcome != value.Outcome || row.value.At(now) != value.At(now) || value.ValidUntil.Before(row.value.ValidUntil) {
+		if row.value.State != value.State || row.value.Outcome != value.Outcome ||
+			row.value.OutcomeSince != value.OutcomeSince || row.value.At(now) != value.At(now) ||
+			value.ValidUntil.Before(row.value.ValidUntil) {
 			s.changed()
 		} else {
 			s.invalidateSnapshot()
@@ -99,6 +102,7 @@ func validateEvidence(source Source, sequence uint64, value status.Value) error 
 	if err := value.Validate(); err != nil {
 		return err
 	}
+
 	if (value.State == status.Unknown || value.State == status.Withdrawn) && !value.ValidUntil.IsZero() {
 		return fmt.Errorf("inactive status evidence cannot have a deadline")
 	}

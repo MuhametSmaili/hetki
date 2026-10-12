@@ -130,11 +130,12 @@ func TestSnapshotTransportRejectsForeignServer(t *testing.T) {
 
 func TestOutcomeSurvivesSocketTransport(t *testing.T) {
 	c := fixtureClient(t, "outcomes")
-	deadline := time.Now().Add(time.Minute)
+	observed := time.Now().Add(-3 * time.Second)
+	deadline := observed.Add(time.Minute)
 	values := make(map[status.PaneRef]status.Value)
 	for _, outcome := range []status.Outcome{status.Completed, status.Failed} {
 		pane := status.PaneRef{Server: c.server, ID: string(outcome), Generation: "birth"}
-		values[pane] = status.Value{State: status.Unknown, Outcome: outcome, ValidUntil: deadline}
+		values[pane] = status.Value{State: status.Unknown, Outcome: outcome, OutcomeSince: observed, ValidUntil: deadline}
 	}
 	snapshot, err := status.NewSnapshot(values)
 	require.NoError(t, err)
@@ -147,6 +148,7 @@ func TestOutcomeSurvivesSocketTransport(t *testing.T) {
 		require.Equal(t, value.Outcome, got.Lookup(pane).OutcomeAt(time.Now()))
 		require.Equal(t, status.Unknown, got.At(pane, time.Now()))
 		require.True(t, deadline.Equal(got.Lookup(pane).ValidUntil))
+		require.True(t, observed.Equal(got.Lookup(pane).OutcomeSince))
 	}
 }
 

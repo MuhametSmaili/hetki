@@ -51,26 +51,79 @@ func TestWindowOutcomePriority(t *testing.T) {
 	}
 }
 
-func TestOutcomeSchedulesOnlyValidationExpiry(t *testing.T) {
+func TestSuccessBecomesIdleAtFiveSecondsAndStillExpires(t *testing.T) {
 	now := time.Now()
 	m := paneStatusModel(t, status.Unknown, now.Add(time.Minute))
 	pane := m.paneStatus.options.Bindings["window"][0]
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-		pane: {State: status.Unknown, Outcome: status.Completed, ValidUntil: now.Add(time.Minute)},
+		pane: {State: status.Unknown, Outcome: status.Completed, OutcomeSince: now, ValidUntil: now.Add(time.Minute)},
 	})
 	require.NoError(t, err)
 	m.paneStatus.values = values
 
 	due := m.nextStatusFrame(now)
-	current := m.paneStatus.options.Bindings.ValueAt("window", values, now)
-	expired := m.paneStatus.options.Bindings.ValueAt("window", values, due)
+	current := m.paneStatus.options.Bindings.ValueAt("window", values, due.Add(-time.Nanosecond))
+	idle := m.paneStatus.options.Bindings.ValueAt("window", values, due)
 
-	require.Equal(t, now.Add(time.Minute), due)
+	require.Equal(t, now.Add(5*time.Second), due)
 	require.Equal(t, status.Completed, current.Outcome)
+	require.Equal(t, status.Value{State: status.Idle}, idle)
+	glyph, _ := statusIndicator(idle, due)
+	require.Equal(t, "○", glyph)
+	require.Equal(t, now.Add(time.Minute), m.nextStatusFrame(due))
+
+	due = now.Add(time.Minute)
+	expired := m.paneStatus.options.Bindings.ValueAt("window", values, due)
 	require.Equal(t, status.NoOutcome, expired.Outcome)
-	glyph, _ := statusIndicator(expired, due)
+	glyph, _ = statusIndicator(expired, due)
 	require.Equal(t, "·", glyph)
 	require.True(t, m.nextStatusFrame(due).IsZero())
+}
+
+func TestCompletionPresentationRespectsAgeAndFreshness(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		name    string
+		outcome status.Outcome
+		since   time.Time
+		until   time.Time
+		want    status.Value
+		next    time.Time
+	}{
+		{"picker opened after success interval", status.Completed, now.Add(-10 * time.Second), now.Add(time.Minute), status.Value{State: status.Idle}, now.Add(time.Minute)},
+		{"failure remains visible", status.Failed, now.Add(-time.Hour), now.Add(time.Minute), status.Value{State: status.Unknown, Outcome: status.Failed}, now.Add(time.Minute)},
+		{"missing observation time keeps success", status.Completed, time.Time{}, now.Add(time.Minute), status.Value{State: status.Unknown, Outcome: status.Completed}, now.Add(time.Minute)},
+		{"validation expires before success interval", status.Completed, now.Add(-time.Second), now, status.Value{State: status.Unknown}, time.Time{}},
+		{"validation expires after success interval", status.Completed, now.Add(-time.Hour), now, status.Value{State: status.Unknown}, time.Time{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			value := status.Value{State: status.Unknown, Outcome: tc.outcome, OutcomeSince: tc.since, ValidUntil: tc.until}
+
+			got := displayedStatus(value, now)
+
+			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.next, nextStatusChange(value, now))
+		})
+	}
+}
+
+func TestWindowSuccessUsesEachPanesCompletionTime(t *testing.T) {
+	now := time.Now()
+	old := status.PaneRef{Server: "server", ID: "%1", Generation: "old"}
+	recent := status.PaneRef{Server: "server", ID: "%2", Generation: "recent"}
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+		old:    {State: status.Unknown, Outcome: status.Completed, OutcomeSince: now.Add(-time.Minute), ValidUntil: now.Add(time.Minute)},
+		recent: {State: status.Unknown, Outcome: status.Completed, OutcomeSince: now.Add(-time.Second), ValidUntil: now.Add(time.Minute)},
+	})
+	require.NoError(t, err)
+	bindings := StatusBindings{"window": {old, recent}}
+
+	before := bindings.ValueAt("window", values, now)
+	after := bindings.ValueAt("window", values, now.Add(4*time.Second))
+
+	require.Equal(t, status.Completed, before.Outcome)
+	require.Equal(t, status.Value{State: status.Idle}, after)
 }
 
 func TestKiroScreenProfileUsesSharedIndicators(t *testing.T) {

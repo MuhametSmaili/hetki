@@ -36,6 +36,11 @@ type PaneRef struct {
 type Value struct {
 	State   State
 	Outcome Outcome
+
+	// First observation of this outcome; repeated evidence retains it.
+	// Zero means the observation time is unavailable.
+	OutcomeSince time.Time
+
 	// Cache validation deadline, not a producer heartbeat.
 	ValidUntil time.Time
 }
@@ -49,6 +54,9 @@ func (v Value) Validate() error {
 	}
 	if v.Outcome != NoOutcome && (v.State != Unknown || v.Outcome != Completed && v.Outcome != Failed) {
 		return fmt.Errorf("invalid outcome %q for pane status %q", v.Outcome, v.State)
+	}
+	if v.Outcome == NoOutcome && !v.OutcomeSince.IsZero() {
+		return fmt.Errorf("outcome observation time requires an outcome")
 	}
 	return nil
 }

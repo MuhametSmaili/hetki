@@ -58,6 +58,70 @@ func TestOutcomeChangeWakesReadersWithoutActivityChange(t *testing.T) {
 	}
 }
 
+func TestOutcomeObservationSurvivesRepeatsAndRestartsOnNewEvidence(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		pane := fixturePane(service.Protocol)
+		core := fixtureService(t, pane)
+		target := targetFor(t, core, pane, service.Protocol)
+		started := time.Now()
+		success := status.Value{State: status.Unknown, Outcome: status.Completed, OutcomeSince: started}
+		require.NoError(t, core.Apply(target, 1, success))
+		_, changes := core.Changes()
+
+		time.Sleep(3 * time.Second)
+		require.NoError(t, core.Apply(target, 2, success))
+		snapshot, err := core.ReadStatus(t.Context())
+
+		require.NoError(t, err)
+		require.Equal(t, started, snapshot.Lookup(pane.Ref).OutcomeSince)
+		select {
+		case <-changes:
+			t.Fatal("repeated success restarted its observation")
+		default:
+		}
+
+		time.Sleep(3 * time.Second)
+		require.NoError(t, core.UpdateInventory(inventory(2, pane)))
+		snapshot, err = core.ReadStatus(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, started, snapshot.Lookup(pane.Ref).OutcomeSince)
+
+		require.NoError(t, core.Apply(target, 3, status.Value{State: status.Working}))
+		snapshot, err = core.ReadStatus(t.Context())
+		require.NoError(t, err)
+		require.True(t, snapshot.Lookup(pane.Ref).OutcomeSince.IsZero())
+		success.OutcomeSince = time.Now()
+		require.NoError(t, core.Apply(target, 4, success))
+		snapshot, err = core.ReadStatus(t.Context())
+		require.NoError(t, err)
+		require.Equal(t, time.Now(), snapshot.Lookup(pane.Ref).OutcomeSince)
+		require.NotEqual(t, started, snapshot.Lookup(pane.Ref).OutcomeSince)
+
+		require.NoError(t, core.Invalidate(3))
+		snapshot, err = core.ReadStatus(t.Context())
+		require.NoError(t, err)
+		require.True(t, snapshot.Lookup(pane.Ref).OutcomeSince.IsZero())
+	})
+}
+
+func TestNewOutcomeObservationWakesReaders(t *testing.T) {
+	pane := fixturePane(service.Protocol)
+	core := fixtureService(t, pane)
+	target := targetFor(t, core, pane, service.Protocol)
+	value := status.Value{State: status.Unknown, Outcome: status.Completed, OutcomeSince: time.Now().Add(-time.Minute)}
+	require.NoError(t, core.Apply(target, 1, value))
+	_, changes := core.Changes()
+	value.OutcomeSince = time.Now()
+
+	require.NoError(t, core.Apply(target, 2, value))
+
+	select {
+	case <-changes:
+	default:
+		t.Fatal("new observation of the same outcome did not wake readers")
+	}
+}
+
 func TestScreenCannotSupplyUnvalidatedOutcome(t *testing.T) {
 	pane := fixturePane(service.Screen)
 	core := fixtureService(t, pane)

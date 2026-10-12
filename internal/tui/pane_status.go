@@ -40,13 +40,14 @@ func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time
 	return b.ValueAt(id, values, now).State
 }
 
-// ValueAt returns a row's current activity and outcome, with freshness resolved.
+// ValueAt returns a row's displayed activity and outcome, resolving freshness
+// and the brief success indication before aggregation.
 // Attention and ongoing work take precedence over completed results in other panes.
 func (b StatusBindings) ValueAt(id list.ItemID, values status.Snapshot, now time.Time) status.Value {
 	var value status.Value
 	for _, pane := range b[id] {
 		reported := values.Lookup(pane)
-		candidate := status.Value{State: reported.At(now), Outcome: reported.OutcomeAt(now)}
+		candidate := displayedStatus(reported, now)
 		if statusPriority(candidate) > statusPriority(value) {
 			value = candidate
 		}
@@ -176,8 +177,8 @@ func (m model) nextStatusFrame(now time.Time) time.Time {
 		}
 		for _, pane := range p.options.Bindings[row.Item.ID] {
 			value := p.values.Lookup(pane)
-			if value.ValidUntil.After(now) && (value.At(now) != status.Unknown && value.State != status.Withdrawn || value.OutcomeAt(now) != status.NoOutcome) {
-				due = earlierStatusTime(due, value.ValidUntil)
+			if change := nextStatusChange(value, now); !change.IsZero() {
+				due = earlierStatusTime(due, change)
 			}
 		}
 	}

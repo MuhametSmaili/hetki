@@ -2,6 +2,8 @@ package protocols_test
 
 import (
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/status/protocols"
@@ -77,6 +79,7 @@ func TestResetAndProcessExitHaveDifferentLifetimes(t *testing.T) {
 	pane := protocols.New(protocols.Options{ProgramStatus: true})
 	pane.Feed(report("state=done"))
 	pane.Feed(marker("C"))
+	observed := pane.Snapshot().OutcomeSince
 
 	pane.ProcessExited()
 	afterExit := pane.Snapshot()
@@ -84,8 +87,41 @@ func TestResetAndProcessExitHaveDifferentLifetimes(t *testing.T) {
 	afterGap := pane.Snapshot()
 
 	require.Equal(t, status.Completed, afterExit.Outcome)
+	require.False(t, observed.IsZero())
+	require.Equal(t, observed, afterExit.OutcomeSince)
 	require.Equal(t, protocols.Shell{}, afterExit.Shell)
 	require.Equal(t, protocols.Observation{Activity: status.Unreported}, afterGap)
+}
+
+func TestRepeatedRootOutcomeRetainsObservationTime(t *testing.T) {
+	cases := []struct {
+		name  string
+		input []byte
+	}{
+		{"repeated success", report("state=done")},
+		{"child activity", report("state=working:id=child")},
+		{"child withdrawal", report("state=clear:id=child")},
+		{"invalid state", report("state=invalid")},
+		{"invalid root report", report("state=working:id=bad!")},
+		{"render zones", append(marker("A"), marker("C")...)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				pane := protocols.New(protocols.Options{ProgramStatus: true})
+				first, _ := pane.Feed(report("state=done"))
+				time.Sleep(6 * time.Second)
+
+				pane.Feed(tc.input)
+				repeated, publish := pane.Feed(report("state=done"))
+
+				require.True(t, publish)
+				require.Equal(t, status.Completed, repeated.Outcome)
+				require.False(t, first.OutcomeSince.IsZero())
+				require.Equal(t, first.OutcomeSince, repeated.OutcomeSince)
+			})
+		})
+	}
 }
 
 func TestRISWithdrawsAndDiscardsPartialCommandEnd(t *testing.T) {

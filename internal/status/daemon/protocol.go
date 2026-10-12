@@ -48,11 +48,12 @@ type reply struct {
 }
 
 type entry struct {
-	ID         string         `json:"id"`
-	Generation string         `json:"generation"`
-	State      status.State   `json:"state"`
-	Outcome    status.Outcome `json:"outcome,omitempty"`
-	ValidUntil time.Time      `json:"valid_until"`
+	ID           string         `json:"id"`
+	Generation   string         `json:"generation"`
+	State        status.State   `json:"state"`
+	Outcome      status.Outcome `json:"outcome,omitempty"`
+	OutcomeSince time.Time      `json:"outcome_since,omitzero"`
+	ValidUntil   time.Time      `json:"valid_until"`
 }
 
 func readFrame(r io.Reader, limit int, value any) error {
@@ -117,11 +118,12 @@ func snapshotEntries(server string, snapshot status.Snapshot) ([]entry, error) {
 		}
 
 		entries = append(entries, entry{
-			ID:         pane.ID,
-			Generation: pane.Generation,
-			State:      value.State,
-			Outcome:    value.Outcome,
-			ValidUntil: value.ValidUntil,
+			ID:           pane.ID,
+			Generation:   pane.Generation,
+			State:        value.State,
+			Outcome:      value.Outcome,
+			OutcomeSince: value.OutcomeSince,
+			ValidUntil:   value.ValidUntil,
 		})
 	}
 
@@ -144,7 +146,7 @@ func (r reply) snapshot() (status.Snapshot, error) {
 			return status.Snapshot{}, fmt.Errorf("duplicate daemon pane identity")
 		}
 
-		values[pane] = status.Value{State: e.State, Outcome: e.Outcome, ValidUntil: e.ValidUntil}
+		values[pane] = status.Value{State: e.State, Outcome: e.Outcome, OutcomeSince: e.OutcomeSince, ValidUntil: e.ValidUntil}
 	}
 
 	return status.NewSnapshot(values)

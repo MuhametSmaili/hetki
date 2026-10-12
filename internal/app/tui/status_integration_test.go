@@ -91,7 +91,10 @@ func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
 			{"clear", status.Value{}},
 		} {
 			run("send-keys", "-t", "%0", "-l", "--", "\x1b]7501;state="+tc.report+"\a\n")
-			awaitPickerValue(t, ctx, options, tc.want, nil)
+			update := awaitPickerValue(t, ctx, options, tc.want, nil)
+			if tc.report == "done" {
+				assertPickerSuccessAges(t, ctx, options, update, run)
+			}
 		}
 		return "", nil
 	}
@@ -99,9 +102,28 @@ func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
 	require.NoError(t, service.Run(t.Context()))
 }
 
+func assertPickerSuccessAges(t *testing.T, ctx context.Context, options ui.StatusOptions, first ui.StatusUpdate, run func(...string) string) {
+	t.Helper()
+	pane := firstPaneRef(t, first.Values)
+	observed := first.Values.Lookup(pane).OutcomeSince
+	require.False(t, observed.IsZero())
+	nextReport := time.Now().Add(time.Second)
+
+	idle := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, func() {
+		if time.Now().Before(nextReport) {
+			return
+		}
+		run("send-keys", "-t", "%0", "-l", "--", "\x1b]7501;state=done\a\n")
+		nextReport = time.Now().Add(time.Second)
+	})
+
+	require.True(t, observed.Equal(idle.Values.Lookup(pane).OutcomeSince), "repeated done must not restart the indication")
+	require.GreaterOrEqual(t, time.Since(observed), 5*time.Second)
+}
+
 func awaitPickerValue(t *testing.T, ctx context.Context, options ui.StatusOptions, want status.Value, probe func()) ui.StatusUpdate {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
