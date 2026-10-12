@@ -83,6 +83,45 @@ func TestForceStrategyPlan(t *testing.T) {
 			want: []Action{KillWindowAction{Session: "dev", Window: "unused", WindowID: "@9"}},
 		},
 		{
+			name: "creates missing window before removing extra",
+			diff: Diff{Windows: map[string]ItemDiff[Window]{
+				"dev": {
+					Missing: []Window{{Name: "editor", Path: "~/new"}},
+					Extra:   []Window{{ID: "@3", Name: "legacy"}},
+				},
+			}},
+			want: []Action{
+				CreateWindowAction{Session: "dev", Name: "editor", Path: "~/new"},
+				KillWindowAction{Session: "dev", Window: "legacy", WindowID: "@3"},
+			},
+		},
+		{
+			name: "finishes replacement follow-ups before removing old windows",
+			diff: Diff{Windows: map[string]ItemDiff[Window]{
+				"dev": {
+					Extra: []Window{{ID: "@9", Name: "scratch"}},
+					Mismatched: []Mismatch[Window]{{
+						Actual: Window{ID: "@3", Name: "editor", Path: "~/code"},
+						Desired: Window{
+							Name:   "editor",
+							Path:   "~/code",
+							Layout: "tiled",
+							Panes:  []Pane{{Path: "~/code"}, {Path: "~/api", Command: "npm test", Zoom: true}},
+						},
+					}},
+				},
+			}},
+			want: []Action{
+				CreateWindowAction{Session: "dev", Name: "editor", Path: "~/code"},
+				SplitPaneAction{Session: "dev", Window: "editor", Path: "~/api"},
+				SelectLayoutAction{Session: "dev", Window: "editor", Layout: "tiled"},
+				SendKeysAction{Session: "dev", Window: "editor", Pane: 1, Command: "npm test"},
+				ZoomPaneAction{Session: "dev", Window: "editor", Pane: 1},
+				KillWindowAction{Session: "dev", Window: "editor", WindowID: "@3"},
+				KillWindowAction{Session: "dev", Window: "scratch", WindowID: "@9"},
+			},
+		},
+		{
 			name: "recreates mismatched",
 			diff: Diff{
 				Sessions: ItemDiff[Session]{},
@@ -91,8 +130,8 @@ func TestForceStrategyPlan(t *testing.T) {
 				},
 			},
 			want: []Action{
-				KillWindowAction{Session: "dev", Window: "editor", WindowID: "@3"},
 				CreateWindowAction{Session: "dev", Name: "editor", Path: "~/new"},
+				KillWindowAction{Session: "dev", Window: "editor", WindowID: "@3"},
 			},
 		},
 	}
