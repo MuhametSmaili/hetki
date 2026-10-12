@@ -8,6 +8,7 @@ import (
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/status/protocols"
+	"github.com/MSmaili/hetki/internal/status/screen"
 	"github.com/MSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
@@ -311,8 +312,8 @@ func TestScreenSelectionPreventsProtocolEvidenceAndRetirementClearsRecords(t *te
 	require.NoError(t, s.Output(scope, protocolReport("state=working")))
 	selection := Selection{
 		Profile: service.Profile{Source: service.Screen, Generation: "rules"},
-		Evaluate: func(string) (status.State, error) {
-			return status.Unknown, nil
+		Evaluate: func(string) (screen.Result, error) {
+			return screen.Result{State: status.Unknown, Reason: screen.NoMatch}, nil
 		},
 	}
 

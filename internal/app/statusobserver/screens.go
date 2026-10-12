@@ -10,6 +10,7 @@ import (
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/screen"
 	"github.com/MSmaili/hetki/internal/status/service"
 )
 
@@ -29,7 +30,7 @@ const (
 type ScreenPlan struct {
 	Pane         status.PaneRef
 	Region       observe.Region
-	Evaluate     func(string) (status.State, error)
+	Evaluate     func(string) (screen.Result, error)
 	PollInterval time.Duration // Zero uses the default two-second recovery interval.
 }
 
@@ -58,6 +59,8 @@ type screenEntry struct {
 	recovery   time.Time
 	retryAt    time.Time
 	failures   uint8
+	// Only a positive match or a new entry rearms the one-shot no-match follow-up.
+	recaptureUsed bool
 }
 
 // Screens coalesces selected panes' capture work. It owns no worker or timer;

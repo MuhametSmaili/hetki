@@ -56,7 +56,9 @@ func installScreenPlans(t *testing.T, screens *Screens, panes []service.Pane, re
 		require.True(t, ok)
 		entries[pane.Ref.ID] = &screenEntry{
 			target: target,
-			plan:   ScreenPlan{Pane: pane.Ref, Evaluate: func(string) (status.State, error) { return status.Working, nil }},
+			plan: ScreenPlan{Pane: pane.Ref, Evaluate: func(string) (screen.Result, error) {
+				return screen.Result{State: status.Working, Reason: screen.Matched}, nil
+			}},
 		}
 	}
 	screens.mu.Lock()
@@ -163,8 +165,10 @@ func TestScreensUseProfileRecoveryAndFreshness(t *testing.T) {
 func TestSelectionRejectsInvalidRecoveryIntervals(t *testing.T) {
 	for _, interval := range []time.Duration{-time.Second, time.Millisecond, time.Minute + time.Second} {
 		selection := Selection{
-			Profile:      service.Profile{Source: service.Screen, Generation: "fixture"},
-			Evaluate:     func(string) (status.State, error) { return status.Idle, nil },
+			Profile: service.Profile{Source: service.Screen, Generation: "fixture"},
+			Evaluate: func(string) (screen.Result, error) {
+				return screen.Result{State: status.Idle, Reason: screen.Matched}, nil
+			},
 			PollInterval: interval,
 		}
 
@@ -204,9 +208,9 @@ func TestScreensRejectResultAcrossProfileChangeAndBack(t *testing.T) {
 		screens, panes := screenFixture(t, 1)
 		started, release := make(chan struct{}), make(chan struct{})
 		var evaluations atomic.Int64
-		screens.entries[panes[0].Ref.ID].plan.Evaluate = func(string) (status.State, error) {
+		screens.entries[panes[0].Ref.ID].plan.Evaluate = func(string) (screen.Result, error) {
 			evaluations.Add(1)
-			return status.Working, nil
+			return screen.Result{State: status.Working, Reason: screen.Matched}, nil
 		}
 		screens.capture = func(ctx context.Context, targets []observe.CaptureTarget) ([]observe.Screen, error) {
 			close(started)
@@ -273,7 +277,7 @@ func TestScreenFailuresBecomeUnknownAndBackOff(t *testing.T) {
 	cases := []struct {
 		name     string
 		capture  func(context.Context, []observe.CaptureTarget) ([]observe.Screen, error)
-		evaluate func(string) (status.State, error)
+		evaluate func(string) (screen.Result, error)
 	}{
 		{"query failure", func(context.Context, []observe.CaptureTarget) ([]observe.Screen, error) {
 			return nil, errors.New("query failed")
@@ -281,8 +285,14 @@ func TestScreenFailuresBecomeUnknownAndBackOff(t *testing.T) {
 		{"incomplete batch", func(context.Context, []observe.CaptureTarget) ([]observe.Screen, error) { return nil, nil }, nil},
 		{"unavailable pane", unavailableScreen, nil},
 		{"expired capture", expiredScreen, nil},
-		{"evaluation failure", successfulScreens, func(string) (status.State, error) { return "", errors.New("evaluation failed") }},
-		{"invalid state", successfulScreens, func(string) (status.State, error) { return status.Withdrawn, nil }},
+		{"evaluation failure", successfulScreens, func(string) (screen.Result, error) { return screen.Result{}, errors.New("evaluation failed") }},
+		{"invalid state", successfulScreens, func(string) (screen.Result, error) {
+			return screen.Result{State: status.Withdrawn, Reason: screen.Matched}, nil
+		}},
+		{"missing reason", successfulScreens, func(string) (screen.Result, error) { return screen.Result{State: status.Unknown}, nil }},
+		{"inconsistent reason", successfulScreens, func(string) (screen.Result, error) {
+			return screen.Result{State: status.Working, Reason: screen.NoMatch}, nil
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

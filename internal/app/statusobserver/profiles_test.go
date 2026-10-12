@@ -52,7 +52,7 @@ func TestProfileSelectorKeepsSourcesSeparate(t *testing.T) {
 	missing := selectProfile(observe.Pane{Command: "other"})
 
 	require.NoError(t, err)
-	require.Equal(t, status.Idle, state)
+	require.Equal(t, status.Idle, state.State)
 	require.Equal(t, service.Screen, selected.Profile.Source)
 	require.NotEmpty(t, selected.Profile.Generation)
 	require.Equal(t, observe.Region{}, selected.Region)

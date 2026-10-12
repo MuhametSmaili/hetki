@@ -14,16 +14,32 @@ const MaxScreenBytes = 256 << 10
 
 var ErrInvalidScreen = errors.New("invalid screen text")
 
+// Reason distinguishes missing evidence from ambiguous evidence. Zero is invalid.
+type Reason uint8
+
+const (
+	Matched Reason = iota + 1
+	NoMatch
+	Conflict
+)
+
+// Result contains a positive activity match or Unknown with NoMatch or Conflict.
+// An evaluation error leaves Reason zero; it is not a missing-match observation.
+type Result struct {
+	State  status.State
+	Reason Reason
+}
+
 // Evaluate consumes plain rendered UTF-8 text, not terminal redraw bytes.
-// No match or conflicting states returns Unknown without error. Invalid input
-// returns Unknown with an error, without retaining or including text in the error.
-func (e *Evaluator) Evaluate(text string) (status.State, error) {
+// Invalid input returns Unknown with an error and no reason, without retaining
+// or including text in the error.
+func (e *Evaluator) Evaluate(text string) (Result, error) {
 	if e == nil || len(e.rules) == 0 {
-		return status.Unknown, fmt.Errorf("screen evaluator is uninitialized")
+		return Result{State: status.Unknown}, fmt.Errorf("screen evaluator is uninitialized")
 	}
 
 	if len(text) > MaxScreenBytes || !utf8.ValidString(text) || strings.ContainsFunc(text, invalidControl) {
-		return status.Unknown, ErrInvalidScreen
+		return Result{State: status.Unknown}, ErrInvalidScreen
 	}
 
 	text = footer(text, e.rows)
@@ -33,11 +49,14 @@ func (e *Evaluator) Evaluate(text string) (status.State, error) {
 			continue
 		}
 		if state != status.Unknown && state != rule.state {
-			return status.Unknown, nil
+			return Result{State: status.Unknown, Reason: Conflict}, nil
 		}
 		state = rule.state
 	}
-	return state, nil
+	if state == status.Unknown {
+		return Result{State: status.Unknown, Reason: NoMatch}, nil
+	}
+	return Result{State: state, Reason: Matched}, nil
 }
 
 func invalidControl(r rune) bool {

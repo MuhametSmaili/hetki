@@ -10,6 +10,7 @@ import (
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/screen"
 	"github.com/MSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
@@ -27,11 +28,11 @@ func TestNativeSourceSelectsScreensAndTracksRespawn(t *testing.T) {
 		}
 		return Selection{
 			Profile: service.Profile{Source: service.Screen, Generation: "fixture-rules"},
-			Evaluate: func(text string) (status.State, error) {
+			Evaluate: func(text string) (screen.Result, error) {
 				if strings.Contains(text, "SOURCE-READY") {
-					return status.Idle, nil
+					return screen.Result{State: status.Idle, Reason: screen.Matched}, nil
 				}
-				return status.Unknown, nil
+				return screen.Result{State: status.Unknown, Reason: screen.NoMatch}, nil
 			},
 		}
 	}, func(err error) { t.Errorf("unexpected source error: %v", err) })

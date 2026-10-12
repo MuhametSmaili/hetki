@@ -115,7 +115,9 @@ func TestNativeScreenPlanRejectsMismatchedServiceScope(t *testing.T) {
 	screens, err := NewScreens(sampler, core, func(err error) { t.Errorf("unexpected asynchronous error: %v", err) })
 	require.NoError(t, err)
 
-	err = screens.Update(inventory, []ScreenPlan{{Pane: pane.Ref, Evaluate: func(string) (status.State, error) { return status.Idle, nil }}})
+	err = screens.Update(inventory, []ScreenPlan{{Pane: pane.Ref, Evaluate: func(string) (screen.Result, error) {
+		return screen.Result{State: status.Idle, Reason: screen.Matched}, nil
+	}}})
 
 	require.ErrorIs(t, err, observe.ErrChanged)
 	require.True(t, screens.nextCapture().IsZero())

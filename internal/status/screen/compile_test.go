@@ -88,7 +88,7 @@ func TestCompileOwnsRules(t *testing.T) {
 	state, err := evaluator.Evaluate("approval choices yes\nfooter")
 
 	require.NoError(t, err)
-	require.Equal(t, status.Blocked, state)
+	require.Equal(t, status.Blocked, state.State)
 }
 
 func TestCompileAcceptsLimits(t *testing.T) {
@@ -108,5 +108,5 @@ func TestCompileAcceptsLimits(t *testing.T) {
 	state, err := evaluator.Evaluate(pattern)
 
 	require.NoError(t, err)
-	require.Equal(t, status.Working, state)
+	require.Equal(t, status.Working, state.State)
 }

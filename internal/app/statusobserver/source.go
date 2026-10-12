@@ -12,6 +12,7 @@ import (
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/status/protocols"
+	"github.com/MSmaili/hetki/internal/status/screen"
 	"github.com/MSmaili/hetki/internal/status/service"
 )
 
@@ -21,7 +22,7 @@ import (
 type Selection struct {
 	Profile      service.Profile
 	Region       observe.Region
-	Evaluate     func(string) (status.State, error)
+	Evaluate     func(string) (screen.Result, error)
 	PollInterval time.Duration
 }
 

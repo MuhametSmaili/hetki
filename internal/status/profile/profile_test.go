@@ -56,7 +56,7 @@ func TestLoadSelectsTypedSources(t *testing.T) {
 				require.Equal(t, 2*time.Second, p.PollInterval)
 				state, err := p.Screen.Evaluate("APPROVAL")
 				require.NoError(t, err)
-				require.Equal(t, status.Blocked, state)
+				require.Equal(t, status.Blocked, state.State)
 			} else {
 				require.Nil(t, p.Screen)
 				require.Zero(t, p.PollInterval)

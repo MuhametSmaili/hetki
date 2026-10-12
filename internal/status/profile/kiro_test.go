@@ -44,7 +44,7 @@ func TestShippedKiroProfile(t *testing.T) {
 			state, err := p.Screen.Evaluate(tc.text)
 
 			require.NoError(t, err)
-			require.Equal(t, tc.want, state)
+			require.Equal(t, tc.want, state.State)
 		})
 	}
 }

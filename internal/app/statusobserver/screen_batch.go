@@ -10,6 +10,7 @@ import (
 
 	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MSmaili/hetki/internal/status/screen"
 	"github.com/MSmaili/hetki/internal/status/service"
 )
 
@@ -131,12 +132,12 @@ func validateScreenBatch(jobs []screenJob, screens []observe.Screen) error {
 	return nil
 }
 
-func (s *Screens) applyScreen(job screenJob, screen observe.Screen, captureErr error) error {
+func (s *Screens) applyScreen(job screenJob, captured observe.Screen, captureErr error) error {
 	if !s.current(job) {
 		return nil
 	}
 
-	value, err := evaluateScreen(job.entry.plan, screen, captureErr)
+	value, reason, err := evaluateScreen(job.entry.plan, captured, captureErr)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.entries[job.entry.plan.Pane.ID] != job.entry {
@@ -155,7 +156,24 @@ func (s *Screens) applyScreen(job screenJob, screen observe.Screen, captureErr e
 	if errors.Is(applyErr, service.ErrStale) {
 		return nil
 	}
+	if applyErr == nil && err == nil && captureErr == nil {
+		job.entry.updateRecapture(reason, time.Now())
+	}
 	return errors.Join(err, applyErr)
+}
+
+func (e *screenEntry) updateRecapture(reason screen.Reason, now time.Time) {
+	if reason == screen.Matched {
+		e.recaptureUsed = false
+		return
+	}
+	if reason != screen.NoMatch || e.recaptureUsed {
+		return
+	}
+
+	e.recaptureUsed = true
+	// Reuse the required-capture deadline; the global batch gap still applies.
+	e.recovery = earlier(e.recovery, now)
 }
 
 func (s *Screens) current(job screenJob) bool {
@@ -165,33 +183,36 @@ func (s *Screens) current(job screenJob) bool {
 	return ok && current == job.entry.target && s.entries[job.entry.plan.Pane.ID] == job.entry
 }
 
-func evaluateScreen(plan ScreenPlan, screen observe.Screen, captureErr error) (status.Value, error) {
+func evaluateScreen(plan ScreenPlan, captured observe.Screen, captureErr error) (status.Value, screen.Reason, error) {
 	unknown := status.Value{State: status.Unknown}
 	if captureErr != nil {
-		return unknown, nil
+		return unknown, 0, nil
 	}
 
-	if screen.Err != nil {
-		return unknown, fmt.Errorf("capture pane %s: %w", plan.Pane.ID, screen.Err)
+	if captured.Err != nil {
+		return unknown, 0, fmt.Errorf("capture pane %s: %w", plan.Pane.ID, captured.Err)
 	}
 
-	if screen.StartedAt.IsZero() || !time.Now().Before(screen.StartedAt.Add(plan.freshness())) {
-		return unknown, fmt.Errorf("screen acquisition expired for pane %s", plan.Pane.ID)
+	if captured.StartedAt.IsZero() || !time.Now().Before(captured.StartedAt.Add(plan.freshness())) {
+		return unknown, 0, fmt.Errorf("screen acquisition expired for pane %s", plan.Pane.ID)
 	}
 
-	state, err := plan.Evaluate(screen.Text)
+	result, err := plan.Evaluate(captured.Text)
 	if err != nil {
-		return unknown, fmt.Errorf("evaluate pane %s: %w", plan.Pane.ID, err)
+		return unknown, 0, fmt.Errorf("evaluate pane %s: %w", plan.Pane.ID, err)
 	}
 
-	if state == status.Unknown {
-		return unknown, nil
+	if result.State == status.Unknown && (result.Reason == screen.NoMatch || result.Reason == screen.Conflict) {
+		return unknown, result.Reason, nil
+	}
+	if result.Reason != screen.Matched {
+		return unknown, 0, fmt.Errorf("screen evaluator returned an invalid result for pane %s", plan.Pane.ID)
 	}
 
-	switch state {
+	switch result.State {
 	case status.Working, status.Idle, status.Blocked:
-		return status.Value{State: state, ValidUntil: screen.StartedAt.Add(plan.freshness())}, nil
+		return status.Value{State: result.State, ValidUntil: captured.StartedAt.Add(plan.freshness())}, result.Reason, nil
 	default:
-		return unknown, fmt.Errorf("screen evaluator returned an unsupported state for pane %s", plan.Pane.ID)
+		return unknown, 0, fmt.Errorf("screen evaluator returned an unsupported state for pane %s", plan.Pane.ID)
 	}
 }

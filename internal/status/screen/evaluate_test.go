@@ -30,24 +30,25 @@ func TestEvaluateRequiresUnambiguousPositiveEvidence(t *testing.T) {
 	evaluator, err := screen.Compile(fixtureRules())
 	require.NoError(t, err)
 	cases := []struct {
-		name string
-		text string
-		want status.State
+		name   string
+		text   string
+		want   status.State
+		reason screen.Reason
 	}{
-		{"all and any", "approval choices yes", status.Blocked},
-		{"other any match", "approval choices no", status.Blocked},
-		{"missing all", "approval yes", status.Unknown},
-		{"missing any", "approval choices", status.Unknown},
-		{"excluded", "approval choices yes dismissed", status.Unknown},
-		{"any without all", "thinking", status.Working},
-		{"same state overlap", "running", status.Working},
-		{"conflicting states", "approval choices yes thinking", status.Unknown},
-		{"late conflicting rule", "running\nready", status.Unknown},
-		{"regex", "some output\nready", status.Idle},
-		{"overlay after footer", "ready\nchoose a model", status.Unknown},
-		{"no match", "unrecognized screen", status.Unknown},
-		{"empty", "", status.Unknown},
-		{"blank", " \t\r\n\n", status.Unknown},
+		{"all and any", "approval choices yes", status.Blocked, screen.Matched},
+		{"other any match", "approval choices no", status.Blocked, screen.Matched},
+		{"missing all", "approval yes", status.Unknown, screen.NoMatch},
+		{"missing any", "approval choices", status.Unknown, screen.NoMatch},
+		{"excluded", "approval choices yes dismissed", status.Unknown, screen.NoMatch},
+		{"any without all", "thinking", status.Working, screen.Matched},
+		{"same state overlap", "running", status.Working, screen.Matched},
+		{"conflicting states", "approval choices yes thinking", status.Unknown, screen.Conflict},
+		{"late conflicting rule", "running\nready", status.Unknown, screen.Conflict},
+		{"regex", "some output\nready", status.Idle, screen.Matched},
+		{"overlay after footer", "ready\nchoose a model", status.Unknown, screen.NoMatch},
+		{"no match", "unrecognized screen", status.Unknown, screen.NoMatch},
+		{"empty", "", status.Unknown, screen.NoMatch},
+		{"blank", " \t\r\n\n", status.Unknown, screen.NoMatch},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -56,7 +57,7 @@ func TestEvaluateRequiresUnambiguousPositiveEvidence(t *testing.T) {
 			state, err := evaluator.Evaluate(tc.text)
 
 			require.NoError(t, err)
-			require.Equal(t, tc.want, state)
+			require.Equal(t, screen.Result{State: tc.want, Reason: tc.reason}, state)
 		})
 	}
 }
@@ -84,7 +85,7 @@ func TestEvaluateFooterCountsInternalBlankRows(t *testing.T) {
 			state, err := evaluator.Evaluate(tc.text)
 
 			require.NoError(t, err)
-			require.Equal(t, tc.want, state)
+			require.Equal(t, tc.want, state.State)
 		})
 	}
 }
@@ -104,7 +105,7 @@ func TestEvaluateRejectsInvalidWholeCapture(t *testing.T) {
 			state, err := evaluator.Evaluate(text)
 
 			require.ErrorIs(t, err, screen.ErrInvalidScreen)
-			require.Equal(t, status.Unknown, state)
+			require.Equal(t, screen.Result{State: status.Unknown}, state)
 		})
 	}
 }
@@ -118,7 +119,7 @@ func TestEvaluateAcceptsBoundedUnicodeCapture(t *testing.T) {
 	state, err := evaluator.Evaluate(text)
 
 	require.NoError(t, err)
-	require.Equal(t, status.Idle, state)
+	require.Equal(t, screen.Result{State: status.Idle, Reason: screen.Matched}, state)
 }
 
 func TestEvaluateUninitialized(t *testing.T) {
@@ -126,7 +127,7 @@ func TestEvaluateUninitialized(t *testing.T) {
 		state, err := evaluator.Evaluate("ready")
 
 		require.Error(t, err)
-		require.Equal(t, status.Unknown, state)
+		require.Equal(t, screen.Result{State: status.Unknown}, state)
 	}
 }
 
