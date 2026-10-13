@@ -94,7 +94,7 @@ func windowsFromBackend(windows []backend.Window) []manifest.Window {
 func panesFromBackend(panes []backend.Pane) []manifest.Pane {
 	result := make([]manifest.Pane, len(panes))
 	for i, p := range panes {
-		result[i] = manifest.Pane{Path: contractHomePath(p.Path)}
+		result[i] = manifest.Pane{Path: contractHomePath(p.Path), Zoom: p.Zoom}
 	}
 	return result
 }
