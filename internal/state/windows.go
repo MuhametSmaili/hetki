@@ -1,6 +1,10 @@
 package state
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/MSmaili/hetki/internal/tmuxlayout"
+)
 
 type windowKey struct {
 	Name string
@@ -104,7 +108,7 @@ func layoutMatches(desired, actual string) bool {
 		return true
 	}
 
-	return false
+	return tmuxlayout.SameGeometry(desired, actual)
 }
 
 func isNamedLayout(layout string) bool {
