@@ -63,6 +63,16 @@ func TestAction_Args(t *testing.T) {
 			want:   []string{"send-keys", "-l", "-t", "%1", "--", `\\;`, ";", "send-keys", "-t", "%1", "Enter"},
 		},
 		{
+			name:   "send command with trailing semicolon",
+			action: SendKeys{Target: "%1", Keys: "printf done;"},
+			want:   []string{"send-keys", "-l", "-t", "%1", "--", `printf done\;`, ";", "send-keys", "-t", "%1", "Enter"},
+		},
+		{
+			name:   "preserve backslash before trailing semicolon",
+			action: SendKeys{Target: "%1", Keys: `printf done\;`},
+			want:   []string{"send-keys", "-l", "-t", "%1", "--", `printf done\\;`, ";", "send-keys", "-t", "%1", "Enter"},
+		},
+		{
 			name:   "kill session",
 			action: KillSession{Name: "dev"},
 			want:   []string{"kill-session", "-t", "dev"},

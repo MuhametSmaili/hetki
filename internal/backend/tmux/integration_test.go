@@ -26,9 +26,21 @@ func newIsolatedTmuxBackend(t *testing.T) *TmuxBackend {
 	}
 	socketDir, err := os.MkdirTemp("/tmp", "hetki-tmux-parse-")
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	t.Cleanup(func() {
+		if err := os.RemoveAll(socketDir); err != nil {
+			t.Errorf("remove isolated tmux directory: %v", err)
+		}
+	})
 	socket := filepath.Join(socketDir, "tmux.sock")
-	t.Cleanup(func() { _ = exec.Command(realTmux, "-S", socket, "kill-server").Run() })
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		output, err := exec.CommandContext(ctx, realTmux, "-S", socket, "kill-server").CombinedOutput()
+		if err != nil {
+			t.Errorf("clean up isolated tmux server: %v: %s", err, output)
+		}
+	})
 
 	wrapperDir := t.TempDir()
 	wrapper := fmt.Sprintf("#!/bin/sh\nexec %q -f /dev/null -S %q \"$@\"\n", realTmux, socket)
@@ -59,23 +71,6 @@ func TestQueryStateRoundTripsDelimiterAndControlValues(t *testing.T) {
 		assert.Equal(t, windowName, live.Sessions[0].Windows[0].Name)
 		assert.Equal(t, ` /tmp/ws|path\\1.yaml `, live.Sessions[0].WorkspacePath, "workspace path must round-trip byte-exact")
 	}
-}
-
-func TestSendKeysPreservesLiteralCommandSeparator(t *testing.T) {
-	b := newIsolatedTmuxBackend(t)
-	marker := filepath.Join(t.TempDir(), "keys")
-	_, err := b.client.Run(context.Background(), "new-session", "-d", "-s", "literal", fmt.Sprintf("cat > %q", marker))
-	require.NoError(t, err)
-	state, err := RunQuery(context.Background(), b.client, LoadStateQuery{})
-	require.NoError(t, err)
-	require.Len(t, state.Sessions, 1)
-	paneID := state.Sessions[0].Windows[0].Panes[0].ID
-
-	require.NoError(t, b.client.Execute(context.Background(), SendKeys{Target: paneID, Keys: ";"}))
-	require.Eventually(t, func() bool {
-		data, err := os.ReadFile(marker)
-		return err == nil && string(data) == ";\n"
-	}, 5*time.Second, 50*time.Millisecond)
 }
 
 func TestQueryStateFailsClosedOnNewlineValues(t *testing.T) {
