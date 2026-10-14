@@ -96,13 +96,19 @@ func TestBareHetkiPreservesContextAndTUIError(t *testing.T) {
 }
 
 func TestRootRejectsArgumentsAndRemovedCommands(t *testing.T) {
+	withStubBackend(t, &stubBackend{})
+
 	require.Error(t, rootCmd.Args(rootCmd, []string{"unexpected"}))
 	t.Cleanup(func() { rootCmd.SetArgs(nil) })
 
-	for _, removed := range []string{"tui", "list", "report"} {
-		rootCmd.SetArgs([]string{removed})
-		_, err := rootCmd.ExecuteC()
-		require.ErrorContains(t, err, `unknown command "`+removed+`"`)
+	for _, removed := range []string{"tui", "list", "report", "switch"} {
+		t.Run(removed, func(t *testing.T) {
+			rootCmd.SetArgs([]string{removed, "dev"})
+
+			_, err := rootCmd.ExecuteC()
+
+			require.ErrorContains(t, err, `unknown command "`+removed+`"`)
+		})
 	}
 }
 

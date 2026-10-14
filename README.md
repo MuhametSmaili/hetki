@@ -46,7 +46,6 @@ stable release.
 hetki                 # Open the TUI
 hetki save -n work    # Save the currently attached tmux session
 hetki start work      # Start or reconcile the saved workspace
-hetki switch dev      # Switch directly to a session
 ```
 
 Run `hetki --help` or `hetki <command> --help` for the current CLI options.

@@ -33,7 +33,6 @@ type stubBackend struct {
 	dryRunCalls int
 	lastActions []backend.Action
 	lastAttach  string
-	lastSwitch  string
 }
 
 func (s *stubBackend) LayoutsMatch(desired, actual string) bool     { return desired == actual }
@@ -69,8 +68,7 @@ func (s *stubBackend) Attach(_ context.Context, session string) error {
 	return nil
 }
 
-func (s *stubBackend) Switch(_ context.Context, target string) error {
-	s.lastSwitch = target
+func (s *stubBackend) Switch(context.Context, string) error {
 	return nil
 }
 
