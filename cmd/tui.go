@@ -12,7 +12,11 @@ import (
 var (
 	isTerminal = term.IsTerminal
 	openTUI    = func(ctx context.Context) error {
-		return apptui.NewService(detectBackend).Run(ctx)
+		service := apptui.NewService(func() (apptui.Backend, error) {
+			return detectBackend()
+		})
+
+		return service.Run(ctx)
 	}
 )
 

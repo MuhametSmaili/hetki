@@ -59,7 +59,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 			require.NoError(t, err)
 			workspacePath := filepath.Join(configDirectory, "workspace.yaml")
 			require.NoError(t, os.WriteFile(workspacePath, data, 0600))
-			service := NewService(func(...string) (backend.Backend, error) { return b, nil })
+			service := NewService(func() (Backend, error) { return b, nil })
 
 			err = service.Run(ctx, Options{Workspace: workspacePath})
 

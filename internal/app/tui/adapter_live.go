@@ -12,10 +12,18 @@ import (
 	"github.com/MSmaili/hetki/internal/tui/list"
 )
 
+// Backend provides the observation, mutation and navigation operations used by the picker.
+type Backend interface {
+	QueryState(context.Context) (backend.StateResult, error)
+	Apply(context.Context, []backend.Action) error
+	Switch(context.Context, backend.Target) error
+	CapturePane(context.Context, backend.Target) (string, error)
+}
+
 type LiveAdapter struct {
-	DetectBackend func(...string) (backend.Backend, error)
+	DetectBackend func() (Backend, error)
 	mu            sync.RWMutex // Protects the index and backend instance; never held during capture.
-	cached        backend.Backend
+	cached        Backend
 	index         itemIndex
 	statusServer  observe.Server
 	statusErr     error
@@ -25,12 +33,12 @@ type LiveAdapter struct {
 	pendingRecord *navigationRecord
 }
 
-func NewLiveAdapter(detectBackend func(...string) (backend.Backend, error)) *LiveAdapter {
+func NewLiveAdapter(detectBackend func() (Backend, error)) *LiveAdapter {
 	store, err := frecency.DefaultStore()
 	return newLiveAdapter(detectBackend, store, err)
 }
 
-func newLiveAdapter(detectBackend func(...string) (backend.Backend, error), store *frecency.Store, storeErr error) *LiveAdapter {
+func newLiveAdapter(detectBackend func() (Backend, error), store *frecency.Store, storeErr error) *LiveAdapter {
 	return &LiveAdapter{DetectBackend: detectBackend, projection: projectionFlat, frecency: store, frecencyErr: storeErr}
 }
 
@@ -131,13 +139,13 @@ func (a *LiveAdapter) resolveItem(id list.ItemID) (liveItem, error) {
 	return item, nil
 }
 
-func (a *LiveAdapter) detectBackend() (backend.Backend, error) {
+func (a *LiveAdapter) detectBackend() (Backend, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cached != nil {
 		return a.cached, nil
 	}
-	var b backend.Backend
+	var b Backend
 	var err error
 	if a.DetectBackend != nil {
 		b, err = a.DetectBackend()

@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
 	"github.com/MSmaili/hetki/internal/backend/tmux"
 	"github.com/MSmaili/hetki/internal/status"
 	"github.com/MSmaili/hetki/internal/status/daemon"
@@ -31,7 +30,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	runPickerPTY(t, executable, client)
 	first, err := client.Ping(t.Context())
 	require.NoError(t, err, "daemon must survive picker exit")
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return b, nil }, nil, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	adapter.projection = projectionTree
 	service := Service{Driver: adapter}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
@@ -70,7 +69,7 @@ func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hetki", "status.d", "cat.yaml")))
 	executable := buildPickerExecutable(t)
 	runPickerPTY(t, executable, client)
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return b, nil }, nil, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	adapter.projection = projectionTree
 	service := Service{Driver: adapter}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {

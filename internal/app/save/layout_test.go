@@ -26,7 +26,7 @@ func TestServiceRunSavesBackendLayoutPreset(t *testing.T) {
 		assert.Equal(t, "opaque observation", observed)
 		return "tiled", nil
 	}
-	service := NewService(func(...string) (backend.Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil })
 
 	_, err := service.Run(t.Context(), Options{Path: path})
 
@@ -47,7 +47,7 @@ func TestServiceRunPreservesDestinationWhenBackendCannotExportLayout(t *testing.
 			Panes: []backend.Pane{{Path: "/tmp"}, {Path: "/tmp"}},
 		}}}},
 	}}
-	service := NewService(func(...string) (backend.Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil })
 
 	_, err := service.Run(t.Context(), Options{Path: path, All: true})
 

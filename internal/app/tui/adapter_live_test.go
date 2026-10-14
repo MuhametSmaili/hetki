@@ -28,10 +28,6 @@ type stubBackend struct {
 	captureHook func(context.Context, backend.Target) (string, error)
 }
 
-func (s *stubBackend) LayoutsMatch(desired, actual string) bool     { return desired == actual }
-func (s *stubBackend) LayoutPreset(observed string) (string, error) { return observed, nil }
-
-func (s *stubBackend) Name() string { return "stub" }
 func (s *stubBackend) CapturePane(ctx context.Context, target backend.Target) (string, error) {
 	if s.captureHook == nil {
 		panic("unexpected pane capture")
@@ -56,8 +52,6 @@ func (s *stubBackend) Apply(_ context.Context, actions []backend.Action) error {
 	return s.applyErr
 }
 
-func (s *stubBackend) DryRun([]backend.Action) ([]string, error) { return nil, nil }
-func (s *stubBackend) Attach(context.Context, string) error      { return nil }
 func (s *stubBackend) Switch(_ context.Context, target backend.Target) error {
 	s.switchCalls = append(s.switchCalls, target)
 	if s.switchHook != nil {
@@ -77,7 +71,7 @@ func liveState() backend.StateResult {
 }
 
 func testAdapter(stub *stubBackend) *LiveAdapter {
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, nil, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
 	adapter.projection = projectionTree
 	return adapter
 }
@@ -110,7 +104,7 @@ func TestLiveAdapterProjectsPresentationAndKeepsTargetsInOwnerIndex(t *testing.T
 
 func TestLiveAdapterStartsWithTheFlatProjection(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, nil, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
 
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
@@ -128,7 +122,7 @@ func TestLiveAdapterLoadsFrecencyBeforeProjectingFlatRows(t *testing.T) {
 		{ID: "$2", Name: "zeta", Windows: []backend.Window{{ID: "@2", Name: "z", Panes: []backend.Pane{{ID: "%2", Path: "/z"}}}}},
 	}}
 	stub := &stubBackend{state: state}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, store, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
 
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
@@ -140,7 +134,7 @@ func TestLiveAdapterRecordsOnlyAfterSuccessfulNavigation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frecency.json")
 	store := frecency.NewStore(path)
 	stub := &stubBackend{state: liveState()}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, store, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
 	id := snapshot.Items[0].ID
@@ -161,7 +155,7 @@ func TestLiveAdapterRecordsOnlyAfterSuccessfulNavigation(t *testing.T) {
 	failedPath := filepath.Join(t.TempDir(), "frecency.json")
 	failedStore := frecency.NewStore(failedPath)
 	failedBackend := &stubBackend{state: liveState(), switchErr: errors.New("switch failed")}
-	failed := newLiveAdapter(func(...string) (backend.Backend, error) { return failedBackend, nil }, failedStore, nil)
+	failed := newLiveAdapter(func() (Backend, error) { return failedBackend, nil }, failedStore, nil)
 	failedSnapshot, err := failed.Load(context.Background())
 	require.NoError(t, err)
 	result, err = failed.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: failedSnapshot.Items[0].ID})
@@ -174,7 +168,7 @@ func TestLiveAdapterRecordsOnlyAfterSuccessfulNavigation(t *testing.T) {
 func TestLiveAdapterRecordsTreeNavigationAtTheActivePanePath(t *testing.T) {
 	store := frecency.NewStore(filepath.Join(t.TempDir(), "frecency.json"))
 	stub := &stubBackend{state: liveState()}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, store, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
 	adapter.projection = projectionTree
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
@@ -194,7 +188,7 @@ func TestLiveAdapterShowsInvalidFrecencyAndPreservesItBeforeRecording(t *testing
 	require.NoError(t, os.WriteFile(path, []byte(`{"version":`), 0600))
 	store := frecency.NewStore(path)
 	stub := &stubBackend{state: liveState()}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, store, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
 
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
@@ -223,7 +217,7 @@ func TestLiveAdapterPropagatesFrecencyCancellation(t *testing.T) {
 
 func TestLiveAdapterSurfacesUnavailableFrecencyWithoutBlockingLoad(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, nil, errors.New("home is unavailable"))
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, errors.New("home is unavailable"))
 
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
@@ -695,7 +689,7 @@ func TestLiveAdapterRejectsMissingStableSessionAndWindowIDsDuringProjection(t *t
 			state := liveState()
 			test.edit(&state)
 			stub := &stubBackend{state: state}
-			adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, nil, nil)
+			adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
 
 			_, err := adapter.Load(context.Background())
 			require.ErrorContains(t, err, test.want)

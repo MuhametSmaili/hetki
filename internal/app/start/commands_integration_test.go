@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
 	backendtmux "github.com/MSmaili/hetki/internal/backend/tmux"
 	"github.com/MSmaili/hetki/internal/manifest"
 	"github.com/stretchr/testify/assert"
@@ -53,7 +52,7 @@ func TestCommandsExecuteOnceAtCreationTime(t *testing.T) {
 	workspace, err := manifest.Parse([]byte(source), "dev.yaml")
 	require.NoError(t, err, "the loader pipeline is part of the behavior under test")
 
-	service := NewService(func(...string) (backend.Backend, error) { return b, nil })
+	service := NewService(func() (Backend, error) { return b, nil })
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
 	require.NoError(t, service.Run(context.Background(), Options{}))

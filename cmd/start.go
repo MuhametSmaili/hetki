@@ -35,7 +35,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 		nameOrPath = args[0]
 	}
 
-	return appstart.NewService(detectBackend).Run(cmd.Context(), appstart.Options{
+	service := appstart.NewService(func() (appstart.Backend, error) {
+		return detectBackend()
+	})
+
+	return service.Run(cmd.Context(), appstart.Options{
 		Workspace: nameOrPath,
 		DryRun:    dryRun,
 		Force:     force,

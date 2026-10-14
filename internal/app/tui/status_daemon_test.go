@@ -120,7 +120,7 @@ func TestOpeningStatusDefersDaemonWorkUntilRead(t *testing.T) {
 
 func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {
 	b := &replacedServerBackend{stubBackend: stubBackend{state: liveState()}}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return b, nil }, nil, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
 	_, loadErr := adapter.Load(t.Context())
 	reader, statusErr := adapter.OpenStatus(t.Context())

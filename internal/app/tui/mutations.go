@@ -182,7 +182,7 @@ func workspacePathForSession(sessions []backend.Session, sessionName string) str
 	return ""
 }
 
-func activeWorkspacePath(ctx context.Context, b backend.Backend) (string, error) {
+func activeWorkspacePath(ctx context.Context, b Backend) (string, error) {
 	state, err := b.QueryState(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to query sessions for workspace inheritance: %w", err)

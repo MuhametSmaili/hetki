@@ -20,7 +20,6 @@ type stubBackend struct {
 	presetHook  func(string) (string, error)
 }
 
-func (s *stubBackend) LayoutsMatch(desired, actual string) bool { return desired == actual }
 func (s *stubBackend) LayoutPreset(observed string) (string, error) {
 	if s.presetErr != nil {
 		return "", s.presetErr
@@ -31,22 +30,12 @@ func (s *stubBackend) LayoutPreset(observed string) (string, error) {
 	return observed, nil
 }
 
-func (s *stubBackend) Name() string { return "stub" }
-func (s *stubBackend) CapturePane(context.Context, backend.Target) (string, error) {
-	panic("unexpected pane capture")
-}
-
 func (s *stubBackend) QueryState(context.Context) (backend.StateResult, error) {
 	if s.queryErr != nil {
 		return backend.StateResult{}, s.queryErr
 	}
 	return s.queryResult, nil
 }
-
-func (s *stubBackend) Apply(context.Context, []backend.Action) error { return nil }
-func (s *stubBackend) DryRun([]backend.Action) ([]string, error)     { return nil, nil }
-func (s *stubBackend) Attach(context.Context, string) error          { return nil }
-func (s *stubBackend) Switch(context.Context, backend.Target) error  { return nil }
 
 func TestServiceRunWritesCurrentSessionWorkspace(t *testing.T) {
 	home := t.TempDir()
@@ -66,7 +55,7 @@ func TestServiceRunWritesCurrentSessionWorkspace(t *testing.T) {
 		Active: backend.ActiveContext{Session: "dev"},
 	}}
 
-	service := NewService(func(...string) (backend.Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil })
 	path, err := service.Run(context.Background(), Options{Path: outputPath})
 	require.NoError(t, err)
 	assert.Equal(t, outputPath, path)

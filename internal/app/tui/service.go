@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/MSmaili/hetki/internal/backend"
 	ui "github.com/MSmaili/hetki/internal/tui"
 	"github.com/MSmaili/hetki/internal/tui/list"
 )
@@ -30,7 +29,7 @@ type Service struct {
 	StatusReader StatusReader
 }
 
-func NewService(detectBackend func(...string) (backend.Backend, error)) Service {
+func NewService(detectBackend func() (Backend, error)) Service {
 	return Service{
 		Driver:    NewLiveAdapter(detectBackend),
 		Keys:      ui.DefaultKeyMap(),

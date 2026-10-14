@@ -21,12 +21,21 @@ type Options struct {
 	Force     bool
 }
 
+// Backend provides the reconciliation and attachment operations used by starting.
+type Backend interface {
+	QueryState(context.Context) (backend.StateResult, error)
+	LayoutsMatch(desired, actual string) bool
+	Apply(context.Context, []backend.Action) error
+	DryRun([]backend.Action) ([]string, error)
+	Attach(context.Context, string) error
+}
+
 type Service struct {
-	DetectBackend func(...string) (backend.Backend, error)
+	DetectBackend func() (Backend, error)
 	LoadWorkspace func(string) (*manifest.Workspace, string, error)
 }
 
-func NewService(detectBackend func(...string) (backend.Backend, error)) Service {
+func NewService(detectBackend func() (Backend, error)) Service {
 	return Service{DetectBackend: detectBackend}
 }
 
@@ -62,14 +71,14 @@ func (s Service) loadWorkspace(nameOrPath string) (*manifest.Workspace, string, 
 	return appshared.NewWorkspaceLoader().LoadWorkspace(nameOrPath)
 }
 
-func (s Service) detectBackend() (backend.Backend, error) {
+func (s Service) detectBackend() (Backend, error) {
 	if s.DetectBackend != nil {
 		return s.DetectBackend()
 	}
 	return backend.Detect()
 }
 
-func buildPlan(ctx context.Context, b backend.Backend, workspace *manifest.Workspace, force bool) (*plan.Plan, error) {
+func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, force bool) (*plan.Plan, error) {
 	desired := converter.ManifestToState(workspace)
 
 	result, err := b.QueryState(ctx)
@@ -96,7 +105,7 @@ func selectStrategy(force bool) plan.Strategy {
 	return &plan.MergeStrategy{}
 }
 
-func executePlan(ctx context.Context, b backend.Backend, p *plan.Plan, workspace *manifest.Workspace, workspacePath string, dryRun bool) error {
+func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspace *manifest.Workspace, workspacePath string, dryRun bool) error {
 	if p.IsEmpty() {
 		logger.Info("Workspace already up to date")
 		if dryRun {
@@ -124,13 +133,13 @@ func executePlan(ctx context.Context, b backend.Backend, p *plan.Plan, workspace
 	return attachToSession(ctx, b, workspace)
 }
 
-func warnIfMetadataStampFails(ctx context.Context, b backend.Backend, workspace *manifest.Workspace, workspacePath string) {
+func warnIfMetadataStampFails(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) {
 	if err := stampWorkspacePath(ctx, b, workspace, workspacePath); err != nil {
 		logger.Warning("workspace metadata not set: %v", err)
 	}
 }
 
-func stampWorkspacePath(ctx context.Context, b backend.Backend, workspace *manifest.Workspace, workspacePath string) error {
+func stampWorkspacePath(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) error {
 	path := strings.TrimSpace(workspacePath)
 	if path == "" {
 		return nil
@@ -159,7 +168,7 @@ func stampWorkspacePath(ctx context.Context, b backend.Backend, workspace *manif
 	return nil
 }
 
-func printDryRun(b backend.Backend, actions []backend.Action) error {
+func printDryRun(b Backend, actions []backend.Action) error {
 	lines, err := b.DryRun(actions)
 	if err != nil {
 		return fmt.Errorf("failed to render dry run: %w", err)
@@ -212,7 +221,7 @@ func toBackendAction(action plan.Action) (backend.Action, error) {
 	}
 }
 
-func attachToSession(ctx context.Context, b backend.Backend, workspace *manifest.Workspace) error {
+func attachToSession(ctx context.Context, b Backend, workspace *manifest.Workspace) error {
 	if len(workspace.Sessions) > 0 {
 		return b.Attach(ctx, workspace.Sessions[0].Name)
 	}

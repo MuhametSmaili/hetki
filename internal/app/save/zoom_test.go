@@ -23,7 +23,7 @@ func TestServiceRunPreservesPaneZoom(t *testing.T) {
 		}},
 		Active: backend.ActiveContext{Session: "dev"},
 	}}
-	service := NewService(func(...string) (backend.Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil })
 
 	_, err := service.Run(t.Context(), Options{Path: path})
 

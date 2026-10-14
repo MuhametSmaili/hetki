@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
 	"github.com/MSmaili/hetki/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +39,7 @@ func TestStartupCommandsPreserveEscapesAndRunOnce(t *testing.T) {
 	require.NoError(t, err)
 	workspacePath := filepath.Join(directory, "workspace.yaml")
 	require.NoError(t, os.WriteFile(workspacePath, source, 0600))
-	service := NewService(func(...string) (backend.Backend, error) { return b, nil })
+	service := NewService(func() (Backend, error) { return b, nil })
 
 	err = service.Run(ctx, Options{Workspace: workspacePath})
 

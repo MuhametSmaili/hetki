@@ -56,7 +56,7 @@ func TestLiveAdapterUsesOpaqueReferenceForPaneActions(t *testing.T) {
 		require.Equal(t, target, captured)
 		return "screen", nil
 	}
-	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return stub, nil }, nil, nil)
+	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
 	id := snapshot.Items[0].ID

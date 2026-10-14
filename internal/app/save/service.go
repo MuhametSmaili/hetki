@@ -21,11 +21,17 @@ type Options struct {
 	All   bool
 }
 
-type Service struct {
-	DetectBackend func(...string) (backend.Backend, error)
+// Backend provides the observation and layout export operations used by saving.
+type Backend interface {
+	QueryState(context.Context) (backend.StateResult, error)
+	LayoutPreset(string) (string, error)
 }
 
-func NewService(detectBackend func(...string) (backend.Backend, error)) Service {
+type Service struct {
+	DetectBackend func() (Backend, error)
+}
+
+func NewService(detectBackend func() (Backend, error)) Service {
 	return Service{DetectBackend: detectBackend}
 }
 
@@ -60,7 +66,7 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 	return saveWorkspace(ctx, workspace, outputPath, opts.All)
 }
 
-func (s Service) detectBackend() (backend.Backend, error) {
+func (s Service) detectBackend() (Backend, error) {
 	if s.DetectBackend != nil {
 		return s.DetectBackend()
 	}
@@ -74,7 +80,7 @@ func validateOptions(opts Options) error {
 	return nil
 }
 
-func getTargetSessions(ctx context.Context, b backend.Backend, saveAll bool) ([]backend.Session, error) {
+func getTargetSessions(ctx context.Context, b Backend, saveAll bool) ([]backend.Session, error) {
 	result, err := b.QueryState(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query sessions: %w", err)

@@ -58,7 +58,7 @@ func TestForceKeepsUnrelatedSessionOnIsolatedTmux(t *testing.T) {
 			{Name: scratch.Name, Path: scratch.Path, Layout: scratch.Layout, Panes: manifestPanes(scratch.Panes)},
 		},
 	}}}
-	service := NewService(func(...string) (backend.Backend, error) { return b, nil })
+	service := NewService(func() (Backend, error) { return b, nil })
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
 	require.NoError(t, service.Run(context.Background(), Options{Force: true}))
@@ -110,7 +110,7 @@ func TestCreationFollowupsUseReturnedIDsOnNonEmptyBaseOneSession(t *testing.T) {
 			{Name: "server", Path: serverPath, Layout: "tiled", Panes: []manifest.Pane{{Path: serverPath}, {Path: secondPanePath, Zoom: true}}},
 		},
 	}}}
-	service := NewService(func(...string) (backend.Backend, error) { return b, nil })
+	service := NewService(func() (Backend, error) { return b, nil })
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
 	require.NoError(t, service.Run(context.Background(), Options{}))
