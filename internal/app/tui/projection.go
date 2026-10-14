@@ -27,23 +27,62 @@ func (a *LiveAdapter) Load(ctx context.Context) (list.Snapshot, error) {
 }
 
 func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
+	a.mu.RLock()
+	projection := a.projection
+	a.mu.RUnlock()
+
+	prepared, err := a.prepareSnapshot(ctx, projection)
+	if err != nil {
+		return list.Snapshot{}, err
+	}
+
+	if err := a.publishSnapshot(ctx, prepared); err != nil {
+		return list.Snapshot{}, err
+	}
+	return prepared.snapshot, nil
+}
+
+type preparedSnapshot struct {
+	snapshot   list.Snapshot
+	index      itemIndex
+	projection projectionKind
+	server     observe.Server
+	statusErr  error
+}
+
+func (a *LiveAdapter) prepareSnapshot(ctx context.Context, projection projectionKind) (preparedSnapshot, error) {
 	result, err := a.queryState(ctx)
 	if err != nil {
-		return list.Snapshot{}, err
+		return preparedSnapshot{}, err
 	}
+
 	scores, notice, err := a.loadFrecency(ctx)
 	if err != nil {
-		return list.Snapshot{}, err
+		return preparedSnapshot{}, err
 	}
-	snapshot, index, err := projectState(result.StateResult, a.projection, scores, notice)
+
+	snapshot, index, err := projectState(result.StateResult, projection, scores, notice)
 	if err != nil {
-		return list.Snapshot{}, err
+		return preparedSnapshot{}, err
 	}
+	return preparedSnapshot{
+		snapshot: snapshot, index: index, projection: projection,
+		server: result.server, statusErr: result.statusErr,
+	}, nil
+}
+
+func (a *LiveAdapter) publishSnapshot(ctx context.Context, prepared preparedSnapshot) error {
 	a.mu.Lock()
-	a.index = index
-	a.statusServer, a.statusErr = result.server, result.statusErr
-	a.mu.Unlock()
-	return snapshot, nil
+	defer a.mu.Unlock()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	a.projection = prepared.projection
+	a.index = prepared.index
+	a.statusServer, a.statusErr = prepared.server, prepared.statusErr
+	return nil
 }
 
 type liveStateResult struct {
@@ -120,30 +159,27 @@ func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.Item
 			return ui.ActionResult{}, err
 		}
 	}
+	a.mu.RLock()
+	current := a.projection
+	a.mu.RUnlock()
+
 	next := projectionFlat
 	message := "showing panes"
-	if a.projection == projectionFlat {
+	if current == projectionFlat {
 		next = projectionTree
 		message = "showing session tree"
 	}
-	state, err := a.queryState(ctx)
+
+	prepared, err := a.prepareSnapshot(ctx, next)
 	if err != nil {
 		return ui.ActionResult{}, err
 	}
-	scores, notice, err := a.loadFrecency(ctx)
-	if err != nil {
+	preferred := preferredProjectionItem(selected, next, prepared.snapshot, prepared.index)
+
+	if err := a.publishSnapshot(ctx, prepared); err != nil {
 		return ui.ActionResult{}, err
 	}
-	snapshot, index, err := projectState(state.StateResult, next, scores, notice)
-	if err != nil {
-		return ui.ActionResult{}, err
-	}
-	preferred := preferredProjectionItem(selected, next, snapshot, index)
-	a.projection = next
-	a.mu.Lock()
-	a.index = index
-	a.statusServer, a.statusErr = state.server, state.statusErr
-	a.mu.Unlock()
+	snapshot := prepared.snapshot
 	return ui.ActionResult{Message: message, Snapshot: &snapshot, SelectItemID: preferred}, nil
 }
 

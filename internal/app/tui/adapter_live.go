@@ -20,9 +20,11 @@ type Backend interface {
 	CapturePane(context.Context, backend.Target) (string, error)
 }
 
+// LiveAdapter projects backend state and owns picker actions.
+// Callers must serialize Load, Execute and Navigate; preview and status reads may run concurrently.
 type LiveAdapter struct {
 	DetectBackend func() (Backend, error)
-	mu            sync.RWMutex // Protects the index and backend instance; never held during capture.
+	mu            sync.RWMutex // Protects published projection state and the cached backend; never held during capture.
 	cached        Backend
 	index         itemIndex
 	statusServer  observe.Server
