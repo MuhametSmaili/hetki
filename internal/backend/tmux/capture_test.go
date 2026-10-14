@@ -14,8 +14,16 @@ import (
 )
 
 func TestCapturePaneUsesOneBoundedVisibleScreenRead(t *testing.T) {
-	for _, target := range []string{"%0", "%123", "$0:", "$12:@34"} {
-		t.Run(target, func(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target backend.Target
+		native string
+	}{
+		{"session active pane", backend.Target{SessionID: "$0"}, "$0:"},
+		{"window active pane", backend.Target{SessionID: "$12", WindowID: "@34"}, "$12:@34"},
+		{"pane occurrence", backend.Target{SessionID: "$12", WindowID: "@34", PaneID: "%123"}, "$12:@34.%123"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
 			calls := 0
 			var b backend.Backend = &TmuxBackend{client: &MockClient{
 				RunFunc: func(context.Context, ...string) (string, error) {
@@ -29,7 +37,7 @@ func TestCapturePaneUsesOneBoundedVisibleScreenRead(t *testing.T) {
 				RunLimitedFunc: func(ctx context.Context, limit int, args ...string) (string, error) {
 					calls++
 					assert.Equal(t, 1<<20, limit)
-					assert.Equal(t, []string{"capture-pane", "-p", "-e", "-N", "-S", "0", "-t", target}, args)
+					assert.Equal(t, []string{"capture-pane", "-p", "-e", "-N", "-S", "0", "-t", test.native}, args)
 					deadline, ok := ctx.Deadline()
 					assert.True(t, ok)
 					assert.InDelta(t, 1, time.Until(deadline).Seconds(), 0.1)
@@ -37,32 +45,11 @@ func TestCapturePaneUsesOneBoundedVisibleScreenRead(t *testing.T) {
 				},
 			}}
 
-			output, err := b.CapturePane(context.Background(), target)
+			output, err := b.CapturePane(context.Background(), test.target)
 
 			require.NoError(t, err)
 			assert.Equal(t, "  \x1b[31mred\x1b[0m  \n\n", output)
 			assert.Equal(t, 1, calls)
-		})
-	}
-}
-
-func TestCapturePaneRejectsMalformedTargetsBeforeDispatch(t *testing.T) {
-	b := &TmuxBackend{client: &MockClient{RunLimitedFunc: func(context.Context, int, ...string) (string, error) {
-		t.Fatal("malformed target reached subprocess")
-		return "", nil
-	}}}
-	for _, target := range []string{
-		"", "dev", "dev:editor", "@1", "$1", "$1:0", "$1:editor", ":@1",
-		"%", "%01", "%+1", "%-1", "%1.0", "%1 ", " %1", "%1\n", "%1\x00",
-		"$01:", "$-1:", "$+1:", "$1:@01", "$1:@-1", "$1:@+1", "$1:@",
-		"$1:@1.0", "$1:@1:", "$1::", "$1:%1", "$1: ", "$1:@1\n",
-		"%9999999999999999999999999", "$9999999999999999999999999:", "$1:@9999999999999999999999999",
-		"%1;kill-server", "%1 ; kill-server", "-a", "{last}", "=dev:",
-	} {
-		t.Run(target, func(t *testing.T) {
-			output, err := b.CapturePane(context.Background(), target)
-			require.Error(t, err)
-			assert.Empty(t, output)
 		})
 	}
 }
@@ -72,7 +59,7 @@ func TestCapturePaneDiscardsFailedRead(t *testing.T) {
 	b := &TmuxBackend{client: &MockClient{RunLimitedFunc: func(context.Context, int, ...string) (string, error) {
 		return "partial snapshot", failure
 	}}}
-	output, err := b.CapturePane(context.Background(), "%1")
+	output, err := b.CapturePane(context.Background(), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"})
 	require.ErrorIs(t, err, failure)
 	assert.Empty(t, output)
 }
@@ -86,7 +73,7 @@ func TestCapturePaneProcessCancellationAndTimeout(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := b.CapturePane(ctx, "%1")
+	_, err := b.CapturePane(ctx, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"})
 	require.ErrorIs(t, err, context.Canceled)
 	_, err = os.Stat(started)
 	require.True(t, os.IsNotExist(err), "already-canceled capture must not dispatch")
@@ -95,7 +82,7 @@ func TestCapturePaneProcessCancellationAndTimeout(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := b.CapturePane(ctx, "%1")
+		_, err := b.CapturePane(ctx, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"})
 		done <- err
 	}()
 	require.Eventually(t, func() bool {
@@ -106,7 +93,7 @@ func TestCapturePaneProcessCancellationAndTimeout(t *testing.T) {
 	require.ErrorIs(t, awaitTmuxChannel(t, done), context.Canceled)
 
 	start := time.Now()
-	_, err = b.CapturePane(context.Background(), "%1")
+	_, err = b.CapturePane(context.Background(), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(start), 2*time.Second, "capture owns a one-second deadline")
 

@@ -53,10 +53,6 @@ func TestStatusBindingsForLinkedWindows(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, want, bindings)
-			for id := range bindings {
-				item := adapter.index[id]
-				require.Equal(t, item.SessionTarget+":@1", item.MutationTarget)
-			}
 		})
 	}
 }
@@ -133,10 +129,10 @@ func TestServiceSuppliesBindingsOnProjectionReplacement(t *testing.T) {
 	service := Service{Driver: adapter, StatusReader: statusReaderFunc(func(context.Context) (status.Snapshot, error) {
 		reads++
 		return status.Snapshot{}, nil
-	}), RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
+	}), RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 		initial = options.Bindings
 		result, dispatchErr = dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: windowItemID("$1", "@1")})
-		return "", nil
+		return list.ItemID{}, nil
 	}}
 
 	err := service.Run(context.Background())
@@ -163,11 +159,11 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 		<-ctx.Done()
 		close(stopped)
 		return status.Snapshot{}, ctx.Err()
-	}), RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
+	}), RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 		read = options.Read
 		go func() { done <- read(context.Background(), previous).Values }()
 		awaitChannel(t, started)
-		return "", nil
+		return list.ItemID{}, nil
 	}}
 
 	err = service.Run(context.Background())

@@ -54,7 +54,7 @@ func (m model) viewList(layout layoutMetrics) string {
 	now := time.Now()
 	for i, row := range rows {
 		visibleRows = append(visibleRows, rowProps{
-			ItemID: string(row.Item.ID), Primary: row.Item.Primary, Secondary: row.Item.Secondary,
+			Primary: row.Item.Primary, Secondary: row.Item.Secondary,
 			Trailing:   row.Item.Trailing,
 			Status:     m.paneStatus.options.Bindings.ValueAt(row.Item.ID, m.paneStatus.values, now),
 			StatusTime: now,

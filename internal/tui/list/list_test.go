@@ -11,7 +11,7 @@ func item(id, primary, secondary string) Item {
 	if secondary != "" {
 		fields = append(fields, SearchField{Tier: SearchSecondary, Text: secondary})
 	}
-	return Item{ID: ItemID(id), Primary: primary, Secondary: secondary, SearchFields: fields}
+	return Item{ID: ItemID{ID: id}, Primary: primary, Secondary: secondary, SearchFields: fields}
 }
 
 func flatFixture() Snapshot {
@@ -19,7 +19,7 @@ func flatFixture() Snapshot {
 		item("editor", "editor", "~/code/editor"),
 		item("server", "server", "~/svc/api"),
 		item("shell", "shell", "~/prod/app"),
-	}, ActiveItemID: "editor"}
+	}, ActiveItemID: ItemID{ID: "editor"}}
 }
 
 func nestedFixture() Snapshot {
@@ -27,13 +27,13 @@ func nestedFixture() Snapshot {
 	dev.Children = []Item{item("editor", "editor", "~/code/editor"), item("server", "server", "~/svc/api")}
 	prod := item("prod", "prod", "")
 	prod.Children = []Item{item("shell", "shell", "~/prod/app")}
-	return Snapshot{Items: []Item{dev, prod}, ActiveItemID: "editor"}
+	return Snapshot{Items: []Item{dev, prod}, ActiveItemID: ItemID{ID: "editor"}}
 }
 
 func selectedID(m Model) ItemID {
 	selected, ok := m.Selected()
 	if !ok {
-		return ""
+		return ItemID{}
 	}
 	return selected.Item.ID
 }
@@ -52,8 +52,8 @@ func TestFlatAndNestedListsShareMovementFilterAndViewport(t *testing.T) {
 		snapshot Snapshot
 		wantRows []ItemID
 	}{
-		{name: "flat", snapshot: flatFixture(), wantRows: []ItemID{"editor", "server", "shell"}},
-		{name: "nested", snapshot: nestedFixture(), wantRows: []ItemID{"dev", "editor", "server", "prod", "shell"}},
+		{name: "flat", snapshot: flatFixture(), wantRows: []ItemID{{ID: "editor"}, {ID: "server"}, {ID: "shell"}}},
+		{name: "nested", snapshot: nestedFixture(), wantRows: []ItemID{{ID: "dev"}, {ID: "editor"}, {ID: "server"}, {ID: "prod"}, {ID: "shell"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m, err := New(test.snapshot)
@@ -70,13 +70,13 @@ func TestFlatAndNestedListsShareMovementFilterAndViewport(t *testing.T) {
 			require.Zero(t, m.Offset())
 
 			m.SetQuery("api")
-			require.Equal(t, ItemID("server"), selectedID(m))
-			require.Contains(t, rowIDs(m.Rows()), ItemID("server"))
+			require.Equal(t, ItemID{ID: "server"}, selectedID(m))
+			require.Contains(t, rowIDs(m.Rows()), ItemID{ID: "server"})
 			if test.name == "nested" {
-				require.Contains(t, rowIDs(m.Rows()), ItemID("dev"), "a matching child must retain its ancestor")
+				require.Contains(t, rowIDs(m.Rows()), ItemID{ID: "dev"}, "a matching child must retain its ancestor")
 			}
 			m.SetQuery("")
-			require.Equal(t, ItemID("server"), selectedID(m))
+			require.Equal(t, ItemID{ID: "server"}, selectedID(m))
 			m.SetQuery("no-such-item")
 			require.Empty(t, m.Rows())
 		})
@@ -92,7 +92,7 @@ func TestPrimarySearchTierOutranksSecondaryWithoutReorderingRows(t *testing.T) {
 	require.NoError(t, err)
 	m.SetQuery("api")
 
-	require.Equal(t, []ItemID{"name", "path"}, rowIDs(m.Rows()), "stronger fuzzy matches must sort first")
+	require.Equal(t, []ItemID{{ID: "name"}, {ID: "path"}}, rowIDs(m.Rows()), "stronger fuzzy matches must sort first")
 	require.Greater(t, m.Rows()[0].Score, m.Rows()[1].Score, "primary matches must outrank secondary matches")
 }
 
@@ -102,12 +102,12 @@ func TestFilteringSelectsTheBestMatchInsteadOfKeepingAWeakerFlatMatch(t *testing
 		item("name-match", "app", "~/other"),
 	}})
 	require.NoError(t, err)
-	require.True(t, m.Select("path-match"))
+	require.True(t, m.Select(ItemID{ID: "path-match"}))
 
 	m.SetQuery("app")
 
-	require.Equal(t, []ItemID{"name-match", "path-match"}, rowIDs(m.Rows()))
-	require.Equal(t, ItemID("name-match"), selectedID(m))
+	require.Equal(t, []ItemID{{ID: "name-match"}, {ID: "path-match"}}, rowIDs(m.Rows()))
+	require.Equal(t, ItemID{ID: "name-match"}, selectedID(m))
 }
 
 func TestNestedFilteringRanksPrimaryTierBeforeSecondaryAndKeepsAncestors(t *testing.T) {
@@ -119,7 +119,7 @@ func TestNestedFilteringRanksPrimaryTierBeforeSecondaryAndKeepsAncestors(t *test
 	require.NoError(t, err)
 	m.SetQuery("api")
 
-	require.Equal(t, []ItemID{"primary-root", "primary", "secondary-root", "secondary"}, rowIDs(m.Rows()))
+	require.Equal(t, []ItemID{{ID: "primary-root"}, {ID: "primary"}, {ID: "secondary-root"}, {ID: "secondary"}}, rowIDs(m.Rows()))
 	require.Equal(t, 0, m.Rows()[0].Score, "retained ancestors are not direct matches")
 	require.Greater(t, m.Rows()[1].Score, m.Rows()[3].Score)
 }
@@ -128,50 +128,81 @@ func TestEqualFilterScoresPreserveIncomingOrder(t *testing.T) {
 	m, err := New(Snapshot{Items: []Item{item("first", "api", ""), item("second", "api", "")}})
 	require.NoError(t, err)
 	m.SetQuery("api")
-	require.Equal(t, []ItemID{"first", "second"}, rowIDs(m.Rows()))
+	require.Equal(t, []ItemID{{ID: "first"}, {ID: "second"}}, rowIDs(m.Rows()))
 }
 
 func TestActiveItemMarksItsVisibleAncestors(t *testing.T) {
 	m, err := New(nestedFixture())
 	require.NoError(t, err)
-	require.True(t, m.IsActive("dev"))
-	require.True(t, m.IsActive("editor"))
-	require.False(t, m.IsActive("server"))
-	require.False(t, m.IsActive("prod"))
+	require.True(t, m.IsActive(ItemID{ID: "dev"}))
+	require.True(t, m.IsActive(ItemID{ID: "editor"}))
+	require.False(t, m.IsActive(ItemID{ID: "server"}))
+	require.False(t, m.IsActive(ItemID{ID: "prod"}))
 }
 
 func TestExpansionAndReplacementPreserveStableSelection(t *testing.T) {
 	m, err := New(nestedFixture())
 	require.NoError(t, err)
-	require.True(t, m.Select("prod"))
+	require.True(t, m.Select(ItemID{ID: "prod"}))
 	require.True(t, m.CollapseAll())
-	require.Equal(t, ItemID("prod"), selectedID(m))
+	require.Equal(t, ItemID{ID: "prod"}, selectedID(m))
 	require.True(t, m.ExpandAll())
-	require.Equal(t, ItemID("prod"), selectedID(m))
+	require.Equal(t, ItemID{ID: "prod"}, selectedID(m))
 
-	m.expanded["removed"] = true
+	m.expanded[ItemID{ID: "removed"}] = true
 	reordered := nestedFixture()
 	reordered.Items[0], reordered.Items[1] = reordered.Items[1], reordered.Items[0]
-	require.NoError(t, m.Replace(reordered, ""))
-	require.Equal(t, ItemID("prod"), selectedID(m))
-	require.NotContains(t, m.expanded, ItemID("removed"))
+	require.NoError(t, m.Replace(reordered, ItemID{}))
+	require.Equal(t, ItemID{ID: "prod"}, selectedID(m))
+	require.NotContains(t, m.expanded, ItemID{ID: "removed"})
+}
+
+func TestReplacementPreservesStructuralSelectionAndExpansion(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		other ItemID
+	}{
+		{name: "different scope", other: ItemID{Scope: "other", Parent: "parent", ID: "branch"}},
+		{name: "different parent", other: ItemID{Scope: "scope", Parent: "other", ID: "branch"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			first := item("branch", "first", "")
+			first.ID = ItemID{Scope: "scope", Parent: "parent", ID: "branch"}
+			first.Children = []Item{item("first-child", "first child", "")}
+			second := item("branch", "second", "")
+			second.ID = test.other
+			second.Children = []Item{item("second-child", "second child", "")}
+			m, err := New(Snapshot{Items: []Item{first, second}})
+			require.NoError(t, err)
+			require.True(t, m.Select(second.ID))
+			require.True(t, m.ToggleSelected(false))
+
+			err = m.Replace(Snapshot{Items: []Item{second, first}}, ItemID{})
+
+			require.NoError(t, err)
+			require.Equal(t, second.ID, selectedID(m))
+			require.Equal(t, []ItemID{second.ID, first.ID, first.Children[0].ID}, rowIDs(m.Rows()))
+			require.False(t, m.Expansion()[second.ID])
+			require.True(t, m.Expansion()[first.ID])
+		})
+	}
 }
 
 func TestInvalidReplacementRetainsAllListState(t *testing.T) {
 	m, err := New(nestedFixture())
 	require.NoError(t, err)
 	m.Resize(2)
-	require.True(t, m.Select("server"))
+	require.True(t, m.Select(ItemID{ID: "server"}))
 	m.SetQuery("server")
 	beforeRows := rowIDs(m.Rows())
 	beforeOffset := m.Offset()
 
 	invalid := nestedFixture()
-	invalid.Items[1].ID = "dev"
-	require.Error(t, m.Replace(invalid, ""))
+	invalid.Items[1].ID = ItemID{ID: "dev"}
+	require.Error(t, m.Replace(invalid, ItemID{}))
 	require.Equal(t, beforeRows, rowIDs(m.Rows()))
 	require.Equal(t, beforeOffset, m.Offset())
-	require.Equal(t, ItemID("server"), selectedID(m))
+	require.Equal(t, ItemID{ID: "server"}, selectedID(m))
 	require.Equal(t, "server", m.Query())
 }
 
@@ -198,10 +229,10 @@ func TestSelectSurvivorUsesTheOldRowOrderAroundTheAnchor(t *testing.T) {
 		want     ItemID
 		ok       bool
 	}{
-		{name: "next", previous: []ItemID{"one", "removed", "three"}, anchor: "removed", current: Snapshot{Items: []Item{item("one", "one", ""), item("three", "three", "")}}, want: "three", ok: true},
-		{name: "previous", previous: []ItemID{"one", "removed"}, anchor: "removed", current: Snapshot{Items: []Item{item("one", "one", "")}}, want: "one", ok: true},
-		{name: "skip other removed rows", previous: []ItemID{"one", "removed-a", "removed-b", "four"}, anchor: "removed-a", current: Snapshot{Items: []Item{item("one", "one", ""), item("four", "four", "")}}, want: "four", ok: true},
-		{name: "unknown anchor", previous: []ItemID{"one"}, anchor: "removed", current: Snapshot{Items: []Item{item("one", "one", "")}}, want: "one", ok: false},
+		{name: "next", previous: []ItemID{{ID: "one"}, {ID: "removed"}, {ID: "three"}}, anchor: ItemID{ID: "removed"}, current: Snapshot{Items: []Item{item("one", "one", ""), item("three", "three", "")}}, want: ItemID{ID: "three"}, ok: true},
+		{name: "previous", previous: []ItemID{{ID: "one"}, {ID: "removed"}}, anchor: ItemID{ID: "removed"}, current: Snapshot{Items: []Item{item("one", "one", "")}}, want: ItemID{ID: "one"}, ok: true},
+		{name: "skip other removed rows", previous: []ItemID{{ID: "one"}, {ID: "removed-a"}, {ID: "removed-b"}, {ID: "four"}}, anchor: ItemID{ID: "removed-a"}, current: Snapshot{Items: []Item{item("one", "one", ""), item("four", "four", "")}}, want: ItemID{ID: "four"}, ok: true},
+		{name: "unknown anchor", previous: []ItemID{{ID: "one"}}, anchor: ItemID{ID: "removed"}, current: Snapshot{Items: []Item{item("one", "one", "")}}, want: ItemID{ID: "one"}, ok: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m, err := New(test.current)
@@ -221,9 +252,9 @@ func TestMatchNavigationUsesOnlyMatchingRows(t *testing.T) {
 	m, err := New(snapshot)
 	require.NoError(t, err)
 	m.SetQuery("api")
-	require.Equal(t, ItemID("first"), selectedID(m))
+	require.Equal(t, ItemID{ID: "first"}, selectedID(m))
 	require.True(t, m.JumpMatch(true))
-	require.Equal(t, ItemID("third"), selectedID(m))
+	require.Equal(t, ItemID{ID: "third"}, selectedID(m))
 	current, total := m.MatchPosition()
 	require.Equal(t, 2, current)
 	require.Equal(t, 2, total)

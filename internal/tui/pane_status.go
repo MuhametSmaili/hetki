@@ -102,7 +102,7 @@ func statusPoll(delay time.Duration) tea.Cmd {
 }
 
 func (m model) readPaneStatus() (tea.Model, tea.Cmd) {
-	if m.paneStatus.options.Read == nil || m.quitting || m.navigation != "" || m.paneStatus.reading {
+	if m.paneStatus.options.Read == nil || m.quitting || !m.navigation.IsZero() || m.paneStatus.reading {
 		return m, nil
 	}
 	if m.busy {
@@ -126,7 +126,7 @@ func (m model) readPaneStatus() (tea.Model, tea.Cmd) {
 
 func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 	m.paneStatus.reading = false
-	if m.quitting || m.navigation != "" {
+	if m.quitting || !m.navigation.IsZero() {
 		return m, nil
 	}
 	if m.busy || msg.generation != m.paneStatus.bindingGeneration {
@@ -147,7 +147,7 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 
 func (m model) syncStatusFrame(now time.Time) (model, tea.Cmd) {
 	var due time.Time
-	if !m.quitting && m.navigation == "" {
+	if !m.quitting && m.navigation.IsZero() {
 		due = m.nextStatusFrame(now)
 	}
 	p := &m.paneStatus

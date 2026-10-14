@@ -8,6 +8,7 @@ import (
 
 	"github.com/MSmaili/hetki/internal/status"
 	ui "github.com/MSmaili/hetki/internal/tui"
+	"github.com/MSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,9 +44,10 @@ func assertFreshSuccessAfterChunks(t *testing.T, chunks ...[]byte) {
 	require.NoError(t, s.Output(scope, protocolReport("state=done")))
 	first, err := s.ReadStatus(t.Context())
 	require.NoError(t, err)
-	bindings := ui.StatusBindings{"row": {row.pane.Ref}}
+	rowID := list.ItemID{ID: "row"}
+	bindings := ui.StatusBindings{rowID: {row.pane.Ref}}
 	time.Sleep(6 * time.Second)
-	require.Equal(t, status.Idle, bindings.ValueAt("row", first, time.Now()).State)
+	require.Equal(t, status.Idle, bindings.ValueAt(rowID, first, time.Now()).State)
 
 	for _, chunk := range chunks {
 		require.NoError(t, s.Output(scope, chunk))
@@ -55,8 +57,8 @@ func assertFreshSuccessAfterChunks(t *testing.T, chunks ...[]byte) {
 	require.NoError(t, err)
 	require.Equal(t, time.Now(), current.Lookup(row.pane.Ref).OutcomeSince)
 	require.True(t, current.Lookup(row.pane.Ref).OutcomeSince.After(first.Lookup(row.pane.Ref).OutcomeSince))
-	require.Equal(t, status.Completed, bindings.ValueAt("row", current, time.Now().Add(5*time.Second-time.Nanosecond)).Outcome)
-	require.Equal(t, status.Idle, bindings.ValueAt("row", current, time.Now().Add(5*time.Second)).State)
+	require.Equal(t, status.Completed, bindings.ValueAt(rowID, current, time.Now().Add(5*time.Second-time.Nanosecond)).Outcome)
+	require.Equal(t, status.Idle, bindings.ValueAt(rowID, current, time.Now().Add(5*time.Second)).State)
 }
 
 func TestProtocolOutcomesReachCacheAndEndOnNewEvidence(t *testing.T) {

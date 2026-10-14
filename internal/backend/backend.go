@@ -15,9 +15,9 @@ type Backend interface {
 	LayoutPreset(observed string) (string, error)
 
 	QueryState(context.Context) (StateResult, error)
-	CapturePane(context.Context, string) (string, error)
+	CapturePane(context.Context, Target) (string, error)
 	Apply(context.Context, []Action) error
 	DryRun([]Action) ([]string, error)
 	Attach(context.Context, string) error
-	Switch(context.Context, string) error
+	Switch(context.Context, Target) error
 }

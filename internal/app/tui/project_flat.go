@@ -50,8 +50,8 @@ func appendFlatSession(
 	active backend.ActiveContext,
 	homeDir string,
 ) error {
-	if err := validateStableTmuxID(session.ID, '$', "session"); err != nil {
-		return err
+	if session.ID == "" {
+		return fmt.Errorf("session %q is missing its ID", session.Name)
 	}
 	for _, window := range session.Windows {
 		if err := appendFlatWindow(snapshot, index, session, window, active, homeDir); err != nil {
@@ -69,8 +69,8 @@ func appendFlatWindow(
 	active backend.ActiveContext,
 	homeDir string,
 ) error {
-	if err := validateStableTmuxID(window.ID, '@', "window"); err != nil {
-		return err
+	if window.ID == "" {
+		return fmt.Errorf("window %q is missing its ID", window.Name)
 	}
 	for _, pane := range window.Panes {
 		item, destination, err := projectFlatDestination(session, window, pane, homeDir)
@@ -79,7 +79,7 @@ func appendFlatWindow(
 		}
 		snapshot.Items = append(snapshot.Items, item)
 		index[item.ID] = destination
-		if pane.ID == active.PaneID && session.ID == active.SessionID {
+		if item.ID == destinationItemID(active.SessionID, active.WindowID, active.PaneID) {
 			snapshot.ActiveItemID = item.ID
 		}
 	}
@@ -92,8 +92,8 @@ func projectFlatDestination(
 	pane backend.Pane,
 	homeDir string,
 ) (list.Item, liveItem, error) {
-	if err := validateStableTmuxID(pane.ID, '%', "pane"); err != nil {
-		return list.Item{}, liveItem{}, err
+	if pane.ID == "" {
+		return list.Item{}, liveItem{}, fmt.Errorf("pane is missing its ID")
 	}
 
 	name := window.Name
@@ -122,25 +122,20 @@ func projectFlatDestination(
 		SearchFields: fields,
 	}
 	destination := liveItem{
-		ID:             id,
-		SessionID:      list.ItemID("session:" + session.ID),
-		WindowID:       windowItemID(session.ID, window.ID),
-		Kind:           liveDestination,
-		Label:          name,
-		Name:           window.Name,
-		SessionName:    session.Name,
-		WindowName:     window.Name,
-		Target:         session.ID + ":" + window.ID + "." + pane.ID,
-		MutationTarget: session.ID + ":" + window.ID,
-		SessionTarget:  session.ID,
-		RawPath:        pane.Path,
-		WindowIndex:    window.Index,
-		WindowActive:   window.Active,
-		PaneActive:     pane.Active,
-		PaneID:         pane.ID,
-		PaneIndex:      pane.Index,
-		Last:           session.Last && window.Active && pane.Active,
-		StatusPanes:    paneStatusRefs([]backend.Pane{pane}),
+		ID:           id,
+		Kind:         liveDestination,
+		Label:        name,
+		Name:         window.Name,
+		SessionName:  session.Name,
+		WindowName:   window.Name,
+		Target:       backend.Target{SessionID: session.ID, WindowID: window.ID, PaneID: pane.ID},
+		RawPath:      pane.Path,
+		WindowIndex:  window.Index,
+		WindowActive: window.Active,
+		PaneActive:   pane.Active,
+		PaneIndex:    pane.Index,
+		Last:         session.Last && window.Active && pane.Active,
+		StatusPanes:  paneStatusRefs([]backend.Pane{pane}),
 	}
 	if destination.Last {
 		item.Primary += " ↶"
@@ -169,16 +164,16 @@ func destinationLess(left, right liveItem, scores frecency.Scores) bool {
 	if left.RawPath != right.RawPath {
 		return left.RawPath < right.RawPath
 	}
-	if left.SessionTarget != right.SessionTarget {
-		return left.SessionTarget < right.SessionTarget
+	if left.Target.SessionID != right.Target.SessionID {
+		return left.Target.SessionID < right.Target.SessionID
 	}
-	if left.WindowID != right.WindowID {
-		return left.WindowID < right.WindowID
+	if left.Target.WindowID != right.Target.WindowID {
+		return left.Target.WindowID < right.Target.WindowID
 	}
 	if left.PaneIndex != right.PaneIndex {
 		return left.PaneIndex < right.PaneIndex
 	}
-	return left.ID < right.ID
+	return left.Target.PaneID < right.Target.PaneID
 }
 
 // Keep ordinary rows uncluttered. Only otherwise identical pane rows need a
@@ -210,7 +205,7 @@ func disambiguatePaneRows(items []list.Item, index itemIndex) {
 		if pane.Last {
 			items[i].Primary = strings.TrimSuffix(items[i].Primary, " ↶")
 		}
-		items[i].Primary += " [" + pane.PaneID + "]"
+		items[i].Primary += " [" + pane.Target.PaneID + "]"
 		if pane.Last {
 			items[i].Primary += " ↶"
 		}
@@ -238,7 +233,7 @@ func appendPathSearchFields(fields []list.SearchField, rawPath, homeDir string) 
 }
 
 func destinationItemID(sessionID, windowID, paneID string) list.ItemID {
-	return list.ItemID("pane:" + sessionID + ":" + windowID + ":" + paneID)
+	return list.ItemID{Scope: sessionID, Parent: windowID, ID: paneID}
 }
 
 func paneProgramLabel(pane backend.Pane) string {

@@ -52,11 +52,11 @@ func handleTogglePreview(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 
 // syncPreview coalesces selection changes into one in-flight capture.
 func (m model) syncPreview() (model, tea.Cmd) {
-	if !m.preview.visible && m.preview.itemID == "" {
+	if !m.preview.visible && m.preview.itemID.IsZero() {
 		return m, nil
 	}
 	var id list.ItemID
-	if m.layout().previewWidth > 0 && !m.quitting && m.navigation == "" {
+	if m.layout().previewWidth > 0 && !m.quitting && m.navigation.IsZero() {
 		if row, ok := m.selectedRow(); ok {
 			id = row.Item.ID
 		}
@@ -66,7 +66,7 @@ func (m model) syncPreview() (model, tea.Cmd) {
 		p.itemID = id
 		p.invalidate()
 	}
-	if id == "" || p.ready || p.cancel != nil || m.busy || m.readPreview == nil {
+	if id.IsZero() || p.ready || p.cancel != nil || m.busy || m.readPreview == nil {
 		return m, nil
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -84,7 +84,7 @@ func (m model) handlePreviewResult(msg previewResultMsg) (tea.Model, tea.Cmd) {
 		p.cancel()
 		p.cancel = nil
 	}
-	if msg.generation == p.generation && p.itemID != "" {
+	if msg.generation == p.generation && !p.itemID.IsZero() {
 		p.ready, p.err = true, msg.err
 		if msg.err == nil {
 			p.lines = terminal.ScreenLines(msg.text)
@@ -102,7 +102,7 @@ func (m model) viewPreview(width, height int) string {
 	body := m.preview.lines
 	message := ""
 	switch {
-	case m.preview.itemID == "":
+	case m.preview.itemID.IsZero():
 		message = "no selection"
 	case m.readPreview == nil:
 		message = "preview unavailable"

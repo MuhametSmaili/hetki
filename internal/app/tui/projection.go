@@ -113,7 +113,7 @@ func projectState(result backend.StateResult, projection projectionKind, scores 
 
 func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.ItemID) (ui.ActionResult, error) {
 	var selected liveItem
-	if selectedID != "" {
+	if !selectedID.IsZero() {
 		var err error
 		selected, err = a.resolveItem(selectedID)
 		if err != nil {
@@ -160,36 +160,36 @@ func preferredProjectionItem(
 }
 
 func preferredTreeItem(selected liveItem, snapshot list.Snapshot, index itemIndex) list.ItemID {
-	_, windowExists := index[selected.WindowID]
-	if selected.WindowID != "" && windowExists {
-		return selected.WindowID
+	_, windowExists := index[selected.windowRowID()]
+	if !selected.windowRowID().IsZero() && windowExists {
+		return selected.windowRowID()
 	}
-	_, sessionExists := index[selected.SessionID]
-	if selected.SessionID != "" && sessionExists {
-		return selected.SessionID
+	_, sessionExists := index[selected.sessionRowID()]
+	if !selected.sessionRowID().IsZero() && sessionExists {
+		return selected.sessionRowID()
 	}
 	return projectionFallback(snapshot, index)
 }
 
 func preferredFlatItem(selected liveItem, snapshot list.Snapshot, index itemIndex) list.ItemID {
 	var preferred list.ItemID
-	if selected.WindowID != "" {
+	if !selected.windowRowID().IsZero() {
 		preferred = firstMatchingItem(snapshot, index, func(item liveItem) bool {
-			return item.WindowID == selected.WindowID && item.PaneActive
+			return item.windowRowID() == selected.windowRowID() && item.PaneActive
 		})
-	} else if selected.SessionID != "" {
+	} else if !selected.sessionRowID().IsZero() {
 		preferred = firstMatchingItem(snapshot, index, func(item liveItem) bool {
-			return item.SessionID == selected.SessionID && item.WindowActive && item.PaneActive
+			return item.sessionRowID() == selected.sessionRowID() && item.WindowActive && item.PaneActive
 		})
 	}
-	if preferred != "" {
+	if !preferred.IsZero() {
 		return preferred
 	}
 	return projectionFallback(snapshot, index)
 }
 
 func projectionFallback(snapshot list.Snapshot, index itemIndex) list.ItemID {
-	if snapshot.ActiveItemID != "" {
+	if !snapshot.ActiveItemID.IsZero() {
 		return snapshot.ActiveItemID
 	}
 	return firstMatchingItem(snapshot, index, func(liveItem) bool { return true })
@@ -202,11 +202,11 @@ func firstMatchingItem(snapshot list.Snapshot, index itemIndex, matches func(liv
 			if live, exists := index[item.ID]; exists && matches(live) {
 				return item.ID
 			}
-			if id := visit(item.Children); id != "" {
+			if id := visit(item.Children); !id.IsZero() {
 				return id
 			}
 		}
-		return ""
+		return list.ItemID{}
 	}
 	return visit(snapshot.Items)
 }

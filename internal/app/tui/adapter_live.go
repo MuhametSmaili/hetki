@@ -42,7 +42,7 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 		return a.toggleProjection(ctx, request.ItemID)
 	}
 	var item liveItem
-	if request.ItemID != "" {
+	if !request.ItemID.IsZero() {
 		var err error
 		item, err = a.resolveItem(request.ItemID)
 		if err != nil {
@@ -72,14 +72,14 @@ func (a *LiveAdapter) openLastSession(ctx context.Context) (ui.ActionResult, err
 		}
 	}
 	a.mu.RUnlock()
-	if last.ID == "" {
+	if last.ID.IsZero() {
 		return ui.ActionResult{}, fmt.Errorf("no previous session available")
 	}
 	return a.openItem(ctx, last)
 }
 
 func (a *LiveAdapter) executeItem(ctx context.Context, request ui.ActionRequest, item liveItem) (ui.ActionResult, error) {
-	if item.ID == "" {
+	if item.ID.IsZero() {
 		return ui.ActionResult{}, fmt.Errorf("action requires a selected item")
 	}
 	if (request.ActionID == ui.ActionRename || request.ActionID == ui.ActionDelete) &&
@@ -119,7 +119,7 @@ func (a *LiveAdapter) executeItem(ctx context.Context, request ui.ActionRequest,
 }
 
 func (a *LiveAdapter) resolveItem(id list.ItemID) (liveItem, error) {
-	if id == "" {
+	if id.IsZero() {
 		return liveItem{}, fmt.Errorf("action requires a selected item")
 	}
 	a.mu.RLock()

@@ -16,14 +16,8 @@ func (a *LiveAdapter) Preview(ctx context.Context, id list.ItemID) (string, erro
 	if err != nil {
 		return "", err
 	}
-	target := item.Target
 	switch item.Kind {
-	case liveSession:
-		// tmux resolves the session's current window and active pane natively.
-		target += ":"
-	case liveDestination:
-		target = item.PaneID
-	case liveWindow:
+	case liveSession, liveWindow, liveDestination:
 	default:
 		return "", fmt.Errorf("item %q has no pane preview", id)
 	}
@@ -31,5 +25,5 @@ func (a *LiveAdapter) Preview(ctx context.Context, id list.ItemID) (string, erro
 	if err != nil {
 		return "", err
 	}
-	return b.CapturePane(ctx, target)
+	return b.CapturePane(ctx, item.Target)
 }

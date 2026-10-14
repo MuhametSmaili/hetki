@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/MSmaili/hetki/internal/terminal"
 	"github.com/MSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +16,7 @@ func flatJumpSnapshot(count int) list.Snapshot {
 	for i := range items {
 		name := fmt.Sprintf("item %02d", i)
 		items[i] = list.Item{
-			ID: list.ItemID(fmt.Sprintf("item-%02d", i)), Primary: name,
+			ID: list.ItemID{ID: fmt.Sprintf("item-%02d", i)}, Primary: name,
 			SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: name}},
 		}
 	}
@@ -41,7 +42,7 @@ func visibleIDs(m model) []list.ItemID {
 
 func TestSemicolonIsFilterTextThenLabelsThePreservedResult(t *testing.T) {
 	snapshot := list.Snapshot{Items: []list.Item{{
-		ID: "semicolon", Primary: "semi;colon",
+		ID: list.ItemID{ID: "semicolon"}, Primary: "semi;colon",
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "semi;colon"}},
 	}}}
 	m := newModel(snapshot, nil)
@@ -53,18 +54,18 @@ func TestSemicolonIsFilterTextThenLabelsThePreservedResult(t *testing.T) {
 	m, _ = updateModel(t, m, printableKey(";"))
 	require.Equal(t, modeJump, m.mode)
 	require.Equal(t, ";", m.items.Query())
-	require.Equal(t, []list.ItemID{"semicolon"}, candidateIDs(m.jump))
+	require.Equal(t, []list.ItemID{{ID: "semicolon"}}, candidateIDs(m.jump))
 }
 
 func TestJumpLabelsSessionWindowAndFilteredTreeRows(t *testing.T) {
 	m := browseModel(newModel(interactionSnapshot(), nil))
 	m, _ = updateModel(t, m, printableKey(";"))
-	require.Equal(t, []list.ItemID{"session-1", "window-1", "window-2", "session-2", "window-3"}, candidateIDs(m.jump))
+	require.Equal(t, []list.ItemID{{ID: "session-1"}, {ID: "window-1"}, {ID: "window-2"}, {ID: "session-2"}, {ID: "window-3"}}, candidateIDs(m.jump))
 
 	m.cancelJump()
 	m.items.SetQuery("server")
 	m, _ = updateModel(t, m, printableKey(";"))
-	require.Equal(t, []list.ItemID{"session-1", "window-2"}, candidateIDs(m.jump))
+	require.Equal(t, []list.ItemID{{ID: "session-1"}, {ID: "window-2"}}, candidateIDs(m.jump))
 }
 
 func TestJumpFreezesOnlyVisibleViewportCandidatesAndEscapeRestoresState(t *testing.T) {
@@ -109,14 +110,39 @@ func TestJumpControlNavigationStaysWithinFrozenCandidates(t *testing.T) {
 	require.Equal(t, modeJump, m.mode)
 }
 
+func TestJumpDispatchAndNavigationKeepStructuralIdentity(t *testing.T) {
+	first := list.ItemID{Scope: "first scope", Parent: "parent", ID: "shared"}
+	second := list.ItemID{Scope: "second scope", Parent: "parent", ID: "shared"}
+	var request ActionRequest
+	m, err := newModelWithStartMode(list.Snapshot{Items: []list.Item{
+		{ID: first, Primary: "first row"},
+		{ID: second, Primary: "second row"},
+	}}, func(value ActionRequest) (ActionResult, error) {
+		request = value
+		return ActionResult{Navigation: value.ItemID}, nil
+	}, DefaultKeyMap(), StartModeNormal)
+	require.NoError(t, err)
+	m, _ = updateModel(t, m, printableKey(";"))
+	require.Contains(t, terminal.Sanitize(m.View().Content), "a first row")
+	require.Contains(t, terminal.Sanitize(m.View().Content), "s second row")
+
+	m, dispatch := updateModel(t, m, printableKey("s"))
+	require.NotNil(t, dispatch)
+	m, quit := updateModel(t, m, dispatch())
+
+	require.Equal(t, ActionRequest{ActionID: ActionOpen, ItemID: second}, request)
+	require.Equal(t, second, m.navigation)
+	requireQuit(t, quit)
+}
+
 func TestJumpRoutesShortcutLabelsBeforeNormalActions(t *testing.T) {
 	for _, test := range []struct {
 		label string
 		item  list.ItemID
 	}{
-		{label: ";", item: "item-09"},
-		{label: "q", item: "item-10"},
-		{label: "n", item: "item-25"},
+		{label: ";", item: list.ItemID{ID: "item-09"}},
+		{label: "q", item: list.ItemID{ID: "item-10"}},
+		{label: "n", item: list.ItemID{ID: "item-25"}},
 	} {
 		t.Run(test.label, func(t *testing.T) {
 			var got ActionRequest
@@ -156,7 +182,7 @@ func TestJumpAcceptsPartialLabelsAndReportsInvalidInput(t *testing.T) {
 	m, cmd = updateModel(t, m, printableKey("a"))
 	require.NotNil(t, cmd)
 	cmd()
-	require.Equal(t, ActionRequest{ActionID: ActionOpen, ItemID: "item-00"}, got)
+	require.Equal(t, ActionRequest{ActionID: ActionOpen, ItemID: list.ItemID{ID: "item-00"}}, got)
 
 	m = newModel(flatJumpSnapshot(28), nil)
 	m.width, m.height = 100, 40
@@ -215,7 +241,7 @@ func TestJumpStaleTargetFailsLoudlyWithoutReplacingTheList(t *testing.T) {
 	require.Equal(t, before, m.items.Snapshot())
 	require.Equal(t, beforeCursor, m.items.Cursor())
 	require.Equal(t, beforeOffset, m.items.Offset())
-	require.Equal(t, list.ItemID("item-00"), selectedNodeID(m))
+	require.Equal(t, list.ItemID{ID: "item-00"}, selectedNodeID(m))
 	require.Empty(t, m.navigation)
 }
 

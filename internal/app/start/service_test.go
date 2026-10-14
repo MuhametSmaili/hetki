@@ -41,7 +41,7 @@ func (s *stubBackend) LayoutsMatch(desired, actual string) bool {
 func (s *stubBackend) LayoutPreset(observed string) (string, error) { return observed, nil }
 
 func (s *stubBackend) Name() string { return "stub" }
-func (s *stubBackend) CapturePane(context.Context, string) (string, error) {
+func (s *stubBackend) CapturePane(context.Context, backend.Target) (string, error) {
 	panic("unexpected pane capture")
 }
 
@@ -71,7 +71,7 @@ func (s *stubBackend) Attach(context.Context, string) error {
 	return nil
 }
 
-func (s *stubBackend) Switch(context.Context, string) error {
+func (s *stubBackend) Switch(context.Context, backend.Target) error {
 	s.switchCalls++
 	return nil
 }

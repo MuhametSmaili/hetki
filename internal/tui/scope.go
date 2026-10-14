@@ -62,7 +62,7 @@ func handleToggleScope(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	}
 	m = m.reflow()
 	if jumping {
-		return handleJump(m, "")
+		return handleJump(m, list.ItemID{})
 	}
 	return m, nil
 }

@@ -22,7 +22,7 @@ func scopeFixture(t *testing.T, layout string) (model, time.Time) {
 		if state == status.Unreported {
 			name = "shell"
 		}
-		id := list.ItemID(name)
+		id := list.ItemID{ID: name}
 		pane := status.PaneRef{Server: "server", ID: name, Generation: "birth"}
 		bindings[id] = []status.PaneRef{pane}
 		if state != status.Unreported {
@@ -37,12 +37,12 @@ func scopeFixture(t *testing.T, layout string) (model, time.Time) {
 		}
 	}
 	if layout == "tree" {
-		snapshot.Items[0].ID = "mixed"
-		bindings["mixed"] = append(bindings["working"], bindings["blocked"]...)
-		delete(bindings, "working")
-		delete(bindings, "blocked")
+		snapshot.Items[0].ID = list.ItemID{ID: "mixed"}
+		bindings[list.ItemID{ID: "mixed"}] = append(bindings[list.ItemID{ID: "working"}], bindings[list.ItemID{ID: "blocked"}]...)
+		delete(bindings, list.ItemID{ID: "working"})
+		delete(bindings, list.ItemID{ID: "blocked"})
 		snapshot.Items = append(snapshot.Items[:2], snapshot.Items[3:]...)
-		snapshot.Items = []list.Item{{ID: "session", Primary: "dev", Children: snapshot.Items}}
+		snapshot.Items = []list.Item{{ID: list.ItemID{ID: "session"}, Primary: "dev", Children: snapshot.Items}}
 	}
 	m := newModel(snapshot, nil)
 	m.paneStatus.options.Bindings = bindings
@@ -68,12 +68,12 @@ func TestScopeAndTextSearch(t *testing.T) {
 		query   string
 		want    []list.ItemID
 	}{
-		{"all panes", "flat", false, "", []list.ItemID{"working", "idle", "blocked", "unknown", "withdrawn", "shell"}},
-		{"tracked includes unknown", "flat", true, "", []list.ItemID{"working", "idle", "blocked", "unknown"}},
-		{"text search within tracked", "flat", true, "idle", []list.ItemID{"idle"}},
-		{"plain status name is text", "flat", false, "working", []list.ItemID{"working", "shell"}},
-		{"tree retains ancestors", "tree", true, "", []list.ItemID{"session", "mixed", "idle", "unknown"}},
-		{"tree text search retains ancestors", "tree", true, "idle", []list.ItemID{"session", "idle"}},
+		{"all panes", "flat", false, "", []list.ItemID{{ID: "working"}, {ID: "idle"}, {ID: "blocked"}, {ID: "unknown"}, {ID: "withdrawn"}, {ID: "shell"}}},
+		{"tracked includes unknown", "flat", true, "", []list.ItemID{{ID: "working"}, {ID: "idle"}, {ID: "blocked"}, {ID: "unknown"}}},
+		{"text search within tracked", "flat", true, "idle", []list.ItemID{{ID: "idle"}}},
+		{"plain status name is text", "flat", false, "working", []list.ItemID{{ID: "working"}, {ID: "shell"}}},
+		{"tree retains ancestors", "tree", true, "", []list.ItemID{{ID: "session"}, {ID: "mixed"}, {ID: "idle"}, {ID: "unknown"}}},
+		{"tree text search retains ancestors", "tree", true, "idle", []list.ItemID{{ID: "session"}, {ID: "idle"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m, now := scopeFixture(t, test.layout)
@@ -87,16 +87,42 @@ func TestScopeAndTextSearch(t *testing.T) {
 	}
 }
 
+func TestTrackedScopeKeepsBindingsAndSelectionByStructuralID(t *testing.T) {
+	first := list.ItemID{Scope: "first scope", Parent: "parent", ID: "shared"}
+	second := list.ItemID{Scope: "second scope", Parent: "parent", ID: "shared"}
+	third := list.ItemID{Scope: "second scope", Parent: "other parent", ID: "shared"}
+	m, err := newModelWithStartMode(list.Snapshot{Items: []list.Item{
+		{ID: first, Primary: "first row"},
+		{ID: second, Primary: "second row"},
+		{ID: third, Primary: "third row"},
+	}}, nil, DefaultKeyMap(), StartModeNormal)
+	require.NoError(t, err)
+	pane := status.PaneRef{Server: "server", ID: "tracked", Generation: "birth"}
+	m.paneStatus.options.Bindings = StatusBindings{second: {pane}}
+	m.paneStatus.values, err = status.NewSnapshot(map[status.PaneRef]status.Value{
+		pane: {State: status.Idle, ValidUntil: time.Now().Add(time.Hour)},
+	})
+	require.NoError(t, err)
+
+	tracked, _ := updateModel(t, m, specialKey(tea.KeyTab))
+	restored, _ := updateModel(t, tracked, specialKey(tea.KeyTab))
+
+	require.Equal(t, []list.ItemID{second}, scopeRowIDs(tracked))
+	require.Equal(t, second, selectedNodeID(tracked))
+	require.Equal(t, []list.ItemID{first, second, third}, scopeRowIDs(restored))
+	require.Equal(t, first, selectedNodeID(restored))
+}
+
 func TestStatusPrefixIsOrdinarySearchText(t *testing.T) {
 	m := newModel(list.Snapshot{Items: []list.Item{{
-		ID: "literal", Primary: "status:working",
+		ID: list.ItemID{ID: "literal"}, Primary: "status:working",
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "status:working"}},
 	}}}, nil)
 
 	m.setQuery("status:working")
 
 	require.Equal(t, "status:working", m.items.Query())
-	require.Equal(t, []list.ItemID{"literal"}, scopeRowIDs(m))
+	require.Equal(t, []list.ItemID{{ID: "literal"}}, scopeRowIDs(m))
 }
 
 func TestScopeToggleIsLocalAndPreservesQueryAndSelection(t *testing.T) {
@@ -122,7 +148,7 @@ func TestScopeToggleIsLocalAndPreservesQueryAndSelection(t *testing.T) {
 			require.True(t, tracked.scope.tracked)
 			require.False(t, all.scope.tracked)
 			require.Equal(t, "idle", all.items.Query())
-			require.Equal(t, list.ItemID("idle"), selectedNodeID(all))
+			require.Equal(t, list.ItemID{ID: "idle"}, selectedNodeID(all))
 			require.Equal(t, mode, all.mode)
 		})
 	}
@@ -136,7 +162,7 @@ func TestLayoutSwitchPreservesScopeAndQuery(t *testing.T) {
 	m.dispatch = func(request ActionRequest) (ActionResult, error) {
 		requested = request.ActionID
 		return ActionResult{
-			Snapshot: &replacement, StatusBindings: tree.paneStatus.options.Bindings, SelectItemID: "idle",
+			Snapshot: &replacement, StatusBindings: tree.paneStatus.options.Bindings, SelectItemID: list.ItemID{ID: "idle"},
 		}, nil
 	}
 	m.scope.tracked = true
@@ -152,15 +178,15 @@ func TestLayoutSwitchPreservesScopeAndQuery(t *testing.T) {
 	require.True(t, m.scope.tracked)
 	require.Equal(t, modeFilter, m.mode)
 	require.Equal(t, "idle", m.items.Query())
-	require.Equal(t, []list.ItemID{"session", "idle"}, scopeRowIDs(m))
-	require.Equal(t, list.ItemID("idle"), selectedNodeID(m))
+	require.Equal(t, []list.ItemID{{ID: "session"}, {ID: "idle"}}, scopeRowIDs(m))
+	require.Equal(t, list.ItemID{ID: "idle"}, selectedNodeID(m))
 }
 
 func TestStatusMembershipChangeCancelsJumpInsteadOfRelabeling(t *testing.T) {
 	m, now := scopeFixture(t, "flat")
 	m.scope.tracked = true
 	m.applyScope("", now)
-	jumping, _ := handleJump(m, "")
+	jumping, _ := handleJump(m, list.ItemID{})
 	m = jumping.(model)
 	m.jump.input = "a"
 
@@ -175,7 +201,7 @@ func TestStatusMembershipChangeCancelsJumpInsteadOfRelabeling(t *testing.T) {
 func TestScopeWithoutProviderHasNoTrackedItems(t *testing.T) {
 	m := newModel(viewSnapshot(), nil)
 
-	next, cmd := handleToggleScope(m, "")
+	next, cmd := handleToggleScope(m, list.ItemID{})
 	m = next.(model)
 
 	require.Nil(t, cmd)
@@ -188,17 +214,17 @@ func TestScopesRememberTheirSelectionAndExpansion(t *testing.T) {
 	m.mode = modeBrowse
 	m.items.CollapseAll()
 
-	tracked, _ := handleToggleScope(m, "")
+	tracked, _ := handleToggleScope(m, list.ItemID{})
 	m = tracked.(model)
 	trackedRows := scopeRowIDs(m)
-	m.items.Select("idle")
-	all, _ := handleToggleScope(m, "")
-	returned, _ := handleToggleScope(all.(model), "")
+	m.items.Select(list.ItemID{ID: "idle"})
+	all, _ := handleToggleScope(m, list.ItemID{})
+	returned, _ := handleToggleScope(all.(model), list.ItemID{})
 
-	require.Equal(t, []list.ItemID{"session", "mixed", "idle", "unknown"}, trackedRows)
-	require.Equal(t, []list.ItemID{"session"}, scopeRowIDs(all.(model)))
-	require.Equal(t, list.ItemID("session"), selectedNodeID(all.(model)))
-	require.Equal(t, list.ItemID("idle"), selectedNodeID(returned.(model)))
+	require.Equal(t, []list.ItemID{{ID: "session"}, {ID: "mixed"}, {ID: "idle"}, {ID: "unknown"}}, trackedRows)
+	require.Equal(t, []list.ItemID{{ID: "session"}}, scopeRowIDs(all.(model)))
+	require.Equal(t, list.ItemID{ID: "session"}, selectedNodeID(all.(model)))
+	require.Equal(t, list.ItemID{ID: "idle"}, selectedNodeID(returned.(model)))
 }
 
 func TestScopeKeysRespectModes(t *testing.T) {

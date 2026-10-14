@@ -39,12 +39,12 @@ func TestWindowOutcomePriority(t *testing.T) {
 				pane := status.PaneRef{Server: "server", ID: string(rune('a' + i)), Generation: "birth"}
 				value.ValidUntil = now.Add(time.Minute)
 				values[pane] = value
-				bindings["window"] = append(bindings["window"], pane)
+				bindings[list.ItemID{ID: "window"}] = append(bindings[list.ItemID{ID: "window"}], pane)
 			}
 			snapshot, err := status.NewSnapshot(values)
 			require.NoError(t, err)
 
-			got := bindings.ValueAt("window", snapshot, now)
+			got := bindings.ValueAt(list.ItemID{ID: "window"}, snapshot, now)
 
 			require.Equal(t, tc.want, got)
 		})
@@ -54,7 +54,7 @@ func TestWindowOutcomePriority(t *testing.T) {
 func TestSuccessBecomesIdleAtFiveSecondsAndStillExpires(t *testing.T) {
 	now := time.Now()
 	m := paneStatusModel(t, status.Unknown, now.Add(time.Minute))
-	pane := m.paneStatus.options.Bindings["window"][0]
+	pane := m.paneStatus.options.Bindings[list.ItemID{ID: "window"}][0]
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
 		pane: {State: status.Unknown, Outcome: status.Completed, OutcomeSince: now, ValidUntil: now.Add(time.Minute)},
 	})
@@ -62,8 +62,8 @@ func TestSuccessBecomesIdleAtFiveSecondsAndStillExpires(t *testing.T) {
 	m.paneStatus.values = values
 
 	due := m.nextStatusFrame(now)
-	current := m.paneStatus.options.Bindings.ValueAt("window", values, due.Add(-time.Nanosecond))
-	idle := m.paneStatus.options.Bindings.ValueAt("window", values, due)
+	current := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due.Add(-time.Nanosecond))
+	idle := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due)
 
 	require.Equal(t, now.Add(5*time.Second), due)
 	require.Equal(t, status.Completed, current.Outcome)
@@ -73,7 +73,7 @@ func TestSuccessBecomesIdleAtFiveSecondsAndStillExpires(t *testing.T) {
 	require.Equal(t, now.Add(time.Minute), m.nextStatusFrame(due))
 
 	due = now.Add(time.Minute)
-	expired := m.paneStatus.options.Bindings.ValueAt("window", values, due)
+	expired := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due)
 	require.Equal(t, status.NoOutcome, expired.Outcome)
 	glyph, _ = statusIndicator(expired, due)
 	require.Equal(t, "·", glyph)
@@ -117,10 +117,10 @@ func TestWindowSuccessUsesEachPanesCompletionTime(t *testing.T) {
 		recent: {State: status.Unknown, Outcome: status.Completed, OutcomeSince: now.Add(-time.Second), ValidUntil: now.Add(time.Minute)},
 	})
 	require.NoError(t, err)
-	bindings := StatusBindings{"window": {old, recent}}
+	bindings := StatusBindings{{ID: "window"}: {old, recent}}
 
-	before := bindings.ValueAt("window", values, now)
-	after := bindings.ValueAt("window", values, now.Add(4*time.Second))
+	before := bindings.ValueAt(list.ItemID{ID: "window"}, values, now)
+	after := bindings.ValueAt(list.ItemID{ID: "window"}, values, now.Add(4*time.Second))
 
 	require.Equal(t, status.Completed, before.Outcome)
 	require.Equal(t, status.Value{State: status.Idle}, after)
@@ -151,9 +151,9 @@ func TestKiroScreenProfileUsesSharedIndicators(t *testing.T) {
 				pane: {State: result.State, ValidUntil: now.Add(time.Minute)},
 			})
 			require.NoError(t, err)
-			bindings := StatusBindings{list.ItemID("kiro"): {pane}}
+			bindings := StatusBindings{list.ItemID{ID: "kiro"}: {pane}}
 
-			value := bindings.ValueAt("kiro", values, now)
+			value := bindings.ValueAt(list.ItemID{ID: "kiro"}, values, now)
 			glyph, _ := statusIndicator(value, now)
 
 			require.Equal(t, tc.glyph, glyph)

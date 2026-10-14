@@ -8,21 +8,21 @@ import (
 
 func TestItemFilterRetainsAncestorsAndCollapsedState(t *testing.T) {
 	snapshot := nestedFixture()
-	snapshot.ActiveItemID = ""
+	snapshot.ActiveItemID = ItemID{}
 	m, err := New(snapshot)
 	require.NoError(t, err)
 	m.CollapseAll()
-	included := map[ItemID]struct{}{"server": {}}
+	included := map[ItemID]struct{}{{ID: "server"}: {}}
 
 	m.SetFilter("server", included)
-	delete(included, "server")
-	err = m.Replace(m.Snapshot(), "server")
+	delete(included, ItemID{ID: "server"})
+	err = m.Replace(m.Snapshot(), ItemID{ID: "server"})
 	filtered := rowIDs(m.Rows())
 	m.SetFilter("", nil)
 
 	require.NoError(t, err)
-	require.Equal(t, []ItemID{"dev", "server"}, filtered)
-	require.Equal(t, []ItemID{"dev", "prod"}, rowIDs(m.Rows()))
+	require.Equal(t, []ItemID{{ID: "dev"}, {ID: "server"}}, filtered)
+	require.Equal(t, []ItemID{{ID: "dev"}, {ID: "prod"}}, rowIDs(m.Rows()))
 	require.Len(t, m.Snapshot().Items[0].Children, 2)
 }
 
@@ -35,5 +35,5 @@ func TestItemFilterDistinguishesEmptySetFromUnrestricted(t *testing.T) {
 	m.SetFilter("", nil)
 
 	require.Empty(t, empty)
-	require.Equal(t, []ItemID{"editor", "server", "shell"}, rowIDs(m.Rows()))
+	require.Equal(t, []ItemID{{ID: "editor"}, {ID: "server"}, {ID: "shell"}}, rowIDs(m.Rows()))
 }

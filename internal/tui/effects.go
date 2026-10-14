@@ -31,7 +31,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	case result.Menu != nil || result.Input != nil || result.Confirmation != nil:
 		m.openOverlay(result, pending)
 		return m.reflow(), nil
-	case result.Navigation != "":
+	case !result.Navigation.IsZero():
 		m.navigation = result.Navigation
 		return m, tea.Quit
 	case result.Snapshot == nil:
@@ -46,14 +46,14 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	m.paneStatus.options.Bindings = result.StatusBindings
 	m.paneStatus.bindingGeneration++
 	m.applyScope(m.items.Query(), time.Now())
-	if result.SelectItemID != "" {
+	if !result.SelectItemID.IsZero() {
 		m.items.Select(result.SelectItemID)
 	}
 	if pending != nil && isDeleteAction(pending.ActionID) {
 		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
 	}
 	if resumeJump {
-		return handleJump(m.reflow(), "")
+		return handleJump(m.reflow(), list.ItemID{})
 	}
 	return m.reflow(), nil
 }
@@ -63,7 +63,7 @@ func isDeleteAction(action ActionID) bool {
 }
 
 func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows []list.ItemID) {
-	if preferred != "" {
+	if !preferred.IsZero() {
 		if m.items.Select(preferred) {
 			return
 		}
@@ -136,7 +136,7 @@ func handleRefresh(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleToggleProjection(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
-	if itemID == "" {
+	if itemID.IsZero() {
 		if selected, ok := m.selectedRow(); ok {
 			itemID = selected.Item.ID
 		}
@@ -145,7 +145,7 @@ func handleToggleProjection(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleLastSession(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	return m.startAction(ActionLastSession, "")
+	return m.startAction(ActionLastSession, list.ItemID{})
 }
 
 func handleOpen(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
@@ -153,7 +153,7 @@ func handleOpen(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 	case modeJump:
 		m.cancelJump()
 	case modeFilter:
-		if itemID == "" {
+		if itemID.IsZero() {
 			m.mode = modeBrowse
 		}
 	}
@@ -161,7 +161,7 @@ func handleOpen(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func (m model) startItemAction(action ActionID, itemID list.ItemID) (tea.Model, tea.Cmd) {
-	if itemID != "" {
+	if !itemID.IsZero() {
 		return m.startAction(action, itemID)
 	}
 	return m.startSelectedRequest(action)

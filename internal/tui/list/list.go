@@ -74,7 +74,7 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 		return err
 	}
 	selectedID := preferred
-	if selectedID == "" {
+	if selectedID.IsZero() {
 		if selected, ok := m.Selected(); ok {
 			selectedID = selected.Item.ID
 		}
@@ -424,7 +424,7 @@ func treePrefix(ancestors []bool) string {
 }
 
 func findRow(rows []Row, id ItemID) int {
-	if id == "" {
+	if id.IsZero() {
 		return -1
 	}
 	for i, row := range rows {

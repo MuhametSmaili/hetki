@@ -10,7 +10,7 @@ import (
 func jumpIDs(count int) []list.ItemID {
 	ids := make([]list.ItemID, count)
 	for i := range ids {
-		ids[i] = list.ItemID(string(rune('A' + i)))
+		ids[i] = list.ItemID{ID: string(rune('A' + i))}
 	}
 	return ids
 }
@@ -49,7 +49,7 @@ func TestJumpInputHandlesPartialInvalidAndShortcutLabels(t *testing.T) {
 	require.False(t, complete)
 	require.True(t, valid)
 	itemID, complete, valid = jump.enter("a")
-	require.Equal(t, list.ItemID("A"), itemID)
+	require.Equal(t, list.ItemID{ID: "A"}, itemID)
 	require.True(t, complete)
 	require.True(t, valid)
 

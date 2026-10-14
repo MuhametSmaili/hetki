@@ -62,11 +62,11 @@ func (d *openingStatusDriver) OpenStatus(context.Context) (StatusReader, error) 
 
 func TestStatusStartupFailureKeepsPickerUsable(t *testing.T) {
 	driver := &openingStatusDriver{err: errors.New("invalid profile fixture.yaml")}
-	service := Service{Driver: driver, RunUI: func(_ context.Context, snapshot list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
+	service := Service{Driver: driver, RunUI: func(_ context.Context, snapshot list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 		require.True(t, driver.opened)
 		require.Contains(t, snapshot.Notice, "invalid profile fixture.yaml")
 		require.Nil(t, options.Read)
-		return "", nil
+		return list.ItemID{}, nil
 	}}
 
 	err := service.Run(t.Context())

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	ui "github.com/MSmaili/hetki/internal/tui"
 )
@@ -21,23 +20,23 @@ func contextualMenu(item liveItem) (ui.ItemMenu, error) {
 	}
 
 	entries := make([]ui.MenuEntry, 0, 9)
-	if strings.TrimSpace(item.Target) != "" {
+	if item.Target.SessionID != "" {
 		entries = append(entries, ui.MenuEntry{Action: ui.ActionOpen, Label: openLabel})
 	}
-	if item.Kind != liveSession && strings.TrimSpace(item.MutationTarget) != "" {
+	if item.Kind != liveSession && item.Target.WindowID != "" {
 		entries = append(entries, ui.MenuEntry{Action: ui.ActionRename, Label: "Rename window"})
 	}
-	if strings.TrimSpace(item.SessionTarget) != "" {
+	if item.Target.SessionID != "" {
 		entries = append(entries,
 			ui.MenuEntry{Action: ui.ActionRenameSession, Label: "Rename session"},
 			ui.MenuEntry{Action: ui.ActionCreateWindow, Label: "New window"},
 		)
 	}
 	entries = append(entries, ui.MenuEntry{Action: ui.ActionCreateSession, Label: "New session"})
-	if item.Kind != liveSession && strings.TrimSpace(item.MutationTarget) != "" {
+	if item.Kind != liveSession && item.Target.WindowID != "" {
 		entries = append(entries, ui.MenuEntry{Action: ui.ActionDelete, Label: "Delete window"})
 	}
-	if strings.TrimSpace(item.SessionTarget) != "" {
+	if item.Target.SessionID != "" {
 		entries = append(entries, ui.MenuEntry{Action: ui.ActionDeleteSession, Label: "Delete session"})
 	}
 	entries = append(entries,

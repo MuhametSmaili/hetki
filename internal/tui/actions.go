@@ -136,8 +136,6 @@ func (m model) dispatchAction(action ActionID, itemID list.ItemID) (tea.Model, t
 	return handler(m, itemID)
 }
 
-type BackendTarget string
-
 type ActionRequest struct {
 	ActionID  ActionID
 	ItemID    list.ItemID
@@ -176,5 +174,5 @@ type ActionResult struct {
 	Input          *InputPrompt
 	Confirmation   *Confirmation
 	Menu           *ItemMenu
-	Navigation     BackendTarget
+	Navigation     list.ItemID
 }

@@ -10,21 +10,21 @@ import (
 )
 
 // Run expects resolved options; its caller cancels and joins effects.
-func Run(ctx context.Context, initial list.Snapshot, keys KeyMap, startMode StartMode, dispatch DispatchFunc, preview PreviewOptions, paneStatus StatusOptions) (BackendTarget, error) {
+func Run(ctx context.Context, initial list.Snapshot, keys KeyMap, startMode StartMode, dispatch DispatchFunc, preview PreviewOptions, paneStatus StatusOptions) (list.ItemID, error) {
 	m, err := newModelWithStartMode(initial, dispatch, keys, startMode)
 	if err != nil {
-		return "", err
+		return list.ItemID{}, err
 	}
 	m.ctx, m.readPreview, m.preview.width = ctx, preview.Read, preview.Width
 	m.paneStatus.options = paneStatus
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithFPS(120))
 	final, err := p.Run()
 	if err != nil {
-		return "", err
+		return list.ItemID{}, err
 	}
 	m, ok := final.(model)
 	if !ok {
-		return "", fmt.Errorf("unexpected final TUI model %T", final)
+		return list.ItemID{}, fmt.Errorf("unexpected final TUI model %T", final)
 	}
 	return m.navigation, nil
 }
@@ -63,7 +63,7 @@ type model struct {
 	initialJump bool
 	pending     *ActionRequest
 	pendingRows []list.ItemID
-	navigation  BackendTarget
+	navigation  list.ItemID
 	quitting    bool
 	preview     previewState
 	readPreview PreviewFunc

@@ -11,7 +11,6 @@ import (
 )
 
 type rowProps struct {
-	ItemID     string
 	Primary    string
 	Secondary  string
 	Trailing   string
@@ -192,7 +191,7 @@ func displayJumpLabel(label string) string {
 func decoratedLabel(row rowProps, compact bool) string {
 	primary := strings.TrimSpace(terminal.Sanitize(row.Primary))
 	if primary == "" {
-		primary = terminal.Sanitize(row.ItemID)
+		primary = "-"
 	}
 	if compact {
 		return strings.Repeat("  ", max(row.Depth-1, 0)) + primary

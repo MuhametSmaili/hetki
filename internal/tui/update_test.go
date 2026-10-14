@@ -10,17 +10,17 @@ import (
 )
 
 func interactionSnapshot() list.Snapshot {
-	return list.Snapshot{ActiveItemID: "window-1", Items: []list.Item{
+	return list.Snapshot{ActiveItemID: list.ItemID{ID: "window-1"}, Items: []list.Item{
 		{
-			ID: "session-1", Primary: "dev", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "dev"}},
+			ID: list.ItemID{ID: "session-1"}, Primary: "dev", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "dev"}},
 			Children: []list.Item{
-				{ID: "window-1", Primary: "editor", Secondary: "~/code/editor", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "editor"}, {Tier: list.SearchSecondary, Text: "~/code/editor"}}},
-				{ID: "window-2", Primary: "server", Secondary: "~/svc/api", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "server"}, {Tier: list.SearchSecondary, Text: "~/svc/api"}}},
+				{ID: list.ItemID{ID: "window-1"}, Primary: "editor", Secondary: "~/code/editor", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "editor"}, {Tier: list.SearchSecondary, Text: "~/code/editor"}}},
+				{ID: list.ItemID{ID: "window-2"}, Primary: "server", Secondary: "~/svc/api", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "server"}, {Tier: list.SearchSecondary, Text: "~/svc/api"}}},
 			},
 		},
 		{
-			ID: "session-2", Primary: "prod", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "prod"}},
-			Children: []list.Item{{ID: "window-3", Primary: "shell", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "shell"}}}},
+			ID: list.ItemID{ID: "session-2"}, Primary: "prod", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "prod"}},
+			Children: []list.Item{{ID: list.ItemID{ID: "window-3"}, Primary: "shell", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "shell"}}}},
 		},
 	}}
 }
@@ -59,7 +59,7 @@ func selectedNodeID(m model) list.ItemID {
 	if selected, ok := m.selectedRow(); ok {
 		return selected.Item.ID
 	}
-	return ""
+	return list.ItemID{}
 }
 
 func requireQuit(t *testing.T, cmd tea.Cmd) {
@@ -98,7 +98,7 @@ func TestUpdateRoutesKeysByModeAndOverlay(t *testing.T) {
 	require.Equal(t, modeBrowse, m.mode)
 
 	m.mode = modeConfirm
-	m.confirm = confirmState{Request: ActionRequest{ActionID: ActionDelete, ItemID: "session-1"}}
+	m.confirm = confirmState{Request: ActionRequest{ActionID: ActionDelete, ItemID: list.ItemID{ID: "session-1"}}}
 	m, cmd = updateModel(t, m, printableKey("q"))
 	require.Nil(t, cmd)
 	require.Equal(t, modeConfirm, m.mode)
@@ -136,14 +136,14 @@ func TestEnterOpensSelectedItemFromFilter(t *testing.T) {
 		return ActionResult{}, nil
 	})
 	m.items.SetQuery("server")
-	require.Equal(t, list.ItemID("window-2"), selectedNodeID(m))
+	require.Equal(t, list.ItemID{ID: "window-2"}, selectedNodeID(m))
 
 	m, cmd := updateModel(t, m, specialKey(tea.KeyEnter))
 	require.Equal(t, modeBrowse, m.mode)
 	require.True(t, m.busy)
 	require.NotNil(t, cmd)
 	cmd()
-	require.Equal(t, ActionRequest{ActionID: ActionOpen, ItemID: "window-2"}, got)
+	require.Equal(t, ActionRequest{ActionID: ActionOpen, ItemID: list.ItemID{ID: "window-2"}}, got)
 }
 
 func TestLastSessionKeyWorksWithoutVisibleRowsAndRespectsOverlays(t *testing.T) {
@@ -193,15 +193,15 @@ func TestDirectActionKeysEmitStableActionAndItemIDs(t *testing.T) {
 		selectedID list.ItemID
 		want       ActionRequest
 	}{
-		{name: "open", key: specialKey(tea.KeyEnter), selectedID: "window-2", want: ActionRequest{ActionID: ActionOpen, ItemID: "window-2"}},
-		{name: "refresh", key: controlKey('r'), selectedID: "window-2", want: ActionRequest{ActionID: ActionRefresh}},
-		{name: "toggle projection", key: controlKey('t'), selectedID: "window-2", want: ActionRequest{ActionID: ActionToggleProjection, ItemID: "window-2"}},
-		{name: "create session", key: printableKey("A"), selectedID: "session-1", want: ActionRequest{ActionID: ActionCreateSession}},
-		{name: "create window", key: printableKey("a"), selectedID: "window-2", want: ActionRequest{ActionID: ActionCreateWindow, ItemID: "window-2"}},
-		{name: "rename window", key: printableKey("r"), selectedID: "window-2", want: ActionRequest{ActionID: ActionRename, ItemID: "window-2"}},
-		{name: "rename session", key: printableKey("R"), selectedID: "window-2", want: ActionRequest{ActionID: ActionRenameSession, ItemID: "window-2"}},
-		{name: "delete window", key: printableKey("x"), selectedID: "window-2", want: ActionRequest{ActionID: ActionDelete, ItemID: "window-2"}},
-		{name: "delete session", key: printableKey("X"), selectedID: "window-2", want: ActionRequest{ActionID: ActionDeleteSession, ItemID: "window-2"}},
+		{name: "open", key: specialKey(tea.KeyEnter), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionOpen, ItemID: list.ItemID{ID: "window-2"}}},
+		{name: "refresh", key: controlKey('r'), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionRefresh}},
+		{name: "toggle projection", key: controlKey('t'), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionToggleProjection, ItemID: list.ItemID{ID: "window-2"}}},
+		{name: "create session", key: printableKey("A"), selectedID: list.ItemID{ID: "session-1"}, want: ActionRequest{ActionID: ActionCreateSession}},
+		{name: "create window", key: printableKey("a"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionCreateWindow, ItemID: list.ItemID{ID: "window-2"}}},
+		{name: "rename window", key: printableKey("r"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionRename, ItemID: list.ItemID{ID: "window-2"}}},
+		{name: "rename session", key: printableKey("R"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionRenameSession, ItemID: list.ItemID{ID: "window-2"}}},
+		{name: "delete window", key: printableKey("x"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionDelete, ItemID: list.ItemID{ID: "window-2"}}},
+		{name: "delete session", key: printableKey("X"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionDeleteSession, ItemID: list.ItemID{ID: "window-2"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var got ActionRequest
@@ -255,26 +255,26 @@ func TestBoundDeleteSessionUsesOneActionFlowInEveryMode(t *testing.T) {
 				return ActionResult{}, nil
 			}, keys)
 			require.NoError(t, err)
-			m = selectNode(t, browseModel(m), "window-2")
+			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
 			m.mode = test.mode
 			m.input = inputState{Value: "name", ReturnMode: test.returnMode}
 			m.confirm = confirmState{ReturnMode: test.returnMode}
-			m.menu = menuState{ItemID: "window-2", Entries: []MenuEntry{{Action: ActionDeleteSession, Label: "Delete session"}}, ReturnMode: test.returnMode}
+			m.menu = menuState{ItemID: list.ItemID{ID: "window-2"}, Entries: []MenuEntry{{Action: ActionDeleteSession, Label: "Delete session"}}, ReturnMode: test.returnMode}
 
 			m, cmd := updateModel(t, m, printableKey("z"))
 			require.NotNil(t, cmd)
 			m, _ = updateModel(t, m, cmd())
 			require.Equal(t, modeConfirm, m.mode)
 			require.Equal(t, test.returnMode, m.confirm.ReturnMode)
-			require.Equal(t, []ActionRequest{{ActionID: ActionDeleteSession, ItemID: "window-2"}}, requests)
+			require.Equal(t, []ActionRequest{{ActionID: ActionDeleteSession, ItemID: list.ItemID{ID: "window-2"}}}, requests)
 
 			m, cmd = updateModel(t, m, printableKey("y"))
 			require.NotNil(t, cmd)
 			require.Equal(t, test.returnMode, m.mode)
 			cmd()
 			require.Equal(t, []ActionRequest{
-				{ActionID: ActionDeleteSession, ItemID: "window-2"},
-				{ActionID: ActionDeleteSession, ItemID: "window-2", Confirmed: true},
+				{ActionID: ActionDeleteSession, ItemID: list.ItemID{ID: "window-2"}},
+				{ActionID: ActionDeleteSession, ItemID: list.ItemID{ID: "window-2"}, Confirmed: true},
 			}, requests)
 		})
 	}
@@ -300,35 +300,35 @@ func TestActionMnemonicsRemainTextInFilterAndInput(t *testing.T) {
 
 func TestProjectionTogglePreservesTheFilterAndUsesPreferredSelection(t *testing.T) {
 	flat := list.Snapshot{Items: []list.Item{{
-		ID: "destination-2", Primary: "beta > api",
+		ID: list.ItemID{ID: "destination-2"}, Primary: "beta > api",
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "server"}},
 	}}}
 	m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
-		require.Equal(t, ActionRequest{ActionID: ActionToggleProjection, ItemID: "window-2"}, request)
-		return ActionResult{Snapshot: &flat, SelectItemID: "destination-2"}, nil
+		require.Equal(t, ActionRequest{ActionID: ActionToggleProjection, ItemID: list.ItemID{ID: "window-2"}}, request)
+		return ActionResult{Snapshot: &flat, SelectItemID: list.ItemID{ID: "destination-2"}}, nil
 	})
 	m = browseModel(m)
-	m = selectNode(t, m, "window-2")
+	m = selectNode(t, m, list.ItemID{ID: "window-2"})
 	m.items.SetQuery("server")
 
 	m, cmd := updateModel(t, m, controlKey('t'))
 	require.NotNil(t, cmd)
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, "server", m.items.Query())
-	require.Equal(t, list.ItemID("destination-2"), selectedNodeID(m))
+	require.Equal(t, list.ItemID{ID: "destination-2"}, selectedNodeID(m))
 }
 
 func TestCtrlTFromJumpTogglesProjectionAndRebuildsLabels(t *testing.T) {
 	flat := list.Snapshot{Items: []list.Item{{
-		ID: "destination-2", Primary: "beta > api",
+		ID: list.ItemID{ID: "destination-2"}, Primary: "beta > api",
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "server"}},
 	}}}
 	m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
-		require.Equal(t, ActionRequest{ActionID: ActionToggleProjection, ItemID: "window-2"}, request)
-		return ActionResult{Snapshot: &flat, SelectItemID: "destination-2"}, nil
+		require.Equal(t, ActionRequest{ActionID: ActionToggleProjection, ItemID: list.ItemID{ID: "window-2"}}, request)
+		return ActionResult{Snapshot: &flat, SelectItemID: list.ItemID{ID: "destination-2"}}, nil
 	})
 	m = browseModel(m)
-	m = selectNode(t, m, "window-2")
+	m = selectNode(t, m, list.ItemID{ID: "window-2"})
 	m, _ = updateModel(t, m, printableKey(";"))
 	require.Equal(t, modeJump, m.mode)
 
@@ -336,8 +336,8 @@ func TestCtrlTFromJumpTogglesProjectionAndRebuildsLabels(t *testing.T) {
 	require.NotNil(t, cmd)
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, modeJump, m.mode)
-	require.Equal(t, []jumpCandidate{{label: "a", itemID: "destination-2"}}, m.jump.candidates)
-	require.Equal(t, list.ItemID("destination-2"), selectedNodeID(m))
+	require.Equal(t, []jumpCandidate{{label: "a", itemID: list.ItemID{ID: "destination-2"}}}, m.jump.candidates)
+	require.Equal(t, list.ItemID{ID: "destination-2"}, selectedNodeID(m))
 }
 
 func TestPromptAndConfirmationKeepTheOriginatingItemID(t *testing.T) {
@@ -353,25 +353,25 @@ func TestPromptAndConfirmationKeepTheOriginatingItemID(t *testing.T) {
 		return ActionResult{}, nil
 	})
 	m = browseModel(m)
-	m = selectNode(t, m, "window-2")
+	m = selectNode(t, m, list.ItemID{ID: "window-2"})
 
 	m, cmd := updateModel(t, m, printableKey("r"))
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, modeInput, m.mode)
-	require.Equal(t, list.ItemID("window-2"), m.input.Request.ItemID)
+	require.Equal(t, list.ItemID{ID: "window-2"}, m.input.Request.ItemID)
 	m.input.Value = "api"
 	m, cmd = updateModel(t, m, specialKey(tea.KeyEnter))
 	m, _ = updateModel(t, m, cmd())
-	require.Equal(t, list.ItemID("window-2"), requests[len(requests)-1].ItemID)
+	require.Equal(t, list.ItemID{ID: "window-2"}, requests[len(requests)-1].ItemID)
 	require.Equal(t, "api", *requests[len(requests)-1].Value)
 
 	m, cmd = updateModel(t, m, printableKey("x"))
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, modeConfirm, m.mode)
-	require.Equal(t, list.ItemID("window-2"), m.confirm.Request.ItemID)
+	require.Equal(t, list.ItemID{ID: "window-2"}, m.confirm.Request.ItemID)
 	m, cmd = updateModel(t, m, printableKey("y"))
 	cmd()
-	require.Equal(t, list.ItemID("window-2"), requests[len(requests)-1].ItemID)
+	require.Equal(t, list.ItemID{ID: "window-2"}, requests[len(requests)-1].ItemID)
 	require.True(t, requests[len(requests)-1].Confirmed)
 }
 
@@ -395,15 +395,15 @@ func TestActionResultClearsPendingStateOnSuccessAndFailure(t *testing.T) {
 
 func TestInvalidRefreshRetainsSnapshotAndSelection(t *testing.T) {
 	m := newModel(interactionSnapshot(), nil)
-	m = selectNode(t, m, "window-2")
+	m = selectNode(t, m, list.ItemID{ID: "window-2"})
 	before := m.items.Snapshot()
 	invalid := interactionSnapshot()
-	invalid.Items[1].ID = "session-1"
+	invalid.Items[1].ID = list.ItemID{ID: "session-1"}
 
 	m, _ = updateModel(t, m, actionResultMsg{result: ActionResult{Snapshot: &invalid}})
 	require.Error(t, m.err)
 	require.Equal(t, before, m.items.Snapshot())
-	require.Equal(t, list.ItemID("window-2"), selectedNodeID(m))
+	require.Equal(t, list.ItemID{ID: "window-2"}, selectedNodeID(m))
 }
 
 func TestPasteMsgFeedsFilterAndInputModes(t *testing.T) {

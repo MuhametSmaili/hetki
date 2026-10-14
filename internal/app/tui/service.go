@@ -16,10 +16,10 @@ type Driver interface {
 	Load(context.Context) (list.Snapshot, error)
 	Execute(context.Context, ui.ActionRequest) (ui.ActionResult, error)
 	Preview(context.Context, list.ItemID) (string, error)
-	Navigate(context.Context, ui.BackendTarget) error
+	Navigate(context.Context, list.ItemID) error
 }
 
-type RunUIFunc func(context.Context, list.Snapshot, ui.KeyMap, ui.StartMode, ui.DispatchFunc, ui.PreviewOptions, ui.StatusOptions) (ui.BackendTarget, error)
+type RunUIFunc func(context.Context, list.Snapshot, ui.KeyMap, ui.StartMode, ui.DispatchFunc, ui.PreviewOptions, ui.StatusOptions) (list.ItemID, error)
 
 type Service struct {
 	Driver       Driver
@@ -74,7 +74,7 @@ func (s Service) Run(ctx context.Context) error {
 		}
 		return err
 	}
-	if navigation != "" {
+	if !navigation.IsZero() {
 		return s.Driver.Navigate(ctx, navigation)
 	}
 	return nil

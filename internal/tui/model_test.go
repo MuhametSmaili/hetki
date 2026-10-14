@@ -14,9 +14,9 @@ import (
 
 func viewSnapshot() list.Snapshot {
 	return list.Snapshot{Items: []list.Item{{
-		ID: "session", Primary: "session", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "session"}},
+		ID: list.ItemID{ID: "session"}, Primary: "session", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "session"}},
 		Children: []list.Item{{
-			ID: "window", Primary: "editor", Secondary: "~/code/editor",
+			ID: list.ItemID{ID: "window"}, Primary: "editor", Secondary: "~/code/editor",
 			SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "editor"}, {Tier: list.SearchSecondary, Text: "~/code/editor"}},
 		}},
 	}}}
@@ -24,8 +24,8 @@ func viewSnapshot() list.Snapshot {
 
 func TestRunRejectsInvalidInitialProjectionBeforeStartingTea(t *testing.T) {
 	invalid := list.Snapshot{Items: []list.Item{
-		{ID: "same", Primary: "one"},
-		{ID: "same", Primary: "two"},
+		{ID: list.ItemID{ID: "same"}, Primary: "one"},
+		{ID: list.ItemID{ID: "same"}, Primary: "two"},
 	}}
 	_, err := Run(context.Background(), invalid, DefaultKeyMap(), DefaultStartMode(), nil, PreviewOptions{Width: DefaultPreviewWidth}, StatusOptions{})
 	if err == nil || !strings.Contains(err.Error(), "duplicate item ID") {
@@ -91,7 +91,7 @@ func TestViewKeepsSecondaryTextOnItsRowWithoutGlobalHelp(t *testing.T) {
 
 func TestViewPassesTrailingTextToTheRightColumn(t *testing.T) {
 	m := browseModel(newModel(list.Snapshot{Items: []list.Item{{
-		ID: "pane", Primary: "deveditor", Secondary: "~/code", Trailing: "pi",
+		ID: list.ItemID{ID: "pane"}, Primary: "deveditor", Secondary: "~/code", Trailing: "pi",
 	}}}, nil))
 	m.width, m.height = 80, 20
 	m = m.reflow()
@@ -192,8 +192,8 @@ func TestContextMenuViewportFitsAndCentersTheFullMenu(t *testing.T) {
 func TestViewSanitizesExternalTextAndFitsWidth(t *testing.T) {
 	unsafe := "\x1b]0;owned\a中👨‍👩‍👧é\nnext"
 	snapshot := list.Snapshot{Items: []list.Item{{
-		ID: "unsafe", Primary: unsafe, SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: unsafe}},
-	}}, ActiveItemID: "unsafe"}
+		ID: list.ItemID{ID: "unsafe"}, Primary: unsafe, SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: unsafe}},
+	}}, ActiveItemID: list.ItemID{ID: "unsafe"}}
 	for _, width := range []int{1, 2, 3, 20} {
 		m := newModel(snapshot, nil)
 		m.width, m.height = width, 8

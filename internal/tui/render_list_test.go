@@ -56,6 +56,14 @@ func TestShortenPathZeroWidth(t *testing.T) {
 	}
 }
 
+func TestRenderListUsesPresentationFallbackForEmptyPrimary(t *testing.T) {
+	lines := renderList(listProps{Width: 20, Rows: []rowProps{{}}})
+
+	if plain := terminal.Sanitize(lines[0]); plain != "  -" {
+		t.Fatalf("empty primary fallback = %q, want %q", plain, "  -")
+	}
+}
+
 func TestRenderListShowsJumpLabelBesideTheRow(t *testing.T) {
 	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 	line := renderList(listProps{

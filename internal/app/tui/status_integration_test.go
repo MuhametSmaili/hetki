@@ -34,7 +34,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return b, nil }, nil, nil)
 	adapter.projection = projectionTree
 	service := Service{Driver: adapter}
-	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 		require.NotNil(t, options.Read)
 		idle := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
 		require.True(t, idle.Watching, "native daemon must use change delivery")
@@ -56,7 +56,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 			}
 			return false
 		}, 5*time.Second, 20*time.Millisecond)
-		return "", nil
+		return list.ItemID{}, nil
 	}
 
 	require.NoError(t, service.Run(t.Context()))
@@ -73,7 +73,7 @@ func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
 	adapter := newLiveAdapter(func(...string) (backend.Backend, error) { return b, nil }, nil, nil)
 	adapter.projection = projectionTree
 	service := Service{Driver: adapter}
-	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (ui.BackendTarget, error) {
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 		// Only the readiness probe repeats; every transition below is sent once.
 		ready := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, func() {
 			run("send-keys", "-t", "%0", "-l", "--", "\x1b]7501;state=idle\a\n")
@@ -96,7 +96,7 @@ func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
 				assertPickerSuccessAges(t, ctx, options, update, run)
 			}
 		}
-		return "", nil
+		return list.ItemID{}, nil
 	}
 
 	require.NoError(t, service.Run(t.Context()))

@@ -10,7 +10,16 @@ const (
 	MaxDepth = 3
 )
 
-type ItemID string
+// ItemID is a comparable row key. Scope and Parent are opaque ancestry;
+// ID is the required local identity. No component is normalized.
+type ItemID struct {
+	Scope  string
+	Parent string
+	ID     string
+}
+
+// IsZero reports whether the key is absent, not whether it is valid.
+func (id ItemID) IsZero() bool { return id == (ItemID{}) }
 
 type SearchTier uint8
 
@@ -44,7 +53,7 @@ func Validate(snapshot Snapshot) error {
 	if err := validateItems(snapshot.Items, 1, ids); err != nil {
 		return err
 	}
-	if snapshot.ActiveItemID != "" {
+	if !snapshot.ActiveItemID.IsZero() {
 		if _, exists := ids[snapshot.ActiveItemID]; !exists {
 			return fmt.Errorf("active item ID %q is not present", snapshot.ActiveItemID)
 		}
@@ -63,7 +72,7 @@ func validateItems(items []Item, depth int, ids map[ItemID]struct{}) error {
 		if len(ids) >= MaxItems {
 			return fmt.Errorf("item tree exceeds maximum count %d", MaxItems)
 		}
-		if strings.TrimSpace(string(item.ID)) == "" {
+		if item.ID.ID == "" {
 			return fmt.Errorf("item at depth %d index %d has an empty ID", depth, i)
 		}
 		if _, exists := ids[item.ID]; exists {

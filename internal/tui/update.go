@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/MSmaili/hetki/internal/tui/list"
 )
 
 func (m model) Init() tea.Cmd {
@@ -73,7 +74,7 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 
 func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
-		return handleQuit(m, "")
+		return handleQuit(m, list.ItemID{})
 	}
 	if m.busy {
 		return m, nil
@@ -83,7 +84,7 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateMenuMode(msg)
 	}
 	if action, ok := m.keys.Action(keyModeFor(m.mode), msg); ok {
-		return m.dispatchAction(action, "")
+		return m.dispatchAction(action, list.ItemID{})
 	}
 	return m.updateUnboundKey(msg)
 }

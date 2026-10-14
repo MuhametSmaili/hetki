@@ -32,7 +32,7 @@ func (s *stubBackend) LayoutPreset(observed string) (string, error) {
 }
 
 func (s *stubBackend) Name() string { return "stub" }
-func (s *stubBackend) CapturePane(context.Context, string) (string, error) {
+func (s *stubBackend) CapturePane(context.Context, backend.Target) (string, error) {
 	panic("unexpected pane capture")
 }
 
@@ -46,7 +46,7 @@ func (s *stubBackend) QueryState(context.Context) (backend.StateResult, error) {
 func (s *stubBackend) Apply(context.Context, []backend.Action) error { return nil }
 func (s *stubBackend) DryRun([]backend.Action) ([]string, error)     { return nil, nil }
 func (s *stubBackend) Attach(context.Context, string) error          { return nil }
-func (s *stubBackend) Switch(context.Context, string) error          { return nil }
+func (s *stubBackend) Switch(context.Context, backend.Target) error  { return nil }
 
 func TestServiceRunWritesCurrentSessionWorkspace(t *testing.T) {
 	home := t.TempDir()
