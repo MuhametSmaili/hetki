@@ -21,7 +21,7 @@ func TestProjectFlatBuildsStablePaneDestinations(t *testing.T) {
 					{ID: "%7", Index: 7, Path: "/home/me/code", Command: "node", Program: "pi", Active: true},
 					{ID: "%2", Index: 2, Path: "/var/log"},
 				}},
-				{ID: "@2", Name: "tests", Index: 2, Panes: []backend.Pane{{ID: "%8", Index: 0, Path: "/home/me/code", Active: true}}},
+				{ID: "@2", Name: " \t ", Index: 2, Panes: []backend.Pane{{ID: "%8", Index: 0, Path: "/home/me/code", Active: true}}},
 			},
 		}},
 		Active: backend.ActiveContext{SessionID: "$1", WindowID: "@1", PaneID: "%7"},
@@ -35,7 +35,11 @@ func TestProjectFlatBuildsStablePaneDestinations(t *testing.T) {
 	code := index[codeID]
 	assert.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%7"}, code.Target)
 
-	assert.Equal(t, "deveditor", itemByID(snapshot.Items, codeID).Primary)
+	assert.Equal(t, "dev", itemByID(snapshot.Items, codeID).Context)
+	assert.Equal(t, "editor", itemByID(snapshot.Items, codeID).Primary)
+	assert.Equal(t, "2", itemByID(snapshot.Items, destinationItemID("$1", "@2", "%8")).Primary)
+	assert.Equal(t, "·7", itemByID(snapshot.Items, codeID).Annotation)
+	assert.Empty(t, itemByID(snapshot.Items, destinationItemID("$1", "@2", "%8")).Annotation)
 	assert.Equal(t, "pi", itemByID(snapshot.Items, codeID).Trailing)
 	assert.Equal(t, "node", itemByID(snapshot.Items, destinationItemID("$1", "@1", "%5")).Trailing)
 	assert.Equal(t, "~/code", itemByID(snapshot.Items, codeID).Secondary)
@@ -215,7 +219,7 @@ func TestProjectFlatMatchesTheCompleteActiveOccurrence(t *testing.T) {
 	}
 }
 
-func TestProjectFlatOnlyLabelsOtherwiseIdenticalPanes(t *testing.T) {
+func TestProjectFlatLabelsEveryPaneInSplitWindows(t *testing.T) {
 	state := backend.StateResult{Sessions: []backend.Session{{
 		ID: "$1", Name: "dev", Windows: []backend.Window{{
 			ID: "@1", Name: "editor", Panes: []backend.Pane{
@@ -226,24 +230,25 @@ func TestProjectFlatOnlyLabelsOtherwiseIdenticalPanes(t *testing.T) {
 			},
 		}},
 	}}}
-	snapshot, index, err := projectFlat(state, "")
+
+	snapshot, _, err := projectFlat(state, "")
+
 	require.NoError(t, err)
-	require.Equal(t, "deveditor [%1]", itemByID(snapshot.Items, destinationItemID("$1", "@1", "%1")).Primary)
-	require.Equal(t, "deveditor [%2]", itemByID(snapshot.Items, destinationItemID("$1", "@1", "%2")).Primary)
-	for _, paneID := range []string{"%3", "%4"} {
-		require.Equal(t, "deveditor", itemByID(snapshot.Items, destinationItemID("$1", "@1", paneID)).Primary)
+	require.Len(t, snapshot.Items, 4)
+	for i, paneID := range []string{"%1", "%2", "%3", "%4"} {
+		item := itemByID(snapshot.Items, destinationItemID("$1", "@1", paneID))
+		require.Equal(t, "dev", item.Context)
+		require.Equal(t, "editor", item.Primary)
+		require.Equal(t, fmt.Sprintf("·%d", i), item.Annotation)
 	}
-	state.Sessions[0].Last = true
-	first := destinationItemID("$1", "@1", "%1")
-	// The last-session marker must not defeat duplicate detection or change
-	// search fields, ordering, stable identity, or the indexed target.
-	state.Sessions[0].Windows[0].Active = true
-	marked, markedIndex, err := projectFlat(state, "")
+
+	model, err := list.New(snapshot)
 	require.NoError(t, err)
-	require.Equal(t, "deveditor [%1] ↶", itemByID(marked.Items, first).Primary)
-	require.Equal(t, itemByID(snapshot.Items, first).SearchFields, itemByID(marked.Items, first).SearchFields)
-	require.Equal(t, index[first].Target, markedIndex[first].Target)
-	require.Equal(t, itemIDs(snapshot.Items), itemIDs(marked.Items))
+
+	model.SetQuery("nvim")
+
+	require.Len(t, model.Rows(), 1)
+	require.Equal(t, "·2", model.Rows()[0].Item.Annotation)
 }
 
 func itemByID(items []list.Item, id list.ItemID) list.Item {

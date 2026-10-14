@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/MSmaili/hetki/internal/backend"
 	"github.com/MSmaili/hetki/internal/frecency"
-	"github.com/MSmaili/hetki/internal/terminal"
 	"github.com/MSmaili/hetki/internal/tui/list"
 )
 
@@ -32,7 +30,6 @@ func projectFlatRanked(
 		}
 	}
 
-	disambiguatePaneRows(snapshot.Items, index)
 	sort.Slice(snapshot.Items, func(i, j int) bool {
 		left := index[snapshot.Items[i].ID]
 		right := index[snapshot.Items[j].ID]
@@ -98,8 +95,8 @@ func projectFlatDestination(
 	}
 
 	name := window.Name
-	if name == "" {
-		name = fmt.Sprintf("%d", window.Index)
+	if strings.TrimSpace(name) == "" {
+		name = strconv.Itoa(window.Index)
 	}
 	id := destinationItemID(session.ID, window.ID, pane.ID)
 	fields := []list.SearchField{
@@ -107,17 +104,19 @@ func projectFlatDestination(
 		{Tier: list.SearchPrimary, Text: name},
 	}
 	program := paneProgramLabel(pane, session.DefaultShell)
-	if pane.Command != "" {
+	hideCommand := shouldHideCommand(pane.Command, session.DefaultShell)
+	if pane.Command != "" && !hideCommand {
 		fields = append(fields, list.SearchField{Tier: list.SearchPrimary, Text: pane.Command})
 	}
-	if pane.Program != "" && pane.Program != pane.Command {
+	if pane.Program != "" && (pane.Program != pane.Command || hideCommand) {
 		fields = append(fields, list.SearchField{Tier: list.SearchPrimary, Text: pane.Program})
 	}
 	fields = appendPathSearchFields(fields, pane.Path, homeDir)
 
 	item := list.Item{
 		ID:           id,
-		Primary:      session.Name + "" + name,
+		Context:      session.Name,
+		Primary:      name,
 		Secondary:    displayPath(pane.Path, homeDir),
 		Trailing:     program,
 		SearchFields: fields,
@@ -138,6 +137,10 @@ func projectFlatDestination(
 		Last:         session.Last && window.Active && pane.Active,
 		StatusPanes:  paneStatusRefs([]backend.Pane{pane}),
 	}
+	if len(window.Panes) > 1 {
+		item.Annotation = "·" + strconv.Itoa(pane.Index)
+	}
+
 	if destination.Last {
 		item.Primary += " ↶"
 	}
@@ -175,51 +178,6 @@ func destinationLess(left, right liveItem, scores frecency.Scores) bool {
 		return left.PaneIndex < right.PaneIndex
 	}
 	return left.Target.PaneID < right.Target.PaneID
-}
-
-// Keep ordinary rows uncluttered. Only otherwise identical pane rows need a
-// visible identifier; this decoration never participates in search or identity.
-func disambiguatePaneRows(items []list.Item, index itemIndex) {
-	type label struct{ primary, path, program string }
-	key := func(item list.Item) label {
-		primary := item.Primary
-		if index[item.ID].Last {
-			primary = strings.TrimSuffix(primary, " ↶")
-		}
-		return label{
-			paneDisplayText(primary),
-			paneDisplayText(item.Secondary),
-			paneDisplayText(item.Trailing),
-		}
-	}
-	counts := make(map[label]int, len(items))
-	labels := make([]label, len(items))
-	for i, item := range items {
-		labels[i] = key(item)
-		counts[labels[i]]++
-	}
-	for i := range items {
-		if counts[labels[i]] < 2 {
-			continue
-		}
-		pane := index[items[i].ID]
-		if pane.Last {
-			items[i].Primary = strings.TrimSuffix(items[i].Primary, " ↶")
-		}
-		items[i].Primary += " [" + pane.Target.PaneID + "]"
-		if pane.Last {
-			items[i].Primary += " ↶"
-		}
-	}
-}
-
-func paneDisplayText(value string) string {
-	// Most pane labels are plain text: avoid allocating sanitized copies of
-	// every field merely to detect duplicates in a large snapshot.
-	if !utf8.ValidString(value) || strings.IndexFunc(value, unicode.IsControl) >= 0 {
-		value = terminal.Sanitize(value)
-	}
-	return strings.TrimSpace(value)
 }
 
 func appendPathSearchFields(fields []list.SearchField, rawPath, homeDir string) []list.SearchField {

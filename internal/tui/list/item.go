@@ -35,9 +35,11 @@ type SearchField struct {
 
 type Item struct {
 	ID           ItemID
+	Context      string // Optional leading column; enables column layout.
 	Primary      string
+	Annotation   string // Optional muted column following Primary.
 	Secondary    string
-	Trailing     string // Optional right-aligned text, independent of search fields.
+	Trailing     string // Optional trailing text, independent of search fields.
 	SearchFields []SearchField
 	Children     []Item
 }

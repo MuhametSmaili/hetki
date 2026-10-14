@@ -11,6 +11,8 @@ import (
 )
 
 type rowProps struct {
+	Context    string
+	Annotation string
 	Primary    string
 	Secondary  string
 	Trailing   string
@@ -37,6 +39,10 @@ func renderList(props listProps) []string {
 	if len(props.Rows) == 0 {
 		return []string{props.Theme.meta.Render(truncateWidth(props.EmptyText, props.Width))}
 	}
+	if props.Rows[0].Context != "" {
+		return renderColumnList(props)
+	}
+
 	left := make([]string, len(props.Rows))
 	columnWidth := 0
 	secondaryWidth := 0
@@ -156,6 +162,10 @@ func shortenPath(path string, maxWidth int) string {
 }
 
 func renderRowLine(row rowProps, styles theme, compact bool) string {
+	return renderRowPrefix(row) + decoratedLabel(row, compact)
+}
+
+func renderRowPrefix(row rowProps) string {
 	indicator := " "
 	if row.Active {
 		indicator = "│"
@@ -164,7 +174,7 @@ func renderRowLine(row rowProps, styles theme, compact bool) string {
 	if jumpLabel := displayJumpLabel(row.JumpLabel); jumpLabel != "" {
 		parts = append(parts, jumpLabel)
 	}
-	return strings.Join(append(parts, decoratedLabel(row, compact)), " ")
+	return strings.Join(parts, " ") + " "
 }
 
 func styleRowLine(row rowProps, line string, width int, styles theme) string {
