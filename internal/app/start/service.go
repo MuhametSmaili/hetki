@@ -31,18 +31,24 @@ type Backend interface {
 }
 
 type Service struct {
-	DetectBackend func() (Backend, error)
-	LoadWorkspace func(string) (*manifest.Workspace, string, error)
+	DetectBackend  func() (Backend, error)
+	validateLayout func(string) error
+	LoadWorkspace  func(string) (*manifest.Workspace, string, error)
 }
 
-func NewService(detectBackend func() (Backend, error)) Service {
-	return Service{DetectBackend: detectBackend}
+// NewService binds backend detection and a required pure authored-layout policy.
+func NewService(detectBackend func() (Backend, error), validateLayout func(string) error) Service {
+	return Service{DetectBackend: detectBackend, validateLayout: validateLayout}
 }
 
 func (s Service) Run(ctx context.Context, opts Options) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if s.validateLayout == nil {
+		return manifest.ErrLayoutValidatorRequired
+	}
+
 	workspace, workspacePath, err := s.loadWorkspace(opts.Workspace)
 	if err != nil {
 		return err
@@ -68,7 +74,7 @@ func (s Service) loadWorkspace(nameOrPath string) (*manifest.Workspace, string, 
 	if s.LoadWorkspace != nil {
 		return s.LoadWorkspace(nameOrPath)
 	}
-	return appshared.NewWorkspaceLoader().LoadWorkspace(nameOrPath)
+	return appshared.NewWorkspaceLoader(s.validateLayout).LoadWorkspace(nameOrPath)
 }
 
 func (s Service) detectBackend() (Backend, error) {

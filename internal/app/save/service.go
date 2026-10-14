@@ -28,11 +28,13 @@ type Backend interface {
 }
 
 type Service struct {
-	DetectBackend func() (Backend, error)
+	DetectBackend  func() (Backend, error)
+	validateLayout func(string) error
 }
 
-func NewService(detectBackend func() (Backend, error)) Service {
-	return Service{DetectBackend: detectBackend}
+// NewService binds backend detection and a required pure authored-layout policy.
+func NewService(detectBackend func() (Backend, error), validateLayout func(string) error) Service {
+	return Service{DetectBackend: detectBackend, validateLayout: validateLayout}
 }
 
 func (s Service) Run(ctx context.Context, opts Options) (string, error) {
@@ -41,6 +43,10 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 	}
 	if err := validateOptions(opts); err != nil {
 		return "", err
+	}
+
+	if s.validateLayout == nil {
+		return "", manifest.ErrLayoutValidatorRequired
 	}
 
 	b, err := s.detectBackend()
@@ -63,7 +69,7 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 		return "", fmt.Errorf("convert observed workspace: %w", err)
 	}
 
-	return saveWorkspace(ctx, workspace, outputPath, opts.All)
+	return saveWorkspace(ctx, workspace, outputPath, opts.All, s.validateLayout)
 }
 
 func (s Service) detectBackend() (Backend, error) {
@@ -152,10 +158,14 @@ var (
 	}
 )
 
-func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPath string, saveAll bool) (string, error) {
+func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPath string, saveAll bool, validateLayout func(string) error) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	if validateLayout == nil {
+		return "", manifest.ErrLayoutValidatorRequired
+	}
+
 	absPath, err := filepath.Abs(outputPath)
 	if err != nil {
 		return "", fmt.Errorf("resolving absolute path: %w", err)
@@ -167,7 +177,7 @@ func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPat
 	}
 
 	if observed.exists {
-		existing, err := manifest.Parse(observed.data, absPath)
+		existing, err := manifest.Parse(observed.data, absPath, validateLayout)
 		if err != nil {
 			return "", fmt.Errorf("existing destination is invalid: %w", err)
 		}
@@ -176,7 +186,7 @@ func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPat
 		}
 	}
 
-	data, err := manifest.Marshal(workspace, absPath)
+	data, err := manifest.Marshal(workspace, absPath, validateLayout)
 	if err != nil {
 		return "", err
 	}

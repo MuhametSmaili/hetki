@@ -6,6 +6,12 @@ import (
 	"github.com/MSmaili/hetki/internal/backend/tmux/internal/layout"
 )
 
+// ValidateAuthoredLayout validates manifest layout syntax without native I/O.
+// Legacy input retains syntax-only acceptance; observations use stricter checks.
+func ValidateAuthoredLayout(text string) error {
+	return layout.ValidateAuthored(text)
+}
+
 // LayoutPreset converts an observation to a readable, approximate preset.
 // It does not query or modify tmux; missing observations remain omitted.
 func (b *TmuxBackend) LayoutPreset(observed string) (string, error) {
@@ -19,8 +25,7 @@ func (b *TmuxBackend) LayoutsMatch(desired, actual string) bool {
 		return true
 	}
 
-	switch strings.TrimSpace(desired) {
-	case "even-horizontal", "even-vertical", "main-horizontal", "main-vertical", "tiled":
+	if layout.IsPreset(strings.TrimSpace(desired)) {
 		return true
 	}
 

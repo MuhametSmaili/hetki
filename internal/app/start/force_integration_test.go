@@ -64,7 +64,7 @@ func TestForceReplacementPreservesSessionOnIsolatedTmux(t *testing.T) {
 				oldIDs[i] = window.ID
 			}
 			workspace := forceReplacementWorkspace(directory, tc.newWindows)
-			service := NewService(func() (Backend, error) { return b, nil })
+			service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
 			err = service.Run(ctx, Options{Force: true})
@@ -116,7 +116,7 @@ func TestForceReplacementFailurePreservesOldWindows(t *testing.T) {
 			require.NoError(t, err)
 			devBefore := findBackendSession(t, before.Sessions, "dev")
 			workspace := forceReplacementWorkspace(directory, []string{"editor"})
-			service := NewService(func() (Backend, error) { return b, nil })
+			service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 			t.Setenv("HETKI_TEST_FAIL_COMMAND", tc.failCommand)
 

@@ -5,25 +5,47 @@ import (
 	"strings"
 )
 
+type legacyMode uint8
+
+const (
+	authoredSyntax legacyMode = iota + 1
+	observedGeometry
+)
+
 type legacyParser struct {
 	text   string
 	offset int
+	mode   legacyMode
 }
 
-func parseLegacy(text string) (cell, bool) {
+func parseLegacy(text string, mode legacyMode) (cell, bool) {
 	prefix, body, ok := strings.Cut(text, ",")
-	if !ok || len(prefix) != 4 {
+	if !ok || !validChecksumPrefix(prefix) {
 		return cell{}, false
 	}
 
-	expected, err := strconv.ParseUint(prefix, 16, 16)
-	if err != nil || uint16(expected) != checksum(body) {
-		return cell{}, false
+	if mode == observedGeometry {
+		expected, err := strconv.ParseUint(prefix, 16, 16)
+		if err != nil || uint16(expected) != checksum(body) {
+			return cell{}, false
+		}
 	}
 
-	p := legacyParser{text: body}
+	p := legacyParser{text: body, mode: mode}
 	root, ok := p.parseCell(0)
 	return root, ok && p.offset == len(body)
+}
+
+func validChecksumPrefix(prefix string) bool {
+	if len(prefix) != 4 {
+		return false
+	}
+	for i := range len(prefix) {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", rune(prefix[i])) {
+			return false
+		}
+	}
+	return true
 }
 
 func checksum(text string) uint16 {
@@ -36,7 +58,7 @@ func checksum(text string) uint16 {
 }
 
 func (p *legacyParser) parseCell(depth int) (cell, bool) {
-	if depth > maxDepth {
+	if p.mode == observedGeometry && depth > maxDepth {
 		return cell{}, false
 	}
 
@@ -77,25 +99,35 @@ func (p *legacyParser) rectangle() (cell, bool) {
 		if !ok {
 			return cell{}, false
 		}
-		*field.target = &value
+		if p.mode == observedGeometry {
+			fieldValue := value
+			*field.target = &fieldValue
+		}
 
 		if field.separator != 0 && !p.take(field.separator) {
 			return cell{}, false
 		}
 	}
+	if p.mode == authoredSyntax {
+		return c, true
+	}
 	return c, *c.Width > 0 && *c.Height > 0
 }
 
 func (p *legacyParser) children(c cell, close byte, depth int) (cell, bool) {
+	children := 0
 	for {
 		child, ok := p.parseCell(depth + 1)
 		if !ok {
 			return cell{}, false
 		}
-		c.Children = append(c.Children, child)
+		if p.mode == observedGeometry {
+			c.Children = append(c.Children, child)
+		}
+		children++
 
 		if p.take(close) {
-			return c, len(c.Children) >= 2
+			return c, children >= 2
 		}
 
 		if !p.take(',') {
@@ -109,6 +141,10 @@ func (p *legacyParser) number() (uint32, bool) {
 	for p.offset < len(p.text) && p.text[p.offset] >= '0' && p.text[p.offset] <= '9' {
 		p.offset++
 	}
+	if p.mode == authoredSyntax {
+		return 0, p.offset > start
+	}
+
 	value, err := strconv.ParseUint(p.text[start:p.offset], 10, 32)
 	return uint32(value), err == nil
 }

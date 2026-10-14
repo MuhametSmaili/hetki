@@ -2,6 +2,7 @@ package cmd
 
 import (
 	appsave "github.com/MSmaili/hetki/internal/app/save"
+	"github.com/MSmaili/hetki/internal/backend/tmux"
 	"github.com/MSmaili/hetki/internal/logger"
 	"github.com/spf13/cobra"
 )
@@ -36,7 +37,7 @@ func init() {
 func runSave(cmd *cobra.Command, args []string) error {
 	service := appsave.NewService(func() (appsave.Backend, error) {
 		return detectBackend()
-	})
+	}, tmux.ValidateAuthoredLayout)
 
 	outputPath, err := service.Run(cmd.Context(), appsave.Options{
 		Path:  savePath,

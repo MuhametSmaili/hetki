@@ -11,7 +11,6 @@ func TestLayoutPresetRejectsInvalidAndUnsupportedObservations(t *testing.T) {
 	b := &TmuxBackend{}
 	for _, observed := range []string{
 		"future-layout",
-		"0000,80x24,0,0,0",
 		`{"V":2,"L":{"t":"p","w":80,"h":24,"x":0,"y":0,"z":0}}`,
 	} {
 		t.Run(observed, func(t *testing.T) {

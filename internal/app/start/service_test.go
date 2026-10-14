@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func acceptLayout(string) error { return nil }
+
 type stubBackend struct {
 	queryResult backend.StateResult
 	queryErr    error
@@ -64,6 +66,37 @@ func (s *stubBackend) Attach(context.Context, string) error {
 	return nil
 }
 
+func TestServiceRunRejectsAuthoredLayoutBeforeDetection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "workspace.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("sessions:\n  - name: dev\n    windows:\n      - layout: opaque\n"), 0600))
+	denied := errors.New("unsupported authored layout")
+
+	for _, tc := range []struct {
+		name   string
+		policy func(string) error
+		want   error
+	}{
+		{"missing policy", nil, manifest.ErrLayoutValidatorRequired},
+		{"layout rejected", func(text string) error {
+			if text != "opaque" {
+				return errors.New("unexpected layout")
+			}
+			return denied
+		}, denied},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := NewService(func() (Backend, error) {
+				t.Fatal("backend detected before validation")
+				return nil, nil
+			}, tc.policy)
+
+			err := service.Run(t.Context(), Options{Workspace: path})
+
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+}
+
 func TestServiceRunUsesBackendLayoutPolicy(t *testing.T) {
 	directory := t.TempDir()
 	stub := &stubBackend{queryResult: backend.StateResult{
@@ -77,7 +110,7 @@ func TestServiceRunUsesBackendLayoutPolicy(t *testing.T) {
 		assert.Equal(t, "observation", observation)
 		return true
 	}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
 		return &manifest.Workspace{Sessions: []manifest.Session{{Name: "dev", Windows: []manifest.Window{{
 			Name: "editor", Path: directory, Layout: "request", Panes: []manifest.Pane{{Path: directory}},
@@ -94,6 +127,7 @@ func TestServiceRunCancellationAfterLoadPreventsBackendDetection(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	detected := false
 	service := Service{
+		validateLayout: acceptLayout,
 		LoadWorkspace: func(string) (*manifest.Workspace, string, error) {
 			cancel()
 			return &manifest.Workspace{}, "", nil
@@ -123,7 +157,7 @@ func TestServiceRunDryRunOutputsPlan(t *testing.T) {
 	})
 
 	stub := &stubBackend{dryRunLines: []string{"tmux new-session -d -s dev -n editor -c " + filepath.ToSlash(tmpDir)}}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	output := captureLoggerOutput(t, func() {
 		require.NoError(t, service.Run(context.Background(), Options{DryRun: true}))
@@ -158,7 +192,7 @@ func TestServiceRunDryRunIsReadOnlyWhenPlanIsEmpty(t *testing.T) {
 					Windows: []backend.Window{{Name: "editor", Path: "/work/hetki"}},
 				}},
 			}}
-			service := NewService(func() (Backend, error) { return stub, nil })
+			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
 				return workspace, "/work/hetki/.hetki.yaml", nil
 			}
@@ -189,7 +223,7 @@ func TestServiceRunFailsWhenBackendStateQueryFails(t *testing.T) {
 	})
 
 	stub := &stubBackend{queryErr: errors.New("query failed")}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	err = service.Run(context.Background(), Options{})
 	require.Error(t, err)
@@ -223,7 +257,7 @@ func TestServiceRunStampsWorkspacePathWhenPlanIsEmpty(t *testing.T) {
 			}},
 		}},
 	}}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	require.NoError(t, service.Run(context.Background(), Options{}))
 	assert.Equal(t, 1, stub.applyCalls)
@@ -267,7 +301,7 @@ func TestServiceRunColdStartAppliesCreateActions(t *testing.T) {
 
 	// Cold tmux: QueryState returns an empty StateResult, no error.
 	stub := &stubBackend{queryResult: backend.StateResult{}}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	require.NoError(t, service.Run(context.Background(), Options{}))
 
@@ -309,7 +343,7 @@ func TestServiceRunForcePreservesUnrelatedSessionsInNormalAndDryRun(t *testing.T
 	for _, dryRun := range []bool{false, true} {
 		t.Run(map[bool]string{false: "normal", true: "dry-run"}[dryRun], func(t *testing.T) {
 			stub := &stubBackend{queryResult: live, dryRunLines: []string{"tmux kill-window -t @9"}}
-			service := NewService(func() (Backend, error) { return stub, nil })
+			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
 			require.NoError(t, service.Run(context.Background(), Options{Force: true, DryRun: dryRun}))

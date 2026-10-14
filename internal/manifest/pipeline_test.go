@@ -19,21 +19,21 @@ func writeConfig(t *testing.T, name, content string) string {
 }
 
 func TestStrictDecodeRejectsUnknownFields(t *testing.T) {
-	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    windwos: []\n    windows:\n      - path: /p\n")).Load()
+	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    windwos: []\n    windows:\n      - path: /p\n"), acceptLayout).Load()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "windwos")
 
 }
 
 func TestStrictDecodeRejectsDuplicateKeys(t *testing.T) {
-	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    name: ops\n    windows:\n      - path: /p\n")).Load()
+	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    name: ops\n    windows:\n      - path: /p\n"), acceptLayout).Load()
 	require.Error(t, err, "yaml duplicate keys must fail")
 
 }
 
 func TestParseRejectsOversizedManifest(t *testing.T) {
 	big := "sessions:\n  - name: dev\n    windows:\n      - path: /p\n" + strings.Repeat("#", MaxManifestBytes)
-	_, err := Parse([]byte(big), "w.yaml")
+	_, err := Parse([]byte(big), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "exceeds")
 }
@@ -63,32 +63,32 @@ func TestParseBoundsCardinalityAndLengths(t *testing.T) {
 		return b.String()
 	}
 
-	_, err := Parse([]byte(tooMany("sessions", MaxSessions+1, "")), "w.yaml")
+	_, err := Parse([]byte(tooMany("sessions", MaxSessions+1, "")), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "too many sessions")
 
-	_, err = Parse([]byte(tooMany("windows", MaxWindowsPerSession+1, "")), "w.yaml")
+	_, err = Parse([]byte(tooMany("windows", MaxWindowsPerSession+1, "")), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "too many windows")
 
-	_, err = Parse([]byte(tooMany("panes", MaxPanesPerWindow+1, "")), "w.yaml")
+	_, err = Parse([]byte(tooMany("panes", MaxPanesPerWindow+1, "")), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "too many panes")
 
 	longName := "sessions:\n  - name: " + strings.Repeat("x", MaxNameLength+1) + "\n    windows:\n      - path: /p\n"
-	_, err = Parse([]byte(longName), "w.yaml")
+	_, err = Parse([]byte(longName), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "name exceeds")
 }
 
 func TestParseRejectsRemovedJSONFormat(t *testing.T) {
-	_, err := Parse([]byte(`{"sessions":[]}`), "w.json")
+	_, err := Parse([]byte(`{"sessions":[]}`), "w.json", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "unsupported config format: .json")
 }
 
 func TestParseRejectsWindowIndexField(t *testing.T) {
-	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    windows:\n      - path: /p\n        index: 3\n")).Load()
+	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    windows:\n      - path: /p\n        index: 3\n"), acceptLayout).Load()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "windows[0].index: unsupported field")
 }
@@ -98,7 +98,7 @@ func TestParseCompilesFirstPaneAndCommandInheritance(t *testing.T) {
 	require.NoError(t, err)
 	source := fmt.Sprintf("sessions:\n  - name: dev\n    root: %q\n    windows:\n      - name: editor\n        command: vim\n      - name: server\n        path: /srv\n        panes:\n          - {}\n          - command: npm run dev\n", root)
 
-	ws, err := Parse([]byte(source), "w.yaml")
+	ws, err := Parse([]byte(source), "w.yaml", acceptLayout)
 	require.NoError(t, err)
 
 	editor := ws.Sessions[0].Windows[0]
@@ -113,15 +113,8 @@ func TestParseCompilesFirstPaneAndCommandInheritance(t *testing.T) {
 	assert.Equal(t, "npm run dev", server.Panes[1].Command)
 }
 
-func TestParseRejectsInvalidLayoutsAndNames(t *testing.T) {
-	_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        layout: diagonal\n"), "w.yaml")
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "unknown layout")
-
-	_, err = Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        layout: bb62,159x48,0,0,0\n"), "w.yaml")
-	require.NoError(t, err, "saved layout dumps are valid")
-
-	_, err = Parse([]byte("sessions:\n  - name: \"de\x01v\"\n    windows:\n      - path: /p\n"), "w.yaml")
+func TestParseRejectsInvalidNames(t *testing.T) {
+	_, err := Parse([]byte("sessions:\n  - name: \"de\x01v\"\n    windows:\n      - path: /p\n"), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "control characters")
 }
@@ -147,7 +140,7 @@ func TestMarshalRejectsOversizedOutput(t *testing.T) {
 		windows[i] = Window{Name: "w", Path: "/p", Panes: panes}
 	}
 
-	_, err := Marshal(&Workspace{Sessions: []Session{{Name: "dev", Windows: windows}}}, "w.yaml")
+	_, err := Marshal(&Workspace{Sessions: []Session{{Name: "dev", Windows: windows}}}, "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "marshaled manifest exceeds")
 }
@@ -155,31 +148,31 @@ func TestMarshalRejectsOversizedOutput(t *testing.T) {
 func TestManifestRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	source := fmt.Sprintf("sessions:\n  - name: dev\n    root: %q\n    windows:\n      - name: editor\n        command: vim\n      - name: server\n        path: /srv\n        panes:\n          - command: npm run dev\n          - command: make watch\n            zoom: true\n", root)
-	ws, err := Parse([]byte(source), "w.yaml")
+	ws, err := Parse([]byte(source), "w.yaml", acceptLayout)
 	require.NoError(t, err)
 
-	data, err := Marshal(ws, "roundtrip.yaml")
+	data, err := Marshal(ws, "roundtrip.yaml", acceptLayout)
 	require.NoError(t, err)
-	ws2, err := Parse(data, "w.yaml")
+	ws2, err := Parse(data, "w.yaml", acceptLayout)
 	require.NoError(t, err)
 	assert.Equal(t, ws, ws2, "parse → marshal → parse must be stable")
 
 	// Second parse of the same bytes must produce the same workspace
 	// (idempotent normalization).
-	ws3, err := Parse([]byte(source), "w.yaml")
+	ws3, err := Parse([]byte(source), "w.yaml", acceptLayout)
 	require.NoError(t, err)
 	assert.Equal(t, ws, ws3)
 }
 
 func TestStrictDecodeRejectsTrailingDocuments(t *testing.T) {
 	doc := "sessions:\n  - name: dev\n    windows:\n      - path: /p\n"
-	_, err := Parse([]byte(doc+"---\nsessions: []\n"), "w.yaml")
+	_, err := Parse([]byte(doc+"---\nsessions: []\n"), "w.yaml", acceptLayout)
 	require.Error(t, err, "second yaml document must fail")
 	assert.ErrorContains(t, err, "only one document")
 }
 
 func TestParseAllowsFirstPaneToOverrideWindowDirectory(t *testing.T) {
-	workspace, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: /a\n        panes:\n          - path: /b\n          - {}\n"), "w.yaml")
+	workspace, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: /a\n        panes:\n          - path: /b\n          - {}\n"), "w.yaml", acceptLayout)
 
 	require.NoError(t, err)
 	window := workspace.Sessions[0].Windows[0]
@@ -189,7 +182,7 @@ func TestParseAllowsFirstPaneToOverrideWindowDirectory(t *testing.T) {
 
 func TestParseAdoptsFirstPanePathWhenWindowPathEmpty(t *testing.T) {
 	source := fmt.Sprintf("sessions:\n  - name: dev\n    root: %q\n    windows:\n      - name: editor\n        panes:\n          - path: /tmp\n", t.TempDir())
-	ws, err := Parse([]byte(source), "w.yaml")
+	ws, err := Parse([]byte(source), "w.yaml", acceptLayout)
 	require.NoError(t, err)
 	editor := ws.Sessions[0].Windows[0]
 	directory, err := filepath.EvalSymlinks("/tmp")
@@ -200,7 +193,7 @@ func TestParseAdoptsFirstPanePathWhenWindowPathEmpty(t *testing.T) {
 }
 
 func TestParseRejectsConflictingWindowAndPaneCommand(t *testing.T) {
-	_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        command: vim\n        panes:\n          - command: nvim\n"), "w.yaml")
+	_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        command: vim\n        panes:\n          - command: nvim\n"), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "window command conflicts with the first pane command")
 }
@@ -208,43 +201,22 @@ func TestParseRejectsConflictingWindowAndPaneCommand(t *testing.T) {
 func TestParseRejectsControlBytesInCommands(t *testing.T) {
 	// YAML double-quoted scalars interpret \n and \t escapes.
 	for _, cmd := range []string{`"echo a\nb"`, `"echo\ttab"`} {
-		_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        panes:\n          - command: "+cmd+"\n"), "w.yaml")
+		_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        panes:\n          - command: "+cmd+"\n"), "w.yaml", acceptLayout)
 		assert.Error(t, err, cmd)
 	}
 
-	_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        command: \";\"\n"), "w.yaml")
+	_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        command: \";\"\n"), "w.yaml", acceptLayout)
 	assert.NoError(t, err, "tmux escaping preserves a literal bare semicolon")
-}
-
-func TestParseValidatesLayoutDumps(t *testing.T) {
-	for _, layout := range []string{
-		"bb62,159x48,0,0,0",
-		"2419,80x24,0,0{40x24,0,0,0,39x24,41,0,1}",
-		"cafe,80x24,0,0{40x12,0,0,0,40x11,0,13,1,39x23,41,0,2}",
-		"cafe,80x24,0,0[80x12,0,0{40x12,0,0,0,39x12,41,0,1},80x11,0,13,2]",
-	} {
-		_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        layout: "+layout+"\n"), "w.yaml")
-		assert.NoError(t, err, layout)
-	}
-
-	for _, layout := range []string{
-		"zzzz,80x24,0,0,0",
-		"cafe,80x24,0,0{40x24,0,0,0}",
-		"cafe,80x24,0,0[40x12,0,0,0,39x12,41,0,1}",
-	} {
-		_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        layout: "+layout+"\n"), "w.yaml")
-		assert.Error(t, err, layout)
-	}
 }
 
 func TestParseValidatesNormalizedValues(t *testing.T) {
 	t.Setenv("HETKI_LONG_PATH", "/"+strings.Repeat("x", MaxPathLength))
-	_, err := Parse([]byte("sessions:\n  - name: dev\n    root: $HETKI_LONG_PATH\n    windows:\n      - name: editor\n"), "w.yaml")
+	_, err := Parse([]byte("sessions:\n  - name: dev\n    root: $HETKI_LONG_PATH\n    windows:\n      - name: editor\n"), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "sessions[0].root: resolved path is too long")
 
 	longBase := strings.Repeat("x", MaxNameLength+1)
-	_, err = Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /tmp/"+longBase+"\n"), "w.yaml")
+	_, err = Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /tmp/"+longBase+"\n"), "w.yaml", acceptLayout)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "windows[0].path")
 	var pathError *os.PathError
@@ -254,7 +226,7 @@ func TestParseValidatesNormalizedValues(t *testing.T) {
 func TestParseResolvesExplicitPanePaths(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	ws, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: ~/one\n        panes:\n          - {}\n          - path: ~/two\n"), "w.yaml")
+	ws, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: ~/one\n        panes:\n          - {}\n          - path: ~/two\n"), "w.yaml", acceptLayout)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(home, "two"), ws.Sessions[0].Windows[0].Panes[1].Path)
 }
@@ -268,7 +240,7 @@ func TestFileLoaderRejectsOversizedFileBounded(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
-	_, err = NewFileLoader(path).Load()
+	_, err = NewFileLoader(path, acceptLayout).Load()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "exceeds")
 }

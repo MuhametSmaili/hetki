@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MSmaili/hetki/internal/backend"
+	backendtmux "github.com/MSmaili/hetki/internal/backend/tmux"
 	"github.com/MSmaili/hetki/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,7 +60,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 			require.NoError(t, err)
 			workspacePath := filepath.Join(configDirectory, "workspace.yaml")
 			require.NoError(t, os.WriteFile(workspacePath, data, 0600))
-			service := NewService(func() (Backend, error) { return b, nil })
+			service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 
 			err = service.Run(ctx, Options{Workspace: workspacePath})
 
@@ -76,7 +77,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 			assert.Equal(t, window.Panes[0].Path, window.Path)
 
 			for _, force := range []bool{false, true} {
-				workspace, err := manifest.NewFileLoader(workspacePath).Load()
+				workspace, err := manifest.NewFileLoader(workspacePath, backendtmux.ValidateAuthoredLayout).Load()
 				require.NoError(t, err)
 				second, err := buildPlan(ctx, b, workspace, force)
 				require.NoError(t, err)

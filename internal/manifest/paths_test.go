@@ -28,7 +28,7 @@ func TestParseResolvesDirectoriesThroughTheirParents(t *testing.T) {
           - path: tests
 `
 
-	workspace, err := Parse([]byte(source), "workspace.yaml")
+	workspace, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.NoError(t, err)
 	session := workspace.Sessions[0]
@@ -90,7 +90,7 @@ func TestParseDirectoryInheritanceCases(t *testing.T) {
 			source, err := yaml.Marshal(raw)
 			require.NoError(t, err)
 
-			workspace, err := Parse(source, filepath.Join(external, "workspace.yaml"))
+			workspace, err := Parse(source, filepath.Join(external, "workspace.yaml"), acceptLayout)
 
 			require.NoError(t, err)
 			session := workspace.Sessions[0]
@@ -114,7 +114,7 @@ func TestParseRootlessInheritanceUsesPhysicalWorkingDirectory(t *testing.T) {
 	t.Chdir(alias)
 	source := fmt.Sprintf("sessions:\n  - name: dev\n    windows:\n      - name: editor\n        panes:\n          - path: %q\n          - {}\n", t.TempDir())
 
-	workspace, err := Parse([]byte(source), "workspace.yaml")
+	workspace, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.NoError(t, err)
 	assert.Equal(t, directory, workspace.Sessions[0].Windows[0].Panes[1].Path)
@@ -129,7 +129,7 @@ func TestParseDoesNotExpandWorkingDirectoryText(t *testing.T) {
 	t.Setenv("HETKI_CWD_TEXT", "wrong-directory")
 	source := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: .\n"
 
-	workspace, err := Parse([]byte(source), "workspace.yaml")
+	workspace, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.NoError(t, err)
 	assert.Equal(t, cwd, workspace.Sessions[0].Windows[0].Path)
@@ -158,7 +158,7 @@ func TestParseRequiresAnExistingDirectoryForRoot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			source := fmt.Sprintf("sessions:\n  - name: dev\n    root: %q\n    windows:\n      - name: editor\n", tc.root)
 
-			_, err := Parse([]byte(source), "workspace.yaml")
+			_, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 			require.Error(t, err)
 			assert.ErrorContains(t, err, "sessions[0].root")
@@ -176,7 +176,7 @@ func TestParseDoesNotGuessAnUnavailableHomeDirectory(t *testing.T) {
 	t.Setenv("HOME", "")
 	source := "sessions:\n  - name: dev\n    root: ~/tmp\n    windows:\n      - name: editor\n"
 
-	_, err := Parse([]byte(source), "workspace.yaml")
+	_, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "sessions[0].root")
@@ -212,7 +212,7 @@ func TestParseRejectsInvalidExpandedChildDirectories(t *testing.T) {
 			source, err := yaml.Marshal(&Workspace{Sessions: []Session{{Name: "dev", Windows: []Window{window}}}})
 			require.NoError(t, err)
 
-			_, err = Parse(source, "workspace.yaml")
+			_, err = Parse(source, "workspace.yaml", acceptLayout)
 
 			require.Error(t, err)
 			assert.ErrorContains(t, err, tc.field)
@@ -225,7 +225,7 @@ func TestParseRejectsInvalidHomeDirectoryText(t *testing.T) {
 	t.Setenv("HOME", t.TempDir()+"/bad\n/..")
 	source := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: ~/child\n"
 
-	_, err := Parse([]byte(source), "workspace.yaml")
+	_, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "windows[0].path")
@@ -242,7 +242,7 @@ func TestParseReportsUnresolvableDirectoryPaths(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			source := fmt.Sprintf("sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: %q\n", path)
 
-			_, err := Parse([]byte(source), "workspace.yaml")
+			_, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 			require.Error(t, err)
 			assert.ErrorContains(t, err, "sessions[0].windows[0].path")
@@ -282,7 +282,7 @@ func TestParsePreservesPhysicalParentTraversal(t *testing.T) {
 			}}})
 			require.NoError(t, err)
 
-			workspace, err := Parse(source, "workspace.yaml")
+			workspace, err := Parse(source, "workspace.yaml", acceptLayout)
 
 			require.NoError(t, err)
 			session := workspace.Sessions[0]
@@ -300,7 +300,7 @@ func TestMarshalPreservesAuthoredDirectoryBases(t *testing.T) {
 		Windows: []Window{{Name: "editor", Path: "backend", Command: "run-server", Panes: []Pane{{Path: "tests"}, {}}}},
 	}}}
 
-	data, err := Marshal(raw, "workspace.yaml")
+	data, err := Marshal(raw, "workspace.yaml", acceptLayout)
 
 	require.NoError(t, err)
 	var authored Workspace
@@ -327,7 +327,7 @@ func TestParseFirstPaneOverrideKeepsSiblingBase(t *testing.T) {
           - path: sibling
 `, directory)
 
-	workspace, err := Parse([]byte(source), "workspace.yaml")
+	workspace, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.NoError(t, err)
 	window := workspace.Sessions[0].Windows[0]
@@ -338,9 +338,9 @@ func TestParseFirstPaneOverrideKeepsSiblingBase(t *testing.T) {
 		{Path: filepath.Join(directory, "backend", "sibling")},
 	}, window.Panes)
 
-	data, err := Marshal(workspace, "roundtrip.yaml")
+	data, err := Marshal(workspace, "roundtrip.yaml", acceptLayout)
 	require.NoError(t, err)
-	restored, err := Parse(data, "roundtrip.yaml")
+	restored, err := Parse(data, "roundtrip.yaml", acceptLayout)
 	require.NoError(t, err)
 	assert.Equal(t, workspace, restored, "serialized absolute pane paths must preserve the sibling base")
 }

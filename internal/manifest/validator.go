@@ -1,29 +1,54 @@
 package manifest
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
 )
 
+// ErrLayoutValidatorRequired reports missing offline validation configuration.
+var ErrLayoutValidatorRequired = errors.New("layout validation policy is required")
+
+// ValidationError identifies a manifest field and retains any policy error cause.
 type ValidationError struct {
 	Field   string
 	Message string
+	Cause   error
+}
+
+func (e ValidationError) Error() string {
+	if e.Field != "" {
+		return fmt.Sprintf("%s: %s", e.Field, e.Message)
+	}
+	return e.Message
+}
+
+func (e ValidationError) Unwrap() error { return e.Cause }
+
+type validationErrors []ValidationError
+
+func (errs validationErrors) Error() string {
+	messages := make([]string, len(errs))
+	for i, err := range errs {
+		messages[i] = err.Error()
+	}
+	return "workspace validation failed:\n  - " + strings.Join(messages, "\n  - ")
+}
+
+func (errs validationErrors) Unwrap() []error {
+	causes := make([]error, len(errs))
+	for i, err := range errs {
+		causes[i] = err
+	}
+	return causes
 }
 
 func ToError(errs []ValidationError) error {
 	if len(errs) == 0 {
 		return nil
 	}
-	messages := make([]string, len(errs))
-	for i, e := range errs {
-		if e.Field != "" {
-			messages[i] = fmt.Sprintf("%s: %s", e.Field, e.Message)
-		} else {
-			messages[i] = e.Message
-		}
-	}
-	return fmt.Errorf("workspace validation failed:\n  - %s", strings.Join(messages, "\n  - "))
+	return append(validationErrors(nil), errs...)
 }
 
 // Bounded-input limits enforced before any unbounded work.
@@ -37,17 +62,13 @@ const (
 	MaxCommandLength     = 4096
 )
 
-var namedLayouts = map[string]bool{
-	"even-horizontal": true,
-	"even-vertical":   true,
-	"main-horizontal": true,
-	"main-vertical":   true,
-	"tiled":           true,
-}
-
 // Validate applies every manifest rule to a decoded workspace with indexed
-// field paths. It runs on the raw decoded input, before normalization.
-func Validate(ws *Workspace) []ValidationError {
+// field paths. It runs on raw input before normalization. validateLayout is a
+// required pure policy; omitted and oversized layouts are not passed to it.
+func Validate(ws *Workspace, validateLayout func(string) error) []ValidationError {
+	if validateLayout == nil {
+		return []ValidationError{{Message: ErrLayoutValidatorRequired.Error(), Cause: ErrLayoutValidatorRequired}}
+	}
 	if ws == nil {
 		return []ValidationError{{Message: "workspace is nil"}}
 	}
@@ -61,12 +82,12 @@ func Validate(ws *Workspace) []ValidationError {
 	errs := make([]ValidationError, 0)
 	seenSessions := make(map[string]bool, len(ws.Sessions))
 	for i, sess := range ws.Sessions {
-		errs = validateSession(sess, i, seenSessions, errs)
+		errs = validateSession(sess, i, seenSessions, errs, validateLayout)
 	}
 	return errs
 }
 
-func validateSession(sess Session, i int, seen map[string]bool, errs []ValidationError) []ValidationError {
+func validateSession(sess Session, i int, seen map[string]bool, errs []ValidationError, validateLayout func(string) error) []ValidationError {
 	at := func(field string) string { return fmt.Sprintf("sessions[%d].%s", i, field) }
 
 	if strings.TrimSpace(sess.Name) == "" {
@@ -98,12 +119,12 @@ func validateSession(sess Session, i int, seen map[string]bool, errs []Validatio
 	}
 
 	for j, win := range sess.Windows {
-		errs = validateWindow(win, i, j, errs)
+		errs = validateWindow(win, i, j, errs, validateLayout)
 	}
 	return errs
 }
 
-func validateWindow(win Window, i, j int, errs []ValidationError) []ValidationError {
+func validateWindow(win Window, i, j int, errs []ValidationError, validateLayout func(string) error) []ValidationError {
 	at := func(field string) string { return fmt.Sprintf("sessions[%d].windows[%d].%s", i, j, field) }
 
 	if win.Index != nil {
@@ -117,7 +138,7 @@ func validateWindow(win Window, i, j int, errs []ValidationError) []ValidationEr
 			errs = append(errs, ValidationError{Field: at("name"), Message: err})
 		}
 	}
-	errs = validateWindowValues(win, at(""), errs)
+	errs = validateWindowValues(win, at(""), errs, validateLayout)
 	if len(win.Panes) > MaxPanesPerWindow {
 		errs = append(errs, ValidationError{Field: at("panes"), Message: fmt.Sprintf("too many panes (%d, max %d)", len(win.Panes), MaxPanesPerWindow)})
 	}
@@ -136,7 +157,7 @@ func validateWindow(win Window, i, j int, errs []ValidationError) []ValidationEr
 	return errs
 }
 
-func validateWindowValues(win Window, at string, errs []ValidationError) []ValidationError {
+func validateWindowValues(win Window, at string, errs []ValidationError, validateLayout func(string) error) []ValidationError {
 	if len(win.Path) > MaxPathLength {
 		errs = append(errs, ValidationError{Field: at + "path", Message: "window path is too long"})
 	}
@@ -146,11 +167,12 @@ func validateWindowValues(win Window, at string, errs []ValidationError) []Valid
 	if win.Command != "" && len(win.Panes) > 0 && win.Panes[0].Command != "" {
 		errs = append(errs, ValidationError{Field: at + "command", Message: "window command conflicts with the first pane command; set only one"})
 	}
-	if win.Layout != "" && !namedLayouts[win.Layout] && !isLayoutDump(win.Layout) && len(win.Layout) <= MaxPathLength {
-		errs = append(errs, ValidationError{Field: at + "layout", Message: fmt.Sprintf("unknown layout %q (named layout or saved layout dump)", win.Layout)})
-	}
 	if len(win.Layout) > MaxPathLength {
 		errs = append(errs, ValidationError{Field: at + "layout", Message: "layout is too long"})
+	} else if win.Layout != "" {
+		if err := validateLayout(win.Layout); err != nil {
+			errs = append(errs, ValidationError{Field: at + "layout", Message: err.Error(), Cause: err})
+		}
 	}
 	if len(win.Command) > MaxCommandLength {
 		errs = append(errs, ValidationError{Field: at + "command", Message: "window command is too long"})
@@ -207,74 +229,6 @@ func checkCommand(cmd string) string {
 		return "command contains control characters"
 	}
 	return ""
-}
-
-func isLayoutDump(layout string) bool {
-	checksum, body, ok := strings.Cut(layout, ",")
-	if !ok || len(checksum) != 4 || strings.IndexFunc(checksum, func(r rune) bool {
-		return !strings.ContainsRune("0123456789abcdefABCDEF", r)
-	}) >= 0 {
-		return false
-	}
-	i := 0
-	return parseLayoutCell(body, &i) && i == len(body)
-}
-
-func parseLayoutCell(layout string, i *int) bool {
-	if !parseLayoutNumber(layout, i) || !takeLayoutByte(layout, i, 'x') ||
-		!parseLayoutNumber(layout, i) || !takeLayoutByte(layout, i, ',') ||
-		!parseLayoutNumber(layout, i) || !takeLayoutByte(layout, i, ',') ||
-		!parseLayoutNumber(layout, i) || *i >= len(layout) {
-		return false
-	}
-
-	if layout[*i] == ',' {
-		(*i)++
-		return parseLayoutNumber(layout, i)
-	}
-
-	open := layout[*i]
-	if open != '{' && open != '[' {
-		return false
-	}
-	close := byte('}')
-	if open == '[' {
-		close = ']'
-	}
-	(*i)++
-	children := 0
-	for {
-		if !parseLayoutCell(layout, i) {
-			return false
-		}
-		children++
-		if *i >= len(layout) {
-			return false
-		}
-		if layout[*i] == close {
-			(*i)++
-			return children >= 2
-		}
-		if !takeLayoutByte(layout, i, ',') {
-			return false
-		}
-	}
-}
-
-func parseLayoutNumber(layout string, i *int) bool {
-	start := *i
-	for *i < len(layout) && layout[*i] >= '0' && layout[*i] <= '9' {
-		(*i)++
-	}
-	return *i > start
-}
-
-func takeLayoutByte(layout string, i *int, want byte) bool {
-	if *i >= len(layout) || layout[*i] != want {
-		return false
-	}
-	(*i)++
-	return true
 }
 
 func nameTooLong(kind string) string {

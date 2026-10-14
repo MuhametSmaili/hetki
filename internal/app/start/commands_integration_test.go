@@ -49,10 +49,10 @@ func TestCommandsExecuteOnceAtCreationTime(t *testing.T) {
           - path: %s
             command: printf '%%s\n' 'hetki ; Enter C-c -foo' >> %s
 `, workDir, marker)
-	workspace, err := manifest.Parse([]byte(source), "dev.yaml")
+	workspace, err := manifest.Parse([]byte(source), "dev.yaml", backendtmux.ValidateAuthoredLayout)
 	require.NoError(t, err, "the loader pipeline is part of the behavior under test")
 
-	service := NewService(func() (Backend, error) { return b, nil })
+	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
 	require.NoError(t, service.Run(context.Background(), Options{}))

@@ -6,10 +6,34 @@ import (
 	"testing"
 
 	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MSmaili/hetki/internal/backend/tmux"
 	"github.com/MSmaili/hetki/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRunSaveRetainsAuthoredLayoutForAnotherSession(t *testing.T) {
+	resetCommandGlobals()
+	t.Setenv("PATH", t.TempDir())
+	path := filepath.Join(t.TempDir(), "workspace.yaml")
+	layout := "cafe,80x24,0,0{40x24,0,0,0,39x24,41,0,1}"
+	before := "sessions:\n  - name: retained\n    windows:\n      - name: editor\n        layout: " + layout + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(before), 0640))
+	withStubBackend(t, &stubBackend{queryResult: backend.StateResult{
+		Sessions: []backend.Session{{Name: "dev", Windows: []backend.Window{{Name: "editor", Path: t.TempDir()}}}},
+		Active:   backend.ActiveContext{Session: "dev"},
+	}})
+	savePath = path
+
+	err := runSave(saveCmd, nil)
+
+	require.NoError(t, err)
+	workspace, loadErr := manifest.NewFileLoader(path, tmux.ValidateAuthoredLayout).Load()
+	require.NoError(t, loadErr)
+	require.Len(t, workspace.Sessions, 2)
+	require.Equal(t, "retained", workspace.Sessions[0].Name)
+	require.Equal(t, layout, workspace.Sessions[0].Windows[0].Layout)
+}
 
 func TestRunSaveWritesCurrentSessionWorkspace(t *testing.T) {
 	resetCommandGlobals()
@@ -38,7 +62,7 @@ func TestRunSaveWritesCurrentSessionWorkspace(t *testing.T) {
 	assert.Contains(t, logOutput, "Saved to "+outputPath)
 	assert.Zero(t, stub.applyCalls)
 
-	loader := manifest.NewFileLoader(outputPath)
+	loader := manifest.NewFileLoader(outputPath, tmux.ValidateAuthoredLayout)
 	workspace, err := loader.Load()
 	require.NoError(t, err)
 	require.Len(t, workspace.Sessions, 1)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	appstart "github.com/MSmaili/hetki/internal/app/start"
+	"github.com/MSmaili/hetki/internal/backend/tmux"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +38,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	service := appstart.NewService(func() (appstart.Backend, error) {
 		return detectBackend()
-	})
+	}, tmux.ValidateAuthoredLayout)
 
 	return service.Run(cmd.Context(), appstart.Options{
 		Workspace: nameOrPath,

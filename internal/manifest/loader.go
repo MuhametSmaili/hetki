@@ -21,14 +21,20 @@ type Loader interface {
 }
 
 type FileLoader struct {
-	Path string
+	Path           string
+	validateLayout func(string) error
 }
 
-func NewFileLoader(path string) *FileLoader {
-	return &FileLoader{Path: path}
+// NewFileLoader binds a required pure, bounded layout validator to file loading.
+func NewFileLoader(path string, validateLayout func(string) error) *FileLoader {
+	return &FileLoader{Path: path, validateLayout: validateLayout}
 }
 
 func (l *FileLoader) Load() (*Workspace, error) {
+	if l.validateLayout == nil {
+		return nil, ErrLayoutValidatorRequired
+	}
+
 	extendedPath := expandPath(l.Path)
 	file, err := os.Open(extendedPath)
 	if err != nil {
@@ -41,14 +47,18 @@ func (l *FileLoader) Load() (*Workspace, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	return Parse(data, extendedPath)
+	return Parse(data, extendedPath, l.validateLayout)
 }
 
 // Parse is the single manifest pipeline: bounded read → strict decode →
 // validate with field paths → normalize (first-pane compilation, root/path
 // inheritance). Every workspace consumer (start and save verification) goes
-// through here.
-func Parse(data []byte, path string) (*Workspace, error) {
+// through here. validateLayout is required and must be pure and bounded.
+func Parse(data []byte, path string, validateLayout func(string) error) (*Workspace, error) {
+	if validateLayout == nil {
+		return nil, ErrLayoutValidatorRequired
+	}
+
 	if len(data) > MaxManifestBytes {
 		return nil, fmt.Errorf("manifest exceeds %d bytes", MaxManifestBytes)
 	}
@@ -57,11 +67,11 @@ func Parse(data []byte, path string) (*Workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	return prepare(raw)
+	return prepare(raw, validateLayout)
 }
 
-func prepare(raw *Workspace) (*Workspace, error) {
-	if errs := Validate(raw); len(errs) > 0 {
+func prepare(raw *Workspace, validateLayout func(string) error) (*Workspace, error) {
+	if errs := Validate(raw, validateLayout); len(errs) > 0 {
 		return nil, ToError(errs)
 	}
 

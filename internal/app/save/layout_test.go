@@ -26,12 +26,12 @@ func TestServiceRunSavesBackendLayoutPreset(t *testing.T) {
 		assert.Equal(t, "opaque observation", observed)
 		return "tiled", nil
 	}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	_, err := service.Run(t.Context(), Options{Path: path})
 
 	require.NoError(t, err)
-	workspace, err := manifest.NewFileLoader(path).Load()
+	workspace, err := manifest.NewFileLoader(path, acceptLayout).Load()
 	require.NoError(t, err)
 	assert.Equal(t, "tiled", workspace.Sessions[0].Windows[0].Layout)
 }
@@ -47,7 +47,7 @@ func TestServiceRunPreservesDestinationWhenBackendCannotExportLayout(t *testing.
 			Panes: []backend.Pane{{Path: "/tmp"}, {Path: "/tmp"}},
 		}}}},
 	}}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	_, err := service.Run(t.Context(), Options{Path: path, All: true})
 

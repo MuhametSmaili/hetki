@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	backendtmux "github.com/MSmaili/hetki/internal/backend/tmux"
 	"github.com/MSmaili/hetki/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,7 @@ func TestStartupCommandsPreserveEscapesAndRunOnce(t *testing.T) {
 	require.NoError(t, err)
 	workspacePath := filepath.Join(directory, "workspace.yaml")
 	require.NoError(t, os.WriteFile(workspacePath, source, 0600))
-	service := NewService(func() (Backend, error) { return b, nil })
+	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 
 	err = service.Run(ctx, Options{Workspace: workspacePath})
 
@@ -55,7 +56,7 @@ func TestStartupCommandsPreserveEscapesAndRunOnce(t *testing.T) {
 	require.Len(t, window.Panes, 2)
 
 	for _, force := range []bool{false, true} {
-		workspace, err := manifest.NewFileLoader(workspacePath).Load()
+		workspace, err := manifest.NewFileLoader(workspacePath, backendtmux.ValidateAuthoredLayout).Load()
 		require.NoError(t, err)
 		assert.Equal(t, windowCommand, workspace.Sessions[0].Windows[0].Panes[0].Command)
 		assert.Equal(t, paneCommand, workspace.Sessions[0].Windows[0].Panes[1].Command)

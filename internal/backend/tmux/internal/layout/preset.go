@@ -5,8 +5,7 @@ import "errors"
 // Preset chooses a readable layout name, not an exact geometry snapshot.
 // Missing observations remain omitted; invalid or unsupported layouts fail.
 func Preset(text string) (string, error) {
-	switch text {
-	case "", "even-horizontal", "even-vertical", "main-horizontal", "main-vertical", "tiled":
+	if text == "" || IsPreset(text) {
 		return text, nil
 	}
 

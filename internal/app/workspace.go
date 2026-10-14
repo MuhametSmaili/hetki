@@ -10,23 +10,30 @@ import (
 )
 
 type WorkspaceLoader struct {
-	Resolve  func(string) (string, error)
-	LoadFile func(string) (*manifest.Workspace, error)
+	validateLayout func(string) error
+	Resolve        func(string) (string, error)
+	LoadFile       func(string) (*manifest.Workspace, error)
 }
 
-func NewWorkspaceLoader() WorkspaceLoader {
+// NewWorkspaceLoader binds a required pure layout policy to default file loading.
+func NewWorkspaceLoader(validateLayout func(string) error) WorkspaceLoader {
 	resolver := manifest.NewResolver()
 	return WorkspaceLoader{
-		Resolve: resolver.Resolve,
+		validateLayout: validateLayout,
+		Resolve:        resolver.Resolve,
 		LoadFile: func(path string) (*manifest.Workspace, error) {
-			return manifest.NewFileLoader(path).Load()
+			return manifest.NewFileLoader(path, validateLayout).Load()
 		},
 	}
 }
 
 func (l WorkspaceLoader) LoadWorkspace(nameOrPath string) (*manifest.Workspace, string, error) {
+	if l.validateLayout == nil {
+		return nil, "", manifest.ErrLayoutValidatorRequired
+	}
+
 	if l.Resolve == nil || l.LoadFile == nil {
-		defaults := NewWorkspaceLoader()
+		defaults := NewWorkspaceLoader(l.validateLayout)
 		if l.Resolve == nil {
 			l.Resolve = defaults.Resolve
 		}

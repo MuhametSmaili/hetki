@@ -61,7 +61,7 @@ func parse(text string) (cell, bool) {
 		return document.Root, document.Version == 2 && validCell(document.Root, 0)
 	}
 
-	return parseLegacy(text)
+	return parseLegacy(text, observedGeometry)
 }
 
 func validCell(c cell, depth int) bool {

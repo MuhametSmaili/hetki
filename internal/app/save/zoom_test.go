@@ -23,12 +23,12 @@ func TestServiceRunPreservesPaneZoom(t *testing.T) {
 		}},
 		Active: backend.ActiveContext{Session: "dev"},
 	}}
-	service := NewService(func() (Backend, error) { return stub, nil })
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	_, err := service.Run(t.Context(), Options{Path: path})
 
 	require.NoError(t, err)
-	workspace, err := manifest.NewFileLoader(path).Load()
+	workspace, err := manifest.NewFileLoader(path, acceptLayout).Load()
 	require.NoError(t, err)
 	require.Len(t, workspace.Sessions, 1)
 	require.Len(t, workspace.Sessions[0].Windows, 1)

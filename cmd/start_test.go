@@ -11,6 +11,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestRunStartValidatesLayoutBeforeBackendDetection(t *testing.T) {
+	resetCommandGlobals()
+	t.Setenv("PATH", t.TempDir())
+	path := writeWorkspaceFile(t, t.TempDir(), "workspace.yaml", "sessions:\n  - name: dev\n    windows:\n      - layout: diagonal\n")
+	previous := detectBackend
+	detectBackend = func(...string) (backend.Backend, error) {
+		t.Fatal("unexpected backend detection")
+		return nil, nil
+	}
+	t.Cleanup(func() { detectBackend = previous })
+
+	err := runStart(startCmd, []string{path})
+
+	require.ErrorContains(t, err, "sessions[0].windows[0].layout")
+	require.ErrorContains(t, err, "unknown layout")
+}
+
 func TestRunStartDryRunOutputsPlan(t *testing.T) {
 	resetCommandGlobals()
 

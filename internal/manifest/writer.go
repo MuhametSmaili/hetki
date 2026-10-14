@@ -7,8 +7,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func Marshal(workspace *Workspace, path string) ([]byte, error) {
-	if _, err := prepare(workspace); err != nil {
+// Marshal validates with the required pure layout policy, then writes the
+// authored representation rather than its normalized copy.
+func Marshal(workspace *Workspace, path string, validateLayout func(string) error) ([]byte, error) {
+	if _, err := prepare(workspace, validateLayout); err != nil {
 		return nil, err
 	}
 

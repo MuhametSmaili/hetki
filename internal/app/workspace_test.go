@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,8 +12,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestWorkspaceLoaderPartialDefaultsRetainLayoutPolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "workspace.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("sessions:\n  - name: dev\n    windows:\n      - layout: opaque\n"), 0600))
+	denied := errors.New("unsupported layout")
+	loader := NewWorkspaceLoader(func(string) error { return denied })
+	loader.Resolve = func(string) (string, error) { return path, nil }
+	loader.LoadFile = nil
+
+	_, _, err := loader.LoadWorkspace("dev")
+
+	require.ErrorIs(t, err, denied)
+	assert.ErrorContains(t, err, "sessions[0].windows[0].layout")
+}
+
 func TestWorkspaceLoaderLoadWorkspace(t *testing.T) {
 	loader := WorkspaceLoader{
+		validateLayout: func(string) error { return nil },
 		Resolve: func(nameOrPath string) (string, error) {
 			assert.Equal(t, "dev", nameOrPath)
 			return "/tmp/dev.yaml", nil
@@ -40,7 +56,8 @@ func TestWorkspaceLoaderLoadWorkspace(t *testing.T) {
 
 func TestWorkspaceLoaderLoadWorkspaceWrapsLoaderError(t *testing.T) {
 	loader := WorkspaceLoader{
-		Resolve: func(string) (string, error) { return "/tmp/dev.yaml", nil },
+		validateLayout: func(string) error { return nil },
+		Resolve:        func(string) (string, error) { return "/tmp/dev.yaml", nil },
 		LoadFile: func(string) (*manifest.Workspace, error) {
 			return nil, errors.New("boom")
 		},
