@@ -76,8 +76,8 @@ func (i Inventory) Lookup(id string) (Pane, bool) {
 func (i Inventory) Problem(id string) error { return i.problems[id] }
 
 // Sampler performs synchronous bounded acquisitions. It retains no inventories,
-// screens, timers or workers. Runner must address the supplied socket and support
-// concurrent calls if its owner uses Inventory and Capture concurrently.
+// screens, timers or workers. It selects the supplied socket for every CLI query.
+// Runner must support concurrent calls if its owner uses Inventory and Capture concurrently.
 type Sampler struct {
 	server  Server
 	runner  Runner

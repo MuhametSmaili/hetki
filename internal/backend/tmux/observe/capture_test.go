@@ -37,6 +37,7 @@ func TestCaptureBatchesMixedTargetsAndRetainsRevision(t *testing.T) {
 	s := testSampler(t, func(_ context.Context, limit int, args ...string) (string, error) {
 		if slices.Contains(args, "capture-pane") {
 			captures++
+			require.Equal(t, []string{"-S", "/tmp/fixture.sock"}, args[:2])
 			require.Equal(t, maxCaptureBatchBytes, limit)
 			require.False(t, slices.Contains(args, "-e"))
 			require.False(t, slices.Contains(args, "-a"))

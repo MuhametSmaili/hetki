@@ -109,21 +109,10 @@ func startDaemonSource(ctx context.Context, server observe.Server, report func(e
 		return nil, fmt.Errorf("create status tmux client: %w", err)
 	}
 
-	runner := socketRunner{client: client, socket: server.Socket}
-	sampler, err := observe.NewSampler(server, runner)
+	sampler, err := observe.NewSampler(server, client)
 	if err != nil {
 		return nil, fmt.Errorf("create status sampler: %w", err)
 	}
 
 	return NewSource(ctx, server, sampler, profileSelector(catalog), report)
-}
-
-type socketRunner struct {
-	client tmux.Client
-	socket string
-}
-
-func (r socketRunner) RunLimited(ctx context.Context, limit int, args ...string) (string, error) {
-	args = append([]string{"-S", r.socket}, args...)
-	return r.client.RunLimited(ctx, limit, args...)
 }
