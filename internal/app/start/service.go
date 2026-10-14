@@ -78,7 +78,7 @@ func buildPlan(ctx context.Context, b backend.Backend, workspace *manifest.Works
 	}
 	actual := converter.BackendResultToState(result)
 
-	diff := state.Compare(desired, actual)
+	diff := state.Compare(desired, actual, b.LayoutsMatch)
 	planDiff := converter.StateDiffToPlanDiff(diff, desired)
 
 	strategy := selectStrategy(force)

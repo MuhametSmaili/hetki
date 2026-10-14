@@ -1,4 +1,4 @@
-package tmuxlayout
+package layout
 
 import (
 	"strconv"

@@ -48,17 +48,24 @@ func (l WorkspaceLoader) LoadWorkspace(nameOrPath string) (*manifest.Workspace, 
 	return workspace, workspacePath, nil
 }
 
-func WorkspaceFromSessions(sessions []backend.Session) *manifest.Workspace {
+// WorkspaceFromSessions projects observations using the backend's pure preset
+// conversion. Single-pane layouts remain omitted.
+func WorkspaceFromSessions(sessions []backend.Session, layoutPreset func(string) (string, error)) (*manifest.Workspace, error) {
 	ws := &manifest.Workspace{Sessions: make([]manifest.Session, len(sessions))}
 
 	for i, sess := range sessions {
+		windows, err := windowsFromBackend(sess.Windows, layoutPreset)
+		if err != nil {
+			return nil, fmt.Errorf("session %q: %w", sess.Name, err)
+		}
+
 		ws.Sessions[i] = manifest.Session{
 			Name:    sess.Name,
-			Windows: windowsFromBackend(sess.Windows),
+			Windows: windows,
 		}
 	}
 
-	return ws
+	return ws, nil
 }
 
 func MergeWorkspaces(existing, incoming *manifest.Workspace) *manifest.Workspace {
@@ -77,7 +84,7 @@ func MergeWorkspaces(existing, incoming *manifest.Workspace) *manifest.Workspace
 	return existing
 }
 
-func windowsFromBackend(windows []backend.Window) []manifest.Window {
+func windowsFromBackend(windows []backend.Window, layoutPreset func(string) (string, error)) ([]manifest.Window, error) {
 	result := make([]manifest.Window, len(windows))
 	for i, w := range windows {
 		result[i] = manifest.Window{
@@ -85,10 +92,16 @@ func windowsFromBackend(windows []backend.Window) []manifest.Window {
 			Path: contractHomePath(w.Path),
 		}
 		if len(w.Panes) > 1 {
+			layout, err := layoutPreset(w.Layout)
+			if err != nil {
+				return nil, fmt.Errorf("window %q: %w", w.Name, err)
+			}
+
+			result[i].Layout = layout
 			result[i].Panes = panesFromBackend(w.Panes)
 		}
 	}
-	return result
+	return result, nil
 }
 
 func panesFromBackend(panes []backend.Pane) []manifest.Pane {

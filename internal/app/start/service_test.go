@@ -20,6 +20,7 @@ import (
 type stubBackend struct {
 	queryResult backend.StateResult
 	queryErr    error
+	layoutMatch func(string, string) bool
 	dryRunLines []string
 	applyErr    error
 
@@ -30,6 +31,14 @@ type stubBackend struct {
 	lastActions []backend.Action
 	allActions  [][]backend.Action
 }
+
+func (s *stubBackend) LayoutsMatch(desired, actual string) bool {
+	if s.layoutMatch != nil {
+		return s.layoutMatch(desired, actual)
+	}
+	return desired == actual
+}
+func (s *stubBackend) LayoutPreset(observed string) (string, error) { return observed, nil }
 
 func (s *stubBackend) Name() string { return "stub" }
 func (s *stubBackend) CapturePane(context.Context, string) (string, error) {
@@ -65,6 +74,32 @@ func (s *stubBackend) Attach(context.Context, string) error {
 func (s *stubBackend) Switch(context.Context, string) error {
 	s.switchCalls++
 	return nil
+}
+
+func TestServiceRunUsesBackendLayoutPolicy(t *testing.T) {
+	directory := t.TempDir()
+	stub := &stubBackend{queryResult: backend.StateResult{
+		Sessions: []backend.Session{{ID: "$1", Name: "dev", Windows: []backend.Window{{
+			ID: "@1", Name: "editor", Path: directory, Layout: "observation",
+			Panes: []backend.Pane{{Path: directory}},
+		}}}},
+	}}
+	stub.layoutMatch = func(request, observation string) bool {
+		assert.Equal(t, "request", request)
+		assert.Equal(t, "observation", observation)
+		return true
+	}
+	service := NewService(func(...string) (backend.Backend, error) { return stub, nil })
+	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
+		return &manifest.Workspace{Sessions: []manifest.Session{{Name: "dev", Windows: []manifest.Window{{
+			Name: "editor", Path: directory, Layout: "request", Panes: []manifest.Pane{{Path: directory}},
+		}}}}}, "", nil
+	}
+
+	err := service.Run(t.Context(), Options{Force: true, DryRun: true})
+
+	require.NoError(t, err)
+	assert.Zero(t, stub.dryRunCalls, "recognized layouts must not plan a replacement")
 }
 
 func TestServiceRunCancellationAfterLoadPreventsBackendDetection(t *testing.T) {

@@ -55,18 +55,20 @@ func TestWorkspaceFromSessionsContractsHomePaths(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	workspace := WorkspaceFromSessions([]backend.Session{{
+	workspace, err := WorkspaceFromSessions([]backend.Session{{
 		Name: "dev",
 		Windows: []backend.Window{{
 			Name:  "editor",
 			Path:  filepath.Join(home, "code", "hetki"),
 			Panes: []backend.Pane{{Path: filepath.Join(home, "code", "hetki")}, {Path: filepath.Join(home, "api")}},
 		}},
-	}})
+	}}, func(observed string) (string, error) { return observed, nil })
 
+	require.NoError(t, err)
 	require.Len(t, workspace.Sessions, 1)
 	require.Len(t, workspace.Sessions[0].Windows, 1)
 	assert.Equal(t, "~/code/hetki", workspace.Sessions[0].Windows[0].Path)
+	assert.Empty(t, workspace.Sessions[0].Windows[0].Layout, "missing observations do not invent a preset")
 	require.Len(t, workspace.Sessions[0].Windows[0].Panes, 2)
 	assert.Equal(t, "~/api", workspace.Sessions[0].Windows[0].Panes[1].Path)
 }

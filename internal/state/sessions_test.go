@@ -52,7 +52,7 @@ func TestCompareSessions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			diff := Compare(tt.desired, tt.actual)
+			diff := Compare(tt.desired, tt.actual, nil)
 			tt.test(t, diff)
 		})
 	}
@@ -71,7 +71,7 @@ func TestCompareSessionsOrdersResultsBySessionName(t *testing.T) {
 	}}
 
 	for range 100 {
-		diff := Compare(desired, actual)
+		diff := Compare(desired, actual, nil)
 		assert.Equal(t, []string{"alpha", "gamma"}, diff.Sessions.Missing)
 		assert.Equal(t, []string{"delta", "omega"}, diff.Sessions.Extra)
 		assert.Equal(t, []string{"beta"}, CommonSessions(desired, actual))

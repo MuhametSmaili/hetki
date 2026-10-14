@@ -9,6 +9,11 @@ type Action interface {
 
 type Backend interface {
 	Name() string
+
+	// Layout operations are pure and on demand; QueryState keeps observations opaque.
+	LayoutsMatch(desired, actual string) bool
+	LayoutPreset(observed string) (string, error)
+
 	QueryState(context.Context) (StateResult, error)
 	CapturePane(context.Context, string) (string, error)
 	Apply(context.Context, []Action) error

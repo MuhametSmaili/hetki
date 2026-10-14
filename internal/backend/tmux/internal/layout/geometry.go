@@ -1,5 +1,5 @@
-// Package tmuxlayout handles tmux's serialized split-pane layouts.
-package tmuxlayout
+// Package layout handles tmux's serialized split-pane layouts.
+package layout
 
 import (
 	"encoding/json"

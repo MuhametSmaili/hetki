@@ -1,31 +1,29 @@
 package state
 
-import (
-	"strings"
-
-	"github.com/MSmaili/hetki/internal/tmuxlayout"
-)
-
 type windowKey struct {
 	Name string
 	Path string
 }
 
-func compareWindows(diff *Diff, desired, actual *State) {
+type windowComparer struct {
+	layoutsMatch func(string, string) bool
+}
+
+func (c windowComparer) compareWindows(diff *Diff, desired, actual *State) {
 	common := CommonSessions(desired, actual)
 
 	for _, sessionName := range common {
 		desiredSession := desired.Sessions[sessionName]
 		actualSession := actual.Sessions[sessionName]
 
-		windowDiff := compareSessionWindows(desiredSession.Windows, actualSession.Windows)
+		windowDiff := c.compareSessionWindows(desiredSession.Windows, actualSession.Windows)
 		if !windowDiff.IsEmpty() {
 			diff.Windows[sessionName] = windowDiff
 		}
 	}
 }
 
-func compareSessionWindows(desired, actual []*Window) ItemDiff[Window] {
+func (c windowComparer) compareSessionWindows(desired, actual []*Window) ItemDiff[Window] {
 	matched := make([]bool, len(actual))
 	windowDiff := ItemDiff[Window]{
 		Missing:    make([]Window, 0, len(desired)),
@@ -34,19 +32,7 @@ func compareSessionWindows(desired, actual []*Window) ItemDiff[Window] {
 	}
 
 	for _, desiredWindow := range desired {
-		candidate := -1
-		for i, actualWindow := range actual {
-			if matched[i] || keyForWindow(desiredWindow) != keyForWindow(actualWindow) {
-				continue
-			}
-			if candidate < 0 {
-				candidate = i
-			}
-			if windowsMatch(desiredWindow, actualWindow) {
-				candidate = i
-				break
-			}
-		}
+		candidate := c.findCandidate(desiredWindow, actual, matched)
 		if candidate < 0 {
 			windowDiff.Missing = append(windowDiff.Missing, *desiredWindow)
 			continue
@@ -54,7 +40,7 @@ func compareSessionWindows(desired, actual []*Window) ItemDiff[Window] {
 
 		matched[candidate] = true
 		actualWindow := actual[candidate]
-		if !windowsMatch(desiredWindow, actualWindow) {
+		if !c.windowsMatch(desiredWindow, actualWindow) {
 			windowDiff.Mismatched = append(windowDiff.Mismatched, Mismatch[Window]{
 				Desired: *desiredWindow,
 				Actual:  *actualWindow,
@@ -70,9 +56,27 @@ func compareSessionWindows(desired, actual []*Window) ItemDiff[Window] {
 	return windowDiff
 }
 
-func windowsMatch(desired, actual *Window) bool {
-	if !layoutMatches(desired.Layout, actual.Layout) {
-		return false
+func (c windowComparer) findCandidate(desired *Window, actual []*Window, matched []bool) int {
+	candidate := -1
+	for i, window := range actual {
+		if matched[i] || keyForWindow(desired) != keyForWindow(window) {
+			continue
+		}
+		if candidate < 0 {
+			candidate = i
+		}
+		if c.windowsMatch(desired, window) {
+			return i
+		}
+	}
+	return candidate
+}
+
+func (c windowComparer) windowsMatch(desired, actual *Window) bool {
+	if desired.Layout != "" && desired.Layout != actual.Layout {
+		if c.layoutsMatch == nil || !c.layoutsMatch(desired.Layout, actual.Layout) {
+			return false
+		}
 	}
 
 	if len(desired.Panes) != len(actual.Panes) {
@@ -94,30 +98,6 @@ func windowsMatch(desired, actual *Window) bool {
 // drifted, so start/force never re-sends it.
 func panesMatch(desired, actual *Pane) bool {
 	return desired.Path == actual.Path && desired.Zoom == actual.Zoom
-}
-
-func layoutMatches(desired, actual string) bool {
-	if desired == "" || desired == actual {
-		return true
-	}
-
-	// Best effort: manifests commonly use preset names like "tiled", while tmux
-	// reports the live layout as a serialized layout string that will not match
-	// the preset name directly.
-	if isNamedLayout(desired) {
-		return true
-	}
-
-	return tmuxlayout.SameGeometry(desired, actual)
-}
-
-func isNamedLayout(layout string) bool {
-	switch strings.TrimSpace(layout) {
-	case "even-horizontal", "even-vertical", "main-horizontal", "main-vertical", "tiled":
-		return true
-	default:
-		return false
-	}
 }
 
 func keyForWindow(w *Window) windowKey {

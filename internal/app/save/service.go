@@ -52,7 +52,12 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 		return "", err
 	}
 
-	return saveWorkspace(ctx, sessions, outputPath, opts.All)
+	workspace, err := appshared.WorkspaceFromSessions(sessions, b.LayoutPreset)
+	if err != nil {
+		return "", fmt.Errorf("convert observed workspace: %w", err)
+	}
+
+	return saveWorkspace(ctx, workspace, outputPath, opts.All)
 }
 
 func (s Service) detectBackend() (backend.Backend, error) {
@@ -141,7 +146,7 @@ var (
 	}
 )
 
-func saveWorkspace(ctx context.Context, sessions []backend.Session, outputPath string, saveAll bool) (string, error) {
+func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPath string, saveAll bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -155,7 +160,6 @@ func saveWorkspace(ctx context.Context, sessions []backend.Session, outputPath s
 		return "", err
 	}
 
-	workspace := appshared.WorkspaceFromSessions(sessions)
 	if observed.exists {
 		existing, err := manifest.Parse(observed.data, absPath)
 		if err != nil {

@@ -28,6 +28,9 @@ type stubBackend struct {
 	captureHook func(context.Context, string) (string, error)
 }
 
+func (s *stubBackend) LayoutsMatch(desired, actual string) bool     { return desired == actual }
+func (s *stubBackend) LayoutPreset(observed string) (string, error) { return observed, nil }
+
 func (s *stubBackend) Name() string { return "stub" }
 func (s *stubBackend) CapturePane(ctx context.Context, target string) (string, error) {
 	if s.captureHook == nil {
