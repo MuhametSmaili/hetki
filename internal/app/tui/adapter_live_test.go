@@ -183,6 +183,38 @@ func TestLiveAdapterRecordsTreeNavigationAtTheActivePanePath(t *testing.T) {
 	assert.Equal(t, "core", records[0].Session)
 }
 
+func TestLiveAdapterNavigatesWithoutARecordablePath(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		projection projectionKind
+		id         list.ItemID
+		target     backend.Target
+	}{
+		{name: "session", projection: projectionTree, id: sessionItemID("$1"), target: backend.Target{SessionID: "$1"}},
+		{name: "window", projection: projectionTree, id: windowItemID("$1", "@1"), target: backend.Target{SessionID: "$1", WindowID: "@1"}},
+		{name: "pane", projection: projectionFlat, id: destinationItemID("$1", "@1", "%1"), target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "frecency.json")
+			stub := &stubBackend{state: liveState()}
+			adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, frecency.NewStore(path), nil)
+			adapter.projection = tc.projection
+			_, err := adapter.Load(t.Context())
+			require.NoError(t, err)
+			stub.state.Sessions[0].Windows[0].Panes[0].Path = ""
+
+			result, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: tc.id})
+			require.NoError(t, err)
+			err = adapter.Navigate(t.Context(), result.Navigation)
+
+			require.NoError(t, err)
+			require.Equal(t, []backend.Target{tc.target}, stub.switchCalls)
+			_, err = os.Stat(path)
+			require.ErrorIs(t, err, os.ErrNotExist)
+		})
+	}
+}
+
 func TestLiveAdapterShowsInvalidFrecencyAndPreservesItBeforeRecording(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frecency.json")
 	require.NoError(t, os.WriteFile(path, []byte(`{"version":`), 0600))

@@ -28,75 +28,52 @@ func (a *LiveAdapter) openItem(ctx context.Context, item liveItem) (ui.ActionRes
 	if err != nil {
 		return ui.ActionResult{}, fmt.Errorf("validate selected item %q: %w", item.ID, err)
 	}
-	if !liveItemExists(state, item) {
+	record, exists := prepareNavigation(state, item)
+	if !exists {
 		return ui.ActionResult{}, fmt.Errorf("selected item %q is stale", item.ID)
 	}
-	if record, ok := navigationRecordForItem(state, item); ok {
-		a.pendingRecord = &record
-	}
+	a.pendingRecord = record
 	return ui.ActionResult{Message: "switching to " + item.Label, Navigation: item.ID}, nil
 }
 
-func liveItemExists(state backend.StateResult, item liveItem) bool {
+// prepareNavigation reports target membership independently of record availability.
+// A nil record with true membership permits navigation without frecency data.
+func prepareNavigation(state backend.StateResult, item liveItem) (*navigationRecord, bool) {
 	session, found := findSession(state.Sessions, item.Target.SessionID)
 	if !found {
-		return false
-	}
-	if item.Kind == liveSession {
-		return item.Target.SessionID == session.ID
+		return nil, false
 	}
 
-	if item.Kind == liveWindow {
-		_, found := findWindow(session, item.Target.WindowID)
-		return found
+	if item.Kind == liveSession {
+		pane, _ := activeWindowPane(session.Windows)
+		return navigationRecordForPane(item.ID, session.Name, pane), true
 	}
-	if item.Kind != liveDestination {
-		return false
+	if item.Kind != liveWindow && item.Kind != liveDestination {
+		return nil, false
 	}
 
 	window, found := findWindow(session, item.Target.WindowID)
 	if !found {
-		return false
+		return nil, false
 	}
+	if item.Kind == liveWindow {
+		pane, _ := activePane(window.Panes)
+		return navigationRecordForPane(item.ID, session.Name, pane), true
+	}
+
 	for _, pane := range window.Panes {
 		if pane.ID == item.Target.PaneID {
-			return true
+			return navigationRecordForPane(item.ID, session.Name, pane), true
 		}
 	}
-	return false
+	return nil, false
 }
 
-func navigationRecordForItem(state backend.StateResult, item liveItem) (navigationRecord, bool) {
-	session, found := findSession(state.Sessions, item.Target.SessionID)
-	if !found {
-		return navigationRecord{}, false
+func navigationRecordForPane(id list.ItemID, session string, pane backend.Pane) *navigationRecord {
+	if pane.Path == "" {
+		return nil
 	}
-
-	if item.Kind == liveSession {
-		pane, found := activeWindowPane(session.Windows)
-		if !found {
-			return navigationRecord{}, false
-		}
-		return navigationRecord{itemID: item.ID, path: pane.Path, session: session.Name}, true
-	}
-
-	window, found := findWindow(session, item.Target.WindowID)
-	if !found {
-		return navigationRecord{}, false
-	}
-	if item.Kind == liveDestination {
-		for _, pane := range window.Panes {
-			if pane.ID == item.Target.PaneID && pane.Path != "" {
-				return navigationRecord{itemID: item.ID, path: pane.Path, session: session.Name}, true
-			}
-		}
-		return navigationRecord{}, false
-	}
-	pane, found := activePane(window.Panes)
-	if !found || pane.Path == "" {
-		return navigationRecord{}, false
-	}
-	return navigationRecord{itemID: item.ID, path: pane.Path, session: session.Name}, true
+	return &navigationRecord{itemID: id, path: pane.Path, session: session}
 }
 
 func findSession(sessions []backend.Session, target string) (backend.Session, bool) {
