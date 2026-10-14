@@ -90,6 +90,7 @@ func projectLiveState(ctx context.Context, result LoadStateResult, err error) (b
 			ID:            s.ID,
 			Name:          s.Name,
 			WorkspacePath: s.WorkspacePath,
+			DefaultShell:  s.DefaultShell,
 			Last:          currentClient.lastSession != "" && s.Name == currentClient.lastSession && s.ID != currentClient.sessionID,
 			Windows:       windows,
 		}

@@ -37,6 +37,7 @@ type Session struct {
 	ID            string
 	Name          string
 	WorkspacePath string
+	DefaultShell  string
 	Windows       []Window
 }
 
@@ -73,7 +74,7 @@ func (q LoadStateQuery) Args() []string {
 		"-F", "#{session_id}|#{q:session_name}|#{window_id}|#{q:window_name}|#{window_index}|#{window_layout}|#{window_zoomed_flag}|#{window_active}|#{pane_id}|#{pane_index}|#{pane_active}|#{q:pane_current_path}|#{q:pane_current_command}|#{q:" + backend.WorkspacePathOption + "}",
 	}
 	if q.IncludeProgramInfo {
-		args[len(args)-1] += "|#{pane_pid}|#{pane_dead}"
+		args[len(args)-1] += "|#{pane_pid}|#{pane_dead}|#{q:default-shell}"
 	}
 	if q.IncludeClients {
 		args = append(args, ";", "list-clients", "-F", "client|#{session_id}|#{pane_id}|#{q:client_last_session}")
@@ -142,6 +143,7 @@ type paneLine struct {
 	paneActive                                   bool
 	panePath, paneCmd                            string
 	workspacePath                                string
+	defaultShell                                 string
 	panePID                                      int
 	paneDead                                     bool
 }
@@ -155,7 +157,7 @@ func parsePaneLine(line string) (paneLine, error) {
 func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, error) {
 	count := paneFieldCount
 	if programInfo {
-		count += 2
+		count += 3
 	}
 	fields, err := format.Fields(line, count)
 	if err != nil {
@@ -198,6 +200,7 @@ func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, erro
 		return paneLine{}, err
 	}
 	if programInfo {
+		p.defaultShell = fields[16]
 		if p.panePID, err = parseIndex("pane PID", fields[14]); err != nil || p.panePID == 0 {
 			return paneLine{}, fmt.Errorf("invalid pane PID %q", fields[14])
 		}
@@ -253,6 +256,7 @@ func (b *stateBuilder) addPane(p paneLine, currentID string) {
 	}
 
 	sess := b.getOrCreateSession(p.sessionID, p.sessionName)
+	sess.DefaultShell = p.defaultShell
 	if sess.WorkspacePath == "" && p.workspacePath != "" {
 		sess.WorkspacePath = p.workspacePath
 	}

@@ -73,6 +73,32 @@ func TestQueryStateRoundTripsDelimiterAndControlValues(t *testing.T) {
 	}
 }
 
+func TestQueryStateReadsEffectiveSessionShells(t *testing.T) {
+	b := newIsolatedTmuxBackend(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	require.NoError(t, b.Apply(ctx, []backend.Action{
+		backend.CreateSessionAction{Name: "inherited", WindowName: "main"},
+		backend.CreateSessionAction{Name: "overridden", WindowName: "main"},
+	}))
+	shell := filepath.Join(t.TempDir(), "shell | override")
+	require.NoError(t, os.Symlink("/bin/sh", shell))
+	_, err := b.client.Run(ctx,
+		"set-option", "-g", "default-shell", "/bin/sh", ";",
+		"set-option", "-t", "overridden", "default-shell", shell, ";",
+		"link-window", "-s", "inherited:main", "-t", "overridden:")
+	require.NoError(t, err)
+
+	state, err := b.QueryState(ctx)
+
+	require.NoError(t, err)
+	require.Len(t, state.Sessions, 2)
+	require.Equal(t, "/bin/sh", state.Sessions[0].DefaultShell)
+	require.Equal(t, shell, state.Sessions[1].DefaultShell)
+	require.Len(t, state.Sessions[1].Windows, 2)
+}
+
 func TestQueryStateFailsClosedOnNewlineValues(t *testing.T) {
 	for _, value := range []string{"x\n", "a\nb", "\n", "a\n\nb"} {
 		b := newIsolatedTmuxBackend(t)

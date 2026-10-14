@@ -13,8 +13,8 @@ func TestLastSessionMarkerUsesOneStateBatch(t *testing.T) {
 	t.Setenv("TMUX_PANE", "%1")
 	calls := 0
 	output := "0\n0\n" +
-		"$1|current|@1|main|0|layout|0|1|%1|0|1|/current|sh||100|0\n" +
-		"$2|last\\|name|@2|editor|0|layout|0|1|%2|0|1|/last|sh||101|0\n" +
+		"$1|current|@1|main|0|layout|0|1|%1|0|1|/current|sh||100|0|/bin/sh\n" +
+		"$2|last\\|name|@2|editor|0|layout|0|1|%2|0|1|/last|sh||101|0|/bin/sh\n" +
 		"client|$1|%1|last\\|name\nclient|$2|%2|current\n"
 	b := &TmuxBackend{client: &MockClient{RunFunc: func(_ context.Context, args ...string) (string, error) {
 		calls++

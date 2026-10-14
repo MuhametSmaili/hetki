@@ -14,7 +14,7 @@ import (
 func TestStatusStateBatchesRowsInsideServerValidation(t *testing.T) {
 	t.Setenv("TMUX", "")
 	metadata := fmt.Sprintf("/fixture/socket|%d|123|3.8\n", os.Getpid())
-	rows := "0\n0\n$1|dev|@1|shell|0|layout|0|1|%1|0|1|/fixture|cat||1|1\n"
+	rows := "0\n0\n$1|dev|@1|shell|0|layout|0|1|%1|0|1|/fixture|cat||1|1|/bin/sh\n"
 	calls := 0
 	b := &TmuxBackend{client: &MockClient{RunLimitedFunc: func(_ context.Context, limit int, args ...string) (string, error) {
 		calls++
@@ -34,6 +34,7 @@ func TestStatusStateBatchesRowsInsideServerValidation(t *testing.T) {
 	require.Equal(t, os.Getpid(), server.PID)
 	require.NotEmpty(t, server.Birth)
 	require.Len(t, state.Sessions, 1)
+	require.Equal(t, "/bin/sh", state.Sessions[0].DefaultShell)
 	require.Equal(t, "%1", state.Sessions[0].Windows[0].Panes[0].ID)
 }
 

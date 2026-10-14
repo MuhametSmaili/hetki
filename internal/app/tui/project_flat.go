@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode"
@@ -105,7 +106,7 @@ func projectFlatDestination(
 		{Tier: list.SearchPrimary, Text: session.Name},
 		{Tier: list.SearchPrimary, Text: name},
 	}
-	program := paneProgramLabel(pane)
+	program := paneProgramLabel(pane, session.DefaultShell)
 	if pane.Command != "" {
 		fields = append(fields, list.SearchField{Tier: list.SearchPrimary, Text: pane.Command})
 	}
@@ -236,15 +237,26 @@ func destinationItemID(sessionID, windowID, paneID string) list.ItemID {
 	return list.ItemID{Scope: sessionID, Parent: windowID, ID: paneID}
 }
 
-func paneProgramLabel(pane backend.Pane) string {
+func paneProgramLabel(pane backend.Pane, defaultShell string) string {
 	if pane.Dead {
 		return "exited"
 	}
+
 	if pane.Program != "" {
 		return pane.Program
 	}
+
+	if shouldHideCommand(pane.Command, defaultShell) {
+		return ""
+	}
+
 	if pane.Command != "" {
 		return pane.Command
 	}
+
 	return "unknown"
+}
+
+func shouldHideCommand(command, defaultShell string) bool {
+	return command != "" && defaultShell != "" && filepath.Base(command) == filepath.Base(defaultShell)
 }

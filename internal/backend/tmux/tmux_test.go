@@ -145,12 +145,13 @@ func TestQueryStatePropagatesRealFailures(t *testing.T) {
 func TestQueryStatePreservesStableObjectIDsAndPaneIndex(t *testing.T) {
 	t.Setenv("TMUX", ",,1")
 	b := &TmuxBackend{client: &MockClient{RunFunc: func(_ context.Context, args ...string) (string, error) {
-		return "0\n1\n$1|dev|@2|editor|3|layout-a|0|1|%7|4|1|~/code|vim||100|0", nil
+		return "0\n1\n$1|dev|@2|editor|3|layout-a|0|1|%7|4|1|~/code|vim||100|0|/bin/sh", nil
 	}}}
 
 	result, err := b.QueryState(context.Background())
 	assert.NoError(t, err)
 	if assert.Len(t, result.Sessions, 1) && assert.Len(t, result.Sessions[0].Windows, 1) && assert.Len(t, result.Sessions[0].Windows[0].Panes, 1) {
+		assert.Equal(t, "/bin/sh", result.Sessions[0].DefaultShell)
 		assert.Equal(t, "$1", result.Sessions[0].ID)
 		assert.Equal(t, "@2", result.Sessions[0].Windows[0].ID)
 		assert.Equal(t, "%7", result.Sessions[0].Windows[0].Panes[0].ID)
