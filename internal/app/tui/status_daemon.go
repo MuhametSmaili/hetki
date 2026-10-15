@@ -4,11 +4,11 @@ import (
 	"context"
 	"sync"
 
-	"github.com/MSmaili/hetki/internal/app/statusobserver"
-	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/daemon"
-	ui "github.com/MSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/app/statusobserver"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/daemon"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
 )
 
 // OpenStatus prepares a lazy reader for the loaded projection. Daemon startup or

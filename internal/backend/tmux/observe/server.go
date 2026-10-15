@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 // ErrServerChanged means the sampled process or connected server changed.

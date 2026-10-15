@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	appupdate "github.com/MSmaili/hetki/internal/app/update"
+	appupdate "github.com/MuhametSmaili/hetki/internal/app/update"
 	"github.com/spf13/cobra"
 )
 

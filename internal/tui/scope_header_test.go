@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/stretchr/testify/require"
 )

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 )
 
 const (
-	modulePath = "github.com/MSmaili/hetki"
-	githubRepo = "MSmaili/hetki"
+	modulePath = "github.com/MuhametSmaili/hetki"
+	githubRepo = "MuhametSmaili/hetki"
 )
 
 type Options struct {

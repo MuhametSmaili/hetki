@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/protocols"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/protocols"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -3,8 +3,8 @@ package statusobserver
 import (
 	"testing"
 
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/service"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
 

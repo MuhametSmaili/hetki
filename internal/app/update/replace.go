@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 )
 
 // rejectSymlinkedInstall refuses to update through a symlink: replacing the

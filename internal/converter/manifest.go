@@ -3,8 +3,8 @@ package converter
 import (
 	"fmt"
 
-	"github.com/MSmaili/hetki/internal/manifest"
-	"github.com/MSmaili/hetki/internal/state"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/state"
 )
 
 func ManifestToState(ws *manifest.Workspace) *state.State {

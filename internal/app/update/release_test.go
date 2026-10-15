@@ -22,7 +22,7 @@ func stubGitHub(t *testing.T, handler http.HandlerFunc) {
 
 func TestResolveTargetExactTagUsesServerTag(t *testing.T) {
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/repos/MSmaili/hetki/releases/tags/v1.2.3", r.URL.Path)
+		assert.Equal(t, "/repos/MuhametSmaili/hetki/releases/tags/v1.2.3", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"tag_name": "v1.2.3", "draft": false}`))
 	})
@@ -88,7 +88,7 @@ func TestResolveTargetExactPrereleaseRejectedLocally(t *testing.T) {
 
 func TestResolveTargetLatestStable(t *testing.T) {
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/repos/MSmaili/hetki/releases", r.URL.Path)
+		assert.Equal(t, "/repos/MuhametSmaili/hetki/releases", r.URL.Path)
 		w.Write([]byte(`[{"tag_name": "v1.4.0", "prerelease": false},{"tag_name":"v1.3.0"}]`))
 	})
 
@@ -108,7 +108,7 @@ func TestResolveTargetLatestStableRejectsUnparsableTag(t *testing.T) {
 
 func TestResolveTargetSkipsPrereleasesAndDrafts(t *testing.T) {
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/repos/MSmaili/hetki/releases", r.URL.Path)
+		assert.Equal(t, "/repos/MuhametSmaili/hetki/releases", r.URL.Path)
 		w.Write([]byte(`[
 			{"tag_name": "v1.4.0-rc.2"},
 			{"tag_name": "v1.4.0-rc.10"},
@@ -165,9 +165,9 @@ func TestResolveTagCommitPeelsAnnotatedTag(t *testing.T) {
 	commit := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/MSmaili/hetki/git/ref/tags/v1.2.3":
+		case "/repos/MuhametSmaili/hetki/git/ref/tags/v1.2.3":
 			w.Write([]byte(`{"object":{"sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","type":"tag"}}`))
-		case "/repos/MSmaili/hetki/git/tags/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb":
+		case "/repos/MuhametSmaili/hetki/git/tags/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb":
 			fmt.Fprintf(w, `{"object":{"sha":%q,"type":"commit"}}`, commit)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -194,7 +194,7 @@ func TestResolveHeadCommit(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, "/repos/MSmaili/hetki/git/ref/heads/main", r.URL.Path)
+				assert.Equal(t, "/repos/MuhametSmaili/hetki/git/ref/heads/main", r.URL.Path)
 				if test.status != 0 {
 					w.WriteHeader(test.status)
 				}

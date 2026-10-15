@@ -3,7 +3,7 @@ package tui
 import (
 	"context"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 // StatusReader returns complete snapshots without collecting new evidence.

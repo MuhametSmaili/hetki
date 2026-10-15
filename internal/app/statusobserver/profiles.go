@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
-	"github.com/MSmaili/hetki/internal/status/profile"
-	"github.com/MSmaili/hetki/internal/status/service"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/status/profile"
+	"github.com/MuhametSmaili/hetki/internal/status/service"
 )
 
 func loadProfiles(ctx context.Context) (*profile.Catalog, error) {

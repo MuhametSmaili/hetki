@@ -3,9 +3,9 @@ package tui
 import (
 	"slices"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/status"
-	ui "github.com/MSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
 )
 
 func (a *LiveAdapter) StatusBindings() ui.StatusBindings {

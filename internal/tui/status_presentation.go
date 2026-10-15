@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 const statusSuccessDuration = 5 * time.Second

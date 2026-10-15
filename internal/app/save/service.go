@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	appshared "github.com/MSmaili/hetki/internal/app"
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/manifest"
+	appshared "github.com/MuhametSmaili/hetki/internal/app"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
 )
 
 type Options struct {

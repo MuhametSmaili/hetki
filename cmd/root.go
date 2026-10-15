@@ -8,8 +8,8 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 	"github.com/spf13/cobra"
 )
 

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/frecency"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/frecency"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 func projectFlat(result backend.StateResult, homeDir string) (list.Snapshot, itemIndex, error) {

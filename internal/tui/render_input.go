@@ -1,6 +1,6 @@
 package tui
 
-import "github.com/MSmaili/hetki/internal/terminal"
+import "github.com/MuhametSmaili/hetki/internal/terminal"
 
 type inputModalProps struct {
 	LineWidth int

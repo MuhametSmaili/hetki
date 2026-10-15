@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 const (

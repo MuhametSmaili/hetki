@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
-	"github.com/MSmaili/hetki/internal/status/service"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/status/service"
 )
 
 const (

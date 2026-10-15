@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/MSmaili/hetki/internal/app/statusobserver"
+	"github.com/MuhametSmaili/hetki/internal/app/statusobserver"
 	"github.com/spf13/cobra"
 )
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
-	"github.com/MSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 

@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	appsave "github.com/MSmaili/hetki/internal/app/save"
-	"github.com/MSmaili/hetki/internal/backend/tmux"
-	"github.com/MSmaili/hetki/internal/logger"
+	appsave "github.com/MuhametSmaili/hetki/internal/app/save"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 	"github.com/spf13/cobra"
 )
 

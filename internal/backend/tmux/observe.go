@@ -3,7 +3,7 @@ package tmux
 import (
 	"context"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 )
 
 // StatusServer resolves the selected backend server with before/after checks.

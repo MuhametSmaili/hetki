@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/stretchr/testify/require"
 )
 

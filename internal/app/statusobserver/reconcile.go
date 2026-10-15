@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 )
 
 // Reconcile revokes stale routes before doing I/O, then opens missing session

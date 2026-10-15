@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
 )
 
 type WorkspaceLoader struct {

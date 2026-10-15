@@ -242,9 +242,9 @@ func TestBinaryUpdaterUpdateFullFlow(t *testing.T) {
 
 	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/MSmaili/hetki/releases/download/v1.0.1/" + binaryName:
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/" + binaryName:
 			w.Write(payload)
-		case "/MSmaili/hetki/releases/download/v1.0.1/checksums.txt":
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/checksums.txt":
 			fmt.Fprintf(w, "%s  %s\n", digestHex, binaryName)
 		default:
 			t.Errorf("unexpected download path %s", r.URL.Path)
@@ -285,9 +285,9 @@ func TestBinaryUpdaterUpdateRefusesWithoutAttestation(t *testing.T) {
 
 	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/MSmaili/hetki/releases/download/v1.0.1/" + binaryName:
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/" + binaryName:
 			w.Write(payload)
-		case "/MSmaili/hetki/releases/download/v1.0.1/checksums.txt":
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/checksums.txt":
 			fmt.Fprintf(w, "%s  %s\n", digestHex, binaryName)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -342,9 +342,9 @@ func TestBinaryUpdaterUpdateTamperedArtifactFails(t *testing.T) {
 
 	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/MSmaili/hetki/releases/download/v1.0.1/" + binaryName:
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/" + binaryName:
 			w.Write(payload)
-		case "/MSmaili/hetki/releases/download/v1.0.1/checksums.txt":
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/checksums.txt":
 			fmt.Fprintf(w, "%s  %s\n", digestHex, binaryName)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -370,9 +370,9 @@ func TestBinaryUpdaterUpdateChecksumMismatchFails(t *testing.T) {
 
 	releaseServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/MSmaili/hetki/releases/download/v1.0.1/" + binaryName:
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/" + binaryName:
 			w.Write(payload)
-		case "/MSmaili/hetki/releases/download/v1.0.1/checksums.txt":
+		case "/MuhametSmaili/hetki/releases/download/v1.0.1/checksums.txt":
 			fmt.Fprintf(w, "%064x  %s\n", 0, binaryName) // wrong hash on purpose
 		default:
 			w.WriteHeader(http.StatusNotFound)

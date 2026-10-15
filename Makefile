@@ -3,9 +3,9 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -X 'github.com/MSmaili/hetki/cmd.Version=$(VERSION)' \
-           -X 'github.com/MSmaili/hetki/cmd.GitCommit=$(COMMIT)' \
-           -X 'github.com/MSmaili/hetki/cmd.BuildDate=$(DATE)'
+LDFLAGS := -X 'github.com/MuhametSmaili/hetki/cmd.Version=$(VERSION)' \
+           -X 'github.com/MuhametSmaili/hetki/cmd.GitCommit=$(COMMIT)' \
+           -X 'github.com/MuhametSmaili/hetki/cmd.BuildDate=$(DATE)'
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o hetki .

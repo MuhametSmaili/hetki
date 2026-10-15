@@ -1,4 +1,4 @@
-module github.com/MSmaili/hetki
+module github.com/MuhametSmaili/hetki
 
 go 1.27.0
 

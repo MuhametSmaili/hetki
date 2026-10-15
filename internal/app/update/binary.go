@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 )
 
 const (

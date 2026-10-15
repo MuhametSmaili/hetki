@@ -4,9 +4,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/protocols"
-	"github.com/MSmaili/hetki/internal/status/service"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/protocols"
+	"github.com/MuhametSmaili/hetki/internal/status/service"
 )
 
 // protocolBinding joins an encapsulated pane observer to the cache target. All

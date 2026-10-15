@@ -1,6 +1,6 @@
 package backend
 
-import "github.com/MSmaili/hetki/internal/status"
+import "github.com/MuhametSmaili/hetki/internal/status"
 
 type StateResult struct {
 	Sessions []Session

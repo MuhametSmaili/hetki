@@ -6,8 +6,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/daemon"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	"github.com/stretchr/testify/require"
 )
 

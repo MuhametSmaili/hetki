@@ -9,10 +9,10 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/screen"
-	"github.com/MSmaili/hetki/internal/status/service"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/screen"
+	"github.com/MuhametSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
 

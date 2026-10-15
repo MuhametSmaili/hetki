@@ -3,7 +3,7 @@ package tmux
 import (
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/internal/layout"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/layout"
 )
 
 // ValidateAuthoredLayout validates manifest layout syntax without native I/O.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 // Target is issued before collection. Generation checks prevent a result from

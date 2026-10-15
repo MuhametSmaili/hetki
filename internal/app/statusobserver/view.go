@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status/daemon"
-	"github.com/MSmaili/hetki/internal/status/service"
+	"github.com/MuhametSmaili/hetki/internal/status/daemon"
+	"github.com/MuhametSmaili/hetki/internal/status/service"
 )
 
 // ReadView joins the cached topology and status under the inventory routing lock.

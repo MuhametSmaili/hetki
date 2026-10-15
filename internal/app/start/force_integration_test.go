@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	backendtmux "github.com/MSmaili/hetki/internal/backend/tmux"
-	"github.com/MSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

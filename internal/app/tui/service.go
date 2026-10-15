@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	ui "github.com/MSmaili/hetki/internal/tui"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type Driver interface {

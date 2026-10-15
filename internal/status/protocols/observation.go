@@ -3,8 +3,8 @@ package protocols
 import (
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/protocols/internal/osc133"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/protocols/internal/osc133"
 )
 
 // ShellPhase describes observed boundaries, not application activity.

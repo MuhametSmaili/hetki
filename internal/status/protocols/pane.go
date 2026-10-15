@@ -6,10 +6,10 @@ import (
 	"bytes"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/protocols/internal/osc133"
-	"github.com/MSmaili/hetki/internal/status/protocols/internal/osc7501"
-	"github.com/MSmaili/hetki/internal/terminalstream"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/protocols/internal/osc133"
+	"github.com/MuhametSmaili/hetki/internal/status/protocols/internal/osc7501"
+	"github.com/MuhametSmaili/hetki/internal/terminalstream"
 )
 
 // Options selects application evidence independently of shell lifecycle tracking.

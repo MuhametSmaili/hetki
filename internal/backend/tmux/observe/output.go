@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 // ErrStreamLost requires invalidating this connection's evidence. No replay

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 const (

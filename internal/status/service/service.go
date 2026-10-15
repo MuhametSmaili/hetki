@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 var (

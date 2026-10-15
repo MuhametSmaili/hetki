@@ -15,13 +15,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 	"github.com/klauspost/compress/snappy"
 )
 
 const (
 	// signerWorkflow pins which workflow may produce trusted artifacts (D4).
-	signerWorkflow = "MSmaili/hetki/.github/workflows/release.yml"
+	signerWorkflow = "MuhametSmaili/hetki/.github/workflows/release.yml"
 	// ghMinMajor/ghMinMinor is the oldest gh CLI with working
 	// `attestation verify --bundle` (offline, unauthenticated).
 	ghMinMajor, ghMinMinor = 2, 97

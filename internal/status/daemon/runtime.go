@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 type Binding struct {

@@ -3,8 +3,8 @@ package tmux
 import (
 	"fmt"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 func validateTarget(target backend.Target) error {

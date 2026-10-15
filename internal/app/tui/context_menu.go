@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 
-	ui "github.com/MSmaili/hetki/internal/tui"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
 )
 
 func contextualMenu(item liveItem) (ui.ItemMenu, error) {

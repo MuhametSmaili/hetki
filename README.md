@@ -19,13 +19,13 @@ Hetki requires tmux and, on macOS, Ventura 13 or later.
 ### Using Go
 
 ```bash
-go install github.com/MSmaili/hetki@latest
+go install github.com/MuhametSmaili/hetki@latest
 ```
 
 ### Using curl
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MSmaili/hetki/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MuhametSmaili/hetki/main/install.sh | bash
 ```
 
 ## Updating

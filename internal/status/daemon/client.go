@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 type Client struct {

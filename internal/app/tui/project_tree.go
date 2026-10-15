@@ -3,8 +3,8 @@ package tui
 import (
 	"fmt"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 const (

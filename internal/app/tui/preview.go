@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 // Preview captures the selected item without refreshing the list.

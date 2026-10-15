@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/MSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 const maxLocations = 8192

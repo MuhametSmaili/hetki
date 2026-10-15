@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend/tmux/internal/format"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/format"
 )
 
 const inventoryFormat = "#{session_id}|#{window_id}|#{pane_id}|#{pane_pid}|#{pane_dead}|#{q:pane_tty}|#{q:pane_current_command}|#{pane_width}|#{pane_height}|#{alternate_on}"

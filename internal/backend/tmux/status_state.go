@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 )
 
 // QueryStatusState collects rows inside native server identity validation. The

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend"
 )
 
 // CapturePane reads a pane occurrence or the session/window's current active pane.

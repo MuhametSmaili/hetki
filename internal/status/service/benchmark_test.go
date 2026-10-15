@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
-	statusservice "github.com/MSmaili/hetki/internal/status/service"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	statusservice "github.com/MuhametSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
 )
 

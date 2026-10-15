@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	appshared "github.com/MSmaili/hetki/internal/app"
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/converter"
-	"github.com/MSmaili/hetki/internal/logger"
-	"github.com/MSmaili/hetki/internal/manifest"
-	"github.com/MSmaili/hetki/internal/plan"
-	"github.com/MSmaili/hetki/internal/state"
+	appshared "github.com/MuhametSmaili/hetki/internal/app"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/converter"
+	"github.com/MuhametSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/plan"
+	"github.com/MuhametSmaili/hetki/internal/state"
 )
 
 type Options struct {

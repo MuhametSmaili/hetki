@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	appstart "github.com/MSmaili/hetki/internal/app/start"
-	"github.com/MSmaili/hetki/internal/backend/tmux"
+	appstart "github.com/MuhametSmaili/hetki/internal/app/start"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/spf13/cobra"
 )
 

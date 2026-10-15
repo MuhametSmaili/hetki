@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/status"
-	"github.com/MSmaili/hetki/internal/status/screen"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/screen"
 	"gopkg.in/yaml.v3"
 )
 

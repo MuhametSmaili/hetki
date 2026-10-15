@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	apptui "github.com/MSmaili/hetki/internal/app/tui"
+	apptui "github.com/MuhametSmaili/hetki/internal/app/tui"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
