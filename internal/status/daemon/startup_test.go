@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,33 +59,59 @@ func TestConcurrentLaunchUsesSingleDaemon(t *testing.T) {
 	c := fixtureClient(t, "concurrent-start")
 	executable, err := os.Executable()
 	require.NoError(t, err)
+	exits := launchProcessFixtures(t, c, executable, 4)
+	require.NoError(t, c.waitReady(t.Context(), nil))
+	for range 3 {
+		require.NoError(t, receive(t, exits), "losing starters must exit while the winner holds its lock")
+	}
+
+	first, err := c.Ping(t.Context())
+	require.NoError(t, err)
+
+	client, err := Ensure(t.Context(), c.server, executable)
+	require.NoError(t, err)
+	second, err := client.Ping(t.Context())
+	data, readErr := os.ReadFile(c.LogPath())
+
+	require.NoError(t, err)
+	require.Equal(t, first, second)
+	require.NoError(t, readErr)
+	require.Contains(t, string(data), "epoch="+first.Epoch)
+	require.Equal(t, 1, strings.Count(string(data), `event="starting"`))
+}
+
+// Retain each real launch's completion signal; Ensure may return another child's
+// readiness before its own child has tried the lock.
+func launchProcessFixtures(t *testing.T, c *Client, executable string, count int) <-chan error {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	exits := make(chan error, count)
+	var waiters sync.WaitGroup
 	t.Cleanup(func() {
+		defer cancel()
 		stopProcessFixture(t, c)
+		waiters.Wait()
+		for len(exits) > 0 {
+			if err := <-exits; err != nil {
+				t.Errorf("daemon child did not exit cleanly: %v", err)
+			}
+		}
 	})
 
-	var workers sync.WaitGroup
-	infos := make([]Info, 4)
-	errs := make([]error, len(infos))
-
-	for i := range infos {
-		workers.Go(func() {
-			var client *Client
-			client, errs[i] = Ensure(context.Background(), c.server, executable)
-			if errs[i] == nil {
-				infos[i], errs[i] = client.Ping(context.Background())
+	for range count {
+		exited, err := startProcess(t.Context(), c.server, executable, nil)
+		require.NoError(t, err)
+		waiters.Go(func() {
+			select {
+			case err := <-exited:
+				exits <- err
+			case <-ctx.Done():
+				exits <- ctx.Err()
 			}
 		})
 	}
-	workers.Wait()
-	data, readErr := os.ReadFile(c.LogPath())
-
-	for i := range infos {
-		require.NoError(t, errs[i])
-		require.Equal(t, infos[0], infos[i])
-	}
-	require.NoError(t, readErr)
-	require.Contains(t, string(data), "epoch="+infos[0].Epoch)
-	require.Equal(t, 1, strings.Count(string(data), `event="starting"`))
+	return exits
 }
 
 func TestCrashReconnectStartsFreshDaemon(t *testing.T) {
@@ -126,14 +153,13 @@ func TestCrashReconnectStartsFreshDaemon(t *testing.T) {
 func stopProcessFixture(t *testing.T, c *Client) {
 	t.Helper()
 
-	err := c.Stop(context.Background())
-	if isMissingEndpoint(err) {
-		return
-	}
-	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	require.Eventually(t, func() bool {
-		_, err := os.Lstat(c.path)
-		return os.IsNotExist(err)
-	}, 3*time.Second, 10*time.Millisecond)
+	if err := c.Stop(ctx); err != nil && !isMissingEndpoint(err) {
+		t.Errorf("stop daemon fixture: %v", err)
+	}
+	if err := testenv.WaitUnlocked(ctx, c.path+".lock"); err != nil {
+		t.Errorf("daemon fixture teardown: %v", err)
+	}
 }

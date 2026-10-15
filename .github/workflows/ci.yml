@@ -57,8 +57,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           command -v tmux
-          go vet -tags=integration ./internal/backend/tmux ./internal/app/start ./internal/app/tui
-          go test -tags=integration ./internal/backend/tmux ./internal/app/start ./internal/app/tui
+          go vet -tags=integration ./internal/backend/tmux ./internal/app/start ./internal/app/tui ./internal/app/statusobserver
+          go test -tags=integration ./internal/backend/tmux ./internal/app/start ./internal/app/tui ./internal/app/statusobserver
 
       - name: Run installer harness
         run: |

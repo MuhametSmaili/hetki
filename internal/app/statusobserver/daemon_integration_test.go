@@ -5,16 +5,19 @@ package statusobserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -62,8 +65,7 @@ func TestNativeExecutableDaemonLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		awaitDaemonSubscription(t, ctx, runner, info.PID)
 
-		_, err = runner.RunLimited(ctx, 4096, "kill-server")
-		require.NoError(t, err)
+		require.NoError(t, runner.stop(ctx))
 		awaitDaemonStopped(t, client)
 		_, err = EnsureDaemon(ctx, server, executable)
 
@@ -123,27 +125,19 @@ func buildDaemonExecutable(t *testing.T) string {
 
 func daemonClientFixture(t *testing.T, identity string) *daemon.Client {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
 	client, err := daemon.Connect(identity)
 	require.NoError(t, err)
+	relative, err := filepath.Rel(os.Getenv("HOME"), client.LogPath())
+	require.NoError(t, err)
+	require.True(t, filepath.IsLocal(relative), "daemon files must stay in the private test home")
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
-		_, pingErr := client.Ping(ctx)
-		if pingErr == nil {
-			require.NoError(t, client.Stop(ctx))
-			awaitDaemonStopped(t, client)
+		if err := client.Stop(ctx); err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, syscall.ECONNREFUSED) {
+			t.Errorf("stop daemon fixture: %v", err)
 		}
-
-		path := strings.TrimSuffix(client.LogPath(), ".log") + ".sock"
-		for _, file := range []string{path, path + ".lock", client.LogPath(), client.LogPath() + ".1"} {
-			err := os.Remove(file)
-			if err != nil && !os.IsNotExist(err) {
-				t.Errorf("remove daemon fixture file: %v", err)
-			}
-		}
+		awaitDaemonStopped(t, client)
 	})
 	return client
 }
@@ -161,19 +155,11 @@ func awaitDaemonSubscription(t *testing.T, ctx context.Context, runner nativeRun
 func awaitDaemonStopped(t *testing.T, client *daemon.Client) {
 	t.Helper()
 
-	path := strings.TrimSuffix(client.LogPath(), ".log") + ".sock"
-	require.Eventually(t, func() bool {
-		_, err := os.Lstat(path)
-		if !os.IsNotExist(err) {
-			return false
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-		data, err := os.ReadFile(client.LogPath())
-		if err != nil {
-			return false
-		}
-
-		text := string(data)
-		return strings.Contains(text, `event="stopped"`) || strings.Contains(text, `event="serve_failed"`)
-	}, 3*time.Second, 10*time.Millisecond)
+	path := strings.TrimSuffix(client.LogPath(), ".log") + ".sock.lock"
+	if err := testenv.WaitUnlocked(ctx, path); err != nil {
+		t.Errorf("daemon fixture teardown: %v", err)
+	}
 }

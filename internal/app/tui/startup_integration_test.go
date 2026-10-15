@@ -19,11 +19,11 @@ import (
 type rowsOnlyBackend struct{ Backend }
 
 func BenchmarkNativePickerOpening(b *testing.B) {
-	native, _, _ := pickerDaemonFixture(b)
 	executable := filepath.Join(b.TempDir(), "hetki")
 	build := exec.CommandContext(b.Context(), "go", "build", "-o", executable, "../../..")
 	out, err := build.CombinedOutput()
 	require.NoError(b, err, "%s", out)
+	native, _, _ := pickerDaemonFixture(b)
 	server, err := native.StatusServer(b.Context())
 	require.NoError(b, err)
 	_, err = statusobserver.EnsureDaemon(b.Context(), server, executable)

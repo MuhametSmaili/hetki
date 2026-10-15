@@ -6,11 +6,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,25 +33,48 @@ func (s fixtureSource) Close() error {
 func fixtureClient(t testing.TB, server string) *Client {
 	t.Helper()
 
-	dir, err := os.MkdirTemp("", "hs-")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
-	t.Setenv("HOME", dir)
-	t.Setenv("XDG_CACHE_HOME", dir)
-
+	dir := testenv.PrivateHome(t)
 	c, err := Connect(server + "-" + filepath.Base(dir))
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_ = os.Remove(c.path)
-		_ = os.Remove(c.path + ".lock")
-		_ = os.Remove(c.path + ".old")
-		_ = os.Remove(c.LogPath())
-		_ = os.Remove(c.LogPath() + ".1")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := testenv.WaitUnlocked(ctx, c.path+".lock"); err != nil {
+			t.Errorf("daemon fixture teardown: %v", err)
+		}
 	})
 
 	return c
+}
+
+func TestFixtureContainsDaemonFiles(t *testing.T) {
+	for _, longHome := range []bool{false, true} {
+		name := "ordinary paths"
+		if longHome {
+			name = "long paths use private fallback"
+		}
+		t.Run(name, func(t *testing.T) {
+			c := fixtureClient(t, "private-paths")
+			root := os.Getenv("HOME")
+			if longHome {
+				long := filepath.Join(root, strings.Repeat("x", 120))
+				t.Setenv("HOME", long)
+				t.Setenv("XDG_CACHE_HOME", long)
+				var err error
+				c, err = Connect(c.server)
+				require.NoError(t, err)
+			}
+
+			for _, path := range []string{c.path, c.LogPath()} {
+				relative, err := filepath.Rel(root, path)
+
+				require.NoError(t, err)
+				require.True(t, filepath.IsLocal(relative), "daemon file escaped fixture: %s", path)
+			}
+			require.LessOrEqual(t, len(c.path), 100)
+		})
+	}
 }
 
 func startFixture(t testing.TB, c *Client, binding Binding, start SourceFactory) <-chan error {
@@ -124,9 +150,14 @@ func TestSnapshotRoundTripPreservesIdentityFreshnessAndAbsence(t *testing.T) {
 
 func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 	c := fixtureClient(t, "shutdown")
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
 	reading := make(chan struct{})
 	canceled := make(chan struct{})
 	closed := make(chan bool, 1)
+	finishClose := make(chan struct{})
+	releaseClose := sync.OnceFunc(func() { close(finishClose) })
+	defer releaseClose()
 	done := startFixture(t, c, liveBinding(c.server), func(ctx context.Context, _ func(error)) (Source, error) {
 		return fixtureSource{
 			read: func(ctx context.Context) (status.Snapshot, error) {
@@ -142,6 +173,7 @@ func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 				default:
 					closed <- false
 				}
+				<-finishClose
 
 				return nil
 			},
@@ -155,15 +187,20 @@ func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 	}()
 	receive(t, reading)
 
-	err := c.Stop(context.Background())
-	serveErr := receive(t, done)
+	err := c.Stop(ctx)
 
 	require.NoError(t, err)
-	require.NoError(t, serveErr)
-	require.Error(t, receive(t, readDone))
 	require.True(t, receive(t, closed))
+	require.Error(t, receive(t, readDone))
 	_, err = os.Lstat(c.path)
 	require.ErrorIs(t, err, os.ErrNotExist)
+	waitCtx, cancelWait := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancelWait()
+	require.ErrorIs(t, testenv.WaitUnlocked(waitCtx, c.path+".lock"), context.DeadlineExceeded)
+
+	releaseClose()
+	require.NoError(t, receive(t, done))
+	require.NoError(t, testenv.WaitUnlocked(ctx, c.path+".lock"))
 }
 
 func TestClientCancellationReachesSource(t *testing.T) {

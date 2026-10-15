@@ -5,7 +5,6 @@ package statusobserver
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -14,12 +13,14 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/require"
 )
 
 type nativeRunner struct {
-	client tmux.Client
-	socket string
+	client  tmux.Client
+	socket  string
+	stopped *atomic.Bool
 }
 
 func TestNativeInventoryWatchDiscoversSessionsAndJoinsOnPublisherFailure(t *testing.T) {
@@ -96,20 +97,32 @@ func (r nativeRunner) RunLimited(ctx context.Context, limit int, args ...string)
 	return r.client.RunLimited(ctx, limit, append([]string{"-f", "/dev/null", "-S", r.socket}, args...)...)
 }
 
+func (r nativeRunner) stop(ctx context.Context) error {
+	if r.stopped.Load() {
+		return nil
+	}
+
+	_, err := r.RunLimited(ctx, 4096, "kill-server")
+	if err == nil {
+		r.stopped.Store(true)
+	}
+	return err
+}
+
 func nativeStreamsFixture(t *testing.T) (nativeRunner, observe.Server, *observe.Sampler, string, string) {
 	t.Helper()
 	client, err := tmux.New()
 	if err != nil {
 		t.Skip("tmux is required for native stream integration")
 	}
-	dir, err := os.MkdirTemp("", "hetki-streams-")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(dir)) })
-	runner := nativeRunner{client: client, socket: filepath.Join(dir, "tmux.sock")}
+	dir := testenv.PrivateHome(t)
+	runner := nativeRunner{client: client, socket: filepath.Join(dir, "tmux.sock"), stopped: new(atomic.Bool)}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _ = runner.RunLimited(ctx, 4096, "kill-server")
+		if err := runner.stop(ctx); err != nil {
+			t.Errorf("stop private tmux server: %v", err)
+		}
 	})
 	out, err := runner.RunLimited(t.Context(), 4096, "new-session", "-d", "-s", "first", "-P", "-F", "#{pane_id}|#{window_id}", "stty -echo; exec cat")
 	require.NoError(t, err)

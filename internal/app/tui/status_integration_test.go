@@ -5,6 +5,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,20 +13,22 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
-	b, client, run := pickerDaemonFixture(t)
 	executable := buildPickerExecutable(t)
+	b, client, run := pickerDaemonFixture(t)
 
 	runPickerPTY(t, executable, client)
 	first, err := client.Ping(t.Context())
@@ -65,9 +68,9 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 }
 
 func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
+	executable := buildPickerExecutable(t)
 	b, client, run := pickerDaemonFixture(t)
 	require.NoError(t, os.Remove(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hetki", "status.d", "cat.yaml")))
-	executable := buildPickerExecutable(t)
 	runPickerPTY(t, executable, client)
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	adapter.projection = projectionTree
@@ -188,13 +191,8 @@ func pickerDaemonFixture(t testing.TB) (*tmux.TmuxBackend, *daemon.Client, func(
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is required")
 	}
-	dir, err := os.MkdirTemp("", "hetki-ui-")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(dir)) })
+	dir := testenv.PrivateHome(t)
 	socket := filepath.Join(dir, "tmux.sock")
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("XDG_CACHE_HOME", dir)
-	t.Setenv("XDG_STATE_HOME", dir)
 	t.Setenv("TMUX", "")
 	t.Setenv("TMUX_PANE", "")
 	run := func(args ...string) string {
@@ -235,14 +233,20 @@ source:
 	require.NoError(t, err)
 	client, err := daemon.Connect(server.Identity())
 	require.NoError(t, err)
+	relative, err := filepath.Rel(dir, client.LogPath())
+	require.NoError(t, err)
+	require.True(t, filepath.IsLocal(relative), "daemon files must stay in the private test home")
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		require.NoError(t, client.Stop(ctx))
-		require.Eventually(t, func() bool {
-			_, err := client.Ping(ctx)
-			return err != nil
-		}, 3*time.Second, 20*time.Millisecond)
+
+		if err := client.Stop(ctx); err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, syscall.ECONNREFUSED) {
+			t.Errorf("stop picker daemon: %v", err)
+		}
+		path := strings.TrimSuffix(client.LogPath(), ".log") + ".sock.lock"
+		if err := testenv.WaitUnlocked(ctx, path); err != nil {
+			t.Errorf("picker daemon teardown: %v", err)
+		}
 	})
 	return b, client, run
 }
