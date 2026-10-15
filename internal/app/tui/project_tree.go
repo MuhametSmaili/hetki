@@ -118,7 +118,6 @@ func appendTreeWindow(
 		WindowIndex:  window.Index,
 		WindowActive: window.Active,
 		Last:         last,
-		StatusPanes:  paneStatusRefs(window.Panes),
 	}
 	return nil
 }

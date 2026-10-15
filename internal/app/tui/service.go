@@ -26,7 +26,6 @@ type Service struct {
 	StartMode    ui.StartMode
 	PreviewWidth int
 	RunUI        RunUIFunc
-	StatusReader StatusReader
 }
 
 func NewService(detectBackend func() (Backend, error)) Service {
@@ -45,21 +44,19 @@ func (s Service) Run(ctx context.Context) error {
 	}
 	effectsCtx, cancelEffects := context.WithCancel(ctx)
 	defer cancelEffects()
-	effects := uiEffects{ctx: effectsCtx, cancel: cancelEffects, driver: s.Driver, reader: s.StatusReader}
+	effects := uiEffects{ctx: effectsCtx, cancel: cancelEffects, driver: s.Driver}
 
 	initial, err := s.Driver.Load(effectsCtx)
 	if err != nil {
 		return err
 	}
-	if effects.reader == nil {
-		reader, statusErr := openStatus(effectsCtx, s.Driver)
-		if effectsCtx.Err() != nil {
-			return effectsCtx.Err()
-		}
-		effects.reader = reader
-		if statusErr != nil {
-			initial.Notice = strings.TrimSpace(initial.Notice + "\nstatus unavailable: " + statusErr.Error())
-		}
+	delivery, statusErr := openStatus(effectsCtx, s.Driver)
+	if effectsCtx.Err() != nil {
+		return effectsCtx.Err()
+	}
+	effects.status = delivery
+	if statusErr != nil {
+		initial.Notice = strings.TrimSpace(initial.Notice + "\nstatus unavailable: " + statusErr.Error())
 	}
 	preview := ui.PreviewOptions{Width: s.PreviewWidth, Read: effects.preview}
 	navigation, err := s.RunUI(effectsCtx, initial, s.Keys, s.StartMode, effects.dispatch, preview, effects.statusOptions())
@@ -79,9 +76,9 @@ func (s Service) Run(ctx context.Context) error {
 	return nil
 }
 
-func openStatus(ctx context.Context, driver Driver) (StatusReader, error) {
+func openStatus(ctx context.Context, driver Driver) (*statusDelivery, error) {
 	if provider, ok := driver.(interface {
-		OpenStatus(context.Context) (StatusReader, error)
+		OpenStatus(context.Context) (*statusDelivery, error)
 	}); ok {
 		return provider.OpenStatus(ctx)
 	}

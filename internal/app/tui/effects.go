@@ -3,10 +3,8 @@ package tui
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
-	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
@@ -15,11 +13,9 @@ type uiEffects struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	driver Driver
-	reader StatusReader
+	status *statusDelivery
 	mu     sync.Mutex
 	active sync.WaitGroup
-
-	delivery statusDelivery // Protected by mu; one coherent received state.
 }
 
 func (e *uiEffects) begin() error {
@@ -39,9 +35,9 @@ func (e *uiEffects) stop() {
 	e.mu.Unlock()
 	e.active.Wait()
 
-	e.mu.Lock()
-	e.delivery = statusDelivery{}
-	e.mu.Unlock()
+	if e.status != nil {
+		e.status.clear()
+	}
 }
 
 func (e *uiEffects) dispatch(request ui.ActionRequest) (ui.ActionResult, error) {
@@ -50,8 +46,8 @@ func (e *uiEffects) dispatch(request ui.ActionRequest) (ui.ActionResult, error) 
 	}
 	defer e.active.Done()
 	result, err := e.driver.Execute(e.ctx, request)
-	if err == nil && result.Snapshot != nil {
-		result.Status = e.projectionStatus()
+	if err == nil && result.Snapshot != nil && e.status != nil {
+		result.Status = e.status.projectionStatus()
 	}
 	return result, err
 }
@@ -72,24 +68,12 @@ func (e *uiEffects) preview(ctx context.Context, id list.ItemID) (string, error)
 }
 
 func (e *uiEffects) statusOptions() ui.StatusOptions {
-	if e.reader == nil {
+	if e.status == nil {
 		return ui.StatusOptions{}
 	}
-	options := ui.StatusOptions{Bindings: e.statusBindings(), Read: e.readStatus}
-	if _, ok := e.reader.(statusViewWatcher); ok {
-		options.ReadTimeout = daemon.WatchTimeout + time.Second
-	}
+	options := e.status.options()
+	options.Read = e.readStatus
 	return options
-}
-
-func (e *uiEffects) statusBindings() ui.StatusBindings {
-	if e.reader == nil {
-		return nil
-	}
-	if driver, ok := e.driver.(interface{ StatusBindings() ui.StatusBindings }); ok {
-		return driver.StatusBindings()
-	}
-	return nil
 }
 
 func (e *uiEffects) readStatus(ctx context.Context, previous status.Snapshot) ui.StatusUpdate {
@@ -101,30 +85,5 @@ func (e *uiEffects) readStatus(ctx context.Context, previous status.Snapshot) ui
 	defer cancel()
 	stop := context.AfterFunc(e.ctx, cancel)
 	defer stop()
-	if update, ok := e.replayStatus(readCtx); ok {
-		return update
-	}
-	if reader, ok := e.reader.(statusViewReader); ok {
-		return e.readView(readCtx, reader, previous)
-	}
-	values, err := ReadStatus(readCtx, e.reader, previous)
-	return e.receiveStatus(readCtx, daemon.View{Values: values}, previous, err)
-}
-
-type statusViewReader interface {
-	ReadView(context.Context) (daemon.View, error)
-}
-
-type statusViewWatcher interface {
-	statusViewReader
-	WatchView(context.Context) (daemon.View, error)
-}
-
-func (e *uiEffects) readView(ctx context.Context, reader statusViewReader, previous status.Snapshot) ui.StatusUpdate {
-	read := reader.ReadView
-	if watcher, ok := reader.(statusViewWatcher); ok {
-		read = watcher.WatchView
-	}
-	view, err := read(ctx)
-	return e.receiveStatus(ctx, view, previous, err)
+	return e.status.readStatus(readCtx, previous)
 }

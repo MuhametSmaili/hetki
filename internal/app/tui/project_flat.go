@@ -135,7 +135,6 @@ func projectFlatDestination(
 		PaneActive:   pane.Active,
 		PaneIndex:    pane.Index,
 		Last:         session.Last && window.Active && pane.Active,
-		StatusPanes:  paneStatusRefs([]backend.Pane{pane}),
 	}
 	if len(window.Panes) > 1 {
 		item.Annotation = "·" + strconv.Itoa(pane.Index)

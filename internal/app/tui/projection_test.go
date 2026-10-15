@@ -8,6 +8,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/stretchr/testify/require"
 )
@@ -49,12 +50,16 @@ func TestToggleDistinguishesUnloadedAndEmptyState(t *testing.T) {
 func TestInvalidRefreshPreservesProjectionInputAndStatusMetadata(t *testing.T) {
 	server := observe.Server{PID: 123, Birth: "original", Started: 1}
 	state := liveState()
-	state.Sessions[0].Windows[0].Panes[0].StatusRef = status.PaneRef{Server: server.Identity(), ID: "%1", Generation: "pane"}
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+		{Server: server.Identity(), ID: "%1", Generation: "pane"}: {State: status.Unknown},
+	})
+	require.NoError(t, err)
+	view := daemon.View{Values: values, Locations: []daemon.Location{{Session: "$1", Window: "@1", Pane: "%1"}}}
 	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	initial, err := adapter.Load(t.Context())
 	require.NoError(t, err)
-	bindings := adapter.StatusBindings()
+	bindings := adapter.bindStatusView(view)
 	require.NotEmpty(t, bindings)
 	// A successful fallback query must not publish its status error if projection fails.
 	b.statusErr = observe.ErrServerChanged
@@ -64,7 +69,7 @@ func TestInvalidRefreshPreservesProjectionInputAndStatusMetadata(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, server, adapter.statusServer)
-	require.Equal(t, bindings, adapter.StatusBindings())
+	require.Equal(t, bindings, adapter.bindStatusView(view))
 	reader, statusErr := adapter.OpenStatus(t.Context())
 	require.NoError(t, statusErr)
 	require.NotNil(t, reader)

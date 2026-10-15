@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
-	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
@@ -30,7 +29,6 @@ type liveItem struct {
 	PaneActive   bool
 	PaneIndex    int
 	Last         bool
-	StatusPanes  []status.PaneRef
 }
 
 func (item liveItem) sessionRowID() list.ItemID {

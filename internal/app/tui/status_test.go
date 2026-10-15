@@ -7,91 +7,144 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/daemon"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
-type statusReaderFunc func(context.Context) (status.Snapshot, error)
-
-func (f statusReaderFunc) ReadStatus(ctx context.Context) (status.Snapshot, error) {
-	return f(ctx)
-}
-
-func TestReadStatusAbsenceAndReplacement(t *testing.T) {
-	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
-	pane := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
-	previous, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-		pane: {State: status.Working, ValidUntil: now.Add(time.Minute)},
-	})
-	require.NoError(t, err)
-	for _, reader := range []StatusReader{
-		nil,
-		statusReaderFunc(func(context.Context) (status.Snapshot, error) { return status.Snapshot{}, nil }),
-	} {
-		result, err := ReadStatus(context.Background(), reader, previous)
-		require.NoError(t, err)
-		require.Equal(t, status.Unreported, result.At(pane, now))
+func firstPaneRef(t *testing.T, values status.Snapshot) status.PaneRef {
+	t.Helper()
+	for ref := range values.All() {
+		return ref
 	}
-	next, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: {State: status.Withdrawn}})
-	require.NoError(t, err)
-	result, err := ReadStatus(context.Background(), statusReaderFunc(func(context.Context) (status.Snapshot, error) {
-		return next, nil
-	}), previous)
-	require.NoError(t, err)
-	require.Equal(t, status.Withdrawn, result.At(pane, now))
-	require.Equal(t, status.Working, previous.At(pane, now))
+	t.Fatal("expected a reported pane")
+	return status.PaneRef{}
 }
 
-func TestReadStatusFailureDiscardsPartialResult(t *testing.T) {
-	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
-	active := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
-	cleared := status.PaneRef{Server: "server", ID: "%2", Generation: "birth"}
-	unseen := status.PaneRef{Server: "server", ID: "%3", Generation: "birth"}
+func TestServiceReplacesStatusEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		state status.State
+	}{
+		{"empty view", status.Unreported},
+		{"withdrawn report", status.Withdrawn},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter, view := statusDeliveryFixture(t)
+			pane := firstPaneRef(t, view.Values)
+			next := daemon.View{}
+			if tc.state != status.Unreported {
+				var err error
+				next.Values, err = status.NewSnapshot(map[status.PaneRef]status.Value{pane: {State: tc.state}})
+				require.NoError(t, err)
+				next.Locations = view.Locations
+			}
+			reads := 0
+			service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
+				reads++
+				if reads == 1 {
+					return view, nil
+				}
+				return next, nil
+			}}}
+			service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+				initial := options.Read(ctx, status.Snapshot{})
+				acceptStatusUpdate(initial)
+
+				result := options.Read(ctx, initial.Values)
+
+				require.NoError(t, result.Err)
+				require.Equal(t, tc.state, result.Values.At(pane, time.Now()))
+				require.Equal(t, status.Blocked, initial.Values.At(pane, time.Now()))
+				require.Equal(t, 2, reads)
+				return list.ItemID{}, nil
+			}
+
+			require.NoError(t, service.Run(t.Context()))
+		})
+	}
+}
+
+func TestServiceDiscardsPartialStatusOnFailure(t *testing.T) {
+	adapter, view := statusDeliveryFixture(t)
+	active := firstPaneRef(t, view.Values)
+	cleared, unseen := active, active
+	cleared.ID, unseen.ID = "%2", "%3"
 	previous, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-		active:  {State: status.Blocked, ValidUntil: now.Add(time.Minute)},
+		active:  view.Values.Lookup(active),
 		cleared: {State: status.Withdrawn},
 	})
 	require.NoError(t, err)
+	view.Values = previous
 	partial, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-		unseen: {State: status.Idle, ValidUntil: now.Add(time.Minute)},
+		unseen: {State: status.Idle, ValidUntil: time.Now().Add(time.Minute)},
 	})
 	require.NoError(t, err)
 	wantErr := errors.New("source unavailable")
-	reader := statusReaderFunc(func(context.Context) (status.Snapshot, error) { return partial, wantErr })
-	result, err := ReadStatus(context.Background(), reader, previous)
-	require.ErrorIs(t, err, wantErr)
-	require.Equal(t, status.Unknown, result.At(active, now))
-	require.Equal(t, status.Withdrawn, result.At(cleared, now))
-	require.Equal(t, status.Unreported, result.At(unseen, now))
-	require.Equal(t, status.Blocked, previous.At(active, now))
+	reads := 0
+	service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
+		reads++
+		if reads == 1 {
+			return view, nil
+		}
+		return daemon.View{Values: partial, Locations: []daemon.Location{{Session: "$1", Window: "@1", Pane: "%3"}}}, wantErr
+	}}}
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+		initial := options.Read(ctx, status.Snapshot{})
+		acceptStatusUpdate(initial)
+
+		result := options.Read(ctx, initial.Values)
+
+		require.ErrorIs(t, result.Err, wantErr)
+		require.Nil(t, result.Bindings)
+		require.Equal(t, status.Unknown, result.Values.At(active, time.Now()))
+		require.Equal(t, status.Withdrawn, result.Values.At(cleared, time.Now()))
+		require.Equal(t, status.Unreported, result.Values.At(unseen, time.Now()))
+		require.Equal(t, status.Blocked, previous.At(active, time.Now()))
+		return list.ItemID{}, nil
+	}
+
+	require.NoError(t, service.Run(t.Context()))
 }
 
-func TestReadStatusCancellation(t *testing.T) {
-	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
-	pane := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
-	previous, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-		pane: {State: status.Idle, ValidUntil: now.Add(time.Minute)},
-	})
-	require.NoError(t, err)
-	for _, cancelBefore := range []bool{true, false} {
-		ctx, cancel := context.WithCancel(context.Background())
-		if cancelBefore {
-			cancel()
-		}
-		calls := 0
-		reader := statusReaderFunc(func(got context.Context) (status.Snapshot, error) {
-			calls++
-			require.Same(t, ctx, got)
-			cancel()
-			return previous, nil
+func TestServiceCancelsStatusRead(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		cancelBefore bool
+		wantCalls    int
+	}{
+		{"before read", true, 0},
+		{"during read", false, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter, view := statusDeliveryFixture(t)
+			calls := 0
+			var cancelRead context.CancelFunc
+			service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
+				calls++
+				cancelRead()
+				return view, nil
+			}}}
+			service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+				readCtx, cancel := context.WithCancel(ctx)
+				defer cancel()
+				cancelRead = cancel
+				if tc.cancelBefore {
+					cancel()
+				}
+
+				result := options.Read(readCtx, view.Values)
+
+				require.NoError(t, result.Err, "read cancellation stays quiet")
+				for pane := range view.Values.All() {
+					require.Equal(t, status.Unknown, result.Values.At(pane, time.Now()))
+				}
+				require.Equal(t, tc.wantCalls, calls)
+				return list.ItemID{}, nil
+			}
+
+			require.NoError(t, service.Run(t.Context()))
 		})
-		result, err := ReadStatus(ctx, reader, previous)
-		cancel()
-		require.ErrorIs(t, err, context.Canceled)
-		require.Equal(t, status.Unknown, result.At(pane, now))
-		if cancelBefore {
-			require.Zero(t, calls)
-		} else {
-			require.Equal(t, 1, calls)
-		}
 	}
 }

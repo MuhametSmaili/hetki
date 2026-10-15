@@ -1,7 +1,5 @@
 package backend
 
-import "github.com/MuhametSmaili/hetki/internal/status"
-
 type StateResult struct {
 	Sessions []Session
 	Active   ActiveContext
@@ -32,11 +30,10 @@ type Pane struct {
 	Path    string
 	Command string
 	// Program is an optional foreground naming hint; Command remains the tmux fact.
-	Program   string
-	Dead      bool
-	Zoom      bool
-	Active    bool
-	StatusRef status.PaneRef // Optional validated identity; zero means unavailable.
+	Program string
+	Dead    bool
+	Zoom    bool
+	Active  bool
 }
 
 type ActiveContext struct {

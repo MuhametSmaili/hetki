@@ -18,115 +18,20 @@ import (
 func linkedPaneState() backend.StateResult {
 	state := liveState()
 	window := &state.Sessions[0].Windows[0]
-	window.Panes[0].StatusRef = status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
 	window.Panes = append(window.Panes, backend.Pane{
 		ID: "%2", Index: 1, Path: "/work",
-		StatusRef: status.PaneRef{Server: "server", ID: "%2", Generation: "birth"},
 	})
 	state.Sessions = append(state.Sessions, backend.Session{ID: "$2", Name: "linked", Windows: []backend.Window{*window}})
 	return state
 }
 
-func TestStatusBindingsForLinkedWindows(t *testing.T) {
-	for _, test := range []struct {
-		name       string
-		projection projectionKind
-	}{
-		{"tree", projectionTree},
-		{"flat", projectionFlat},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			state := linkedPaneState()
-			panes := state.Sessions[0].Windows[0].Panes
-			adapter := testAdapter(&stubBackend{state: state})
-			adapter.projection = test.projection
-			want := ui.StatusBindings{}
-			for _, session := range []string{"$1", "$2"} {
-				if test.projection == projectionTree {
-					want[windowItemID(session, "@1")] = []status.PaneRef{panes[0].StatusRef, panes[1].StatusRef}
-				} else {
-					for _, pane := range panes {
-						want[destinationItemID(session, "@1", pane.ID)] = []status.PaneRef{pane.StatusRef}
-					}
-				}
-			}
-
-			_, err := adapter.Load(context.Background())
-			bindings := adapter.StatusBindings()
-
-			require.NoError(t, err)
-			require.Equal(t, want, bindings)
-		})
-	}
-}
-
-func TestStatusBindingsFollowPaneMoves(t *testing.T) {
-	stub := &stubBackend{state: linkedPaneState()}
-	adapter := loadedAdapter(t, stub)
-	panes := stub.state.Sessions[0].Windows[0].Panes
-	for i := range stub.state.Sessions {
-		stub.state.Sessions[i].Windows[0].Panes = stub.state.Sessions[i].Windows[0].Panes[:1]
-	}
-	stub.state.Sessions[0].Windows = append(stub.state.Sessions[0].Windows, backend.Window{
-		ID: "@2", Index: 2, Panes: []backend.Pane{panes[1]},
-	})
-
-	_, err := adapter.Load(context.Background())
-	bindings := adapter.StatusBindings()
-
-	require.NoError(t, err)
-	require.Equal(t, ui.StatusBindings{
-		windowItemID("$1", "@1"): {panes[0].StatusRef},
-		windowItemID("$2", "@1"): {panes[0].StatusRef},
-		windowItemID("$1", "@2"): {panes[1].StatusRef},
-	}, bindings)
-}
-
-func TestStatusBindingsOwnTheirPaneRefs(t *testing.T) {
-	state := linkedPaneState()
-	adapter := loadedAdapter(t, &stubBackend{state: state})
-	id := windowItemID("$1", "@1")
-	want := state.Sessions[0].Windows[0].Panes[0].StatusRef
-	bindings := adapter.StatusBindings()
-
-	bindings[id][0] = status.PaneRef{}
-	delete(bindings, windowItemID("$2", "@1"))
-
-	require.Equal(t, want, adapter.StatusBindings()[id][0])
-	require.Contains(t, adapter.StatusBindings(), windowItemID("$2", "@1"))
-}
-
-func TestStatusBindingsRequireMatchingIncarnation(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		ref  status.PaneRef
-	}{
-		{"unavailable", status.PaneRef{}},
-		{"missing generation", status.PaneRef{Server: "server", ID: "%1"}},
-		{"missing server", status.PaneRef{ID: "%1", Generation: "birth"}},
-		{"different pane", status.PaneRef{Server: "server", ID: "%2", Generation: "birth"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			state := liveState()
-			state.Sessions[0].Windows[0].Panes[0].StatusRef = test.ref
-			adapter := testAdapter(&stubBackend{state: state})
-
-			_, err := adapter.Load(context.Background())
-			bindings := adapter.StatusBindings()
-
-			require.NoError(t, err)
-			require.Empty(t, bindings)
-		})
-	}
-}
-
-type viewWatcher struct {
-	failingViewReader
+type statusTestDriver struct {
+	*LiveAdapter
 	read func(context.Context) (daemon.View, error)
 }
 
-func (r viewWatcher) WatchView(ctx context.Context) (daemon.View, error) {
-	return r.read(ctx)
+func (d statusTestDriver) OpenStatus(ctx context.Context) (*statusDelivery, error) {
+	return &statusDelivery{ctx: ctx, adapter: d.LiveAdapter, readView: d.read}, nil
 }
 
 func statusDeliveryFixture(t *testing.T) (*LiveAdapter, daemon.View) {
@@ -148,11 +53,10 @@ func TestServiceSuppliesBindingsOnProjectionReplacement(t *testing.T) {
 	adapter, view := statusDeliveryFixture(t)
 	now := time.Now()
 	reads := 0
-	reader := viewWatcher{read: func(context.Context) (daemon.View, error) {
+	service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
 		reads++
 		return view, nil
-	}}
-	service := Service{Driver: adapter, StatusReader: reader}
+	}}}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 		require.Empty(t, options.Bindings, "ordinary backend rows have no status references")
 		initial := options.Read(ctx, status.Snapshot{})
@@ -178,14 +82,13 @@ func TestServiceSuppliesBindingsOnProjectionReplacement(t *testing.T) {
 }
 
 type statusChangeWatcher struct {
-	failingViewReader
 	view             daemon.View
 	err              error
 	started, release chan struct{}
 	reads            int
 }
 
-func (r *statusChangeWatcher) WatchView(ctx context.Context) (daemon.View, error) {
+func (r *statusChangeWatcher) readView(ctx context.Context) (daemon.View, error) {
 	r.reads++
 	if r.reads == 1 {
 		return r.view, nil
@@ -219,7 +122,7 @@ func TestServiceReplaysStatusReceivedDuringProjectionReplacement(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter, view := statusDeliveryFixture(t)
 			reader := &statusChangeWatcher{view: view, err: tc.err, started: make(chan struct{}), release: make(chan struct{})}
-			service := Service{Driver: adapter, StatusReader: reader}
+			service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: reader.readView}}
 			service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 				initial := options.Read(ctx, status.Snapshot{})
 				acceptStatusUpdate(initial)
@@ -286,13 +189,17 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 		pane: {State: status.Working, ValidUntil: now.Add(time.Minute)},
 	})
 	require.NoError(t, err)
+	adapter, _ := statusDeliveryFixture(t)
+	calls := 0
 	var read func(context.Context, status.Snapshot) ui.StatusUpdate
-	service := Service{Driver: &switchDriver{}, StatusReader: statusReaderFunc(func(ctx context.Context) (status.Snapshot, error) {
+	service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(ctx context.Context) (daemon.View, error) {
+		calls++
 		close(started)
 		<-ctx.Done()
 		close(stopped)
-		return status.Snapshot{}, ctx.Err()
-	}), RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+		return daemon.View{}, ctx.Err()
+	}}, RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+		require.Equal(t, daemon.WatchTimeout+time.Second, options.ReadTimeout)
 		read = options.Read
 		go func() { done <- read(context.Background(), previous).Values }()
 		awaitChannel(t, started)
@@ -310,4 +217,6 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 	}
 	require.Equal(t, status.Unknown, awaitChannel(t, done).At(pane, now))
 	require.Equal(t, status.Unknown, late.Values.At(pane, now))
+	require.NoError(t, late.Err, "picker cancellation stays quiet")
+	require.Equal(t, 1, calls, "callbacks after exit must not read")
 }

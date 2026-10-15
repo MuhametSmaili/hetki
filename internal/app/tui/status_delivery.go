@@ -4,24 +4,57 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 )
 
+// statusDelivery owns one picker's received evidence and UI acknowledgements.
+// The adapter owns projection bindings; the reader owns the transport cursor.
 type statusDelivery struct {
+	ctx      context.Context
+	adapter  *LiveAdapter
+	readView func(context.Context) (daemon.View, error)
+
+	mu       sync.Mutex
 	view     daemon.View
 	err      error
 	received uint64
 	applied  uint64
 }
 
-func (e *uiEffects) receiveStatus(ctx context.Context, view daemon.View, previous status.Snapshot, err error) ui.StatusUpdate {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (d *statusDelivery) options() ui.StatusOptions {
+	return ui.StatusOptions{Read: d.readStatus, ReadTimeout: daemon.WatchTimeout + time.Second}
+}
 
-	if e.ctx.Err() != nil {
+// clear releases retained evidence after the owner cancels and joins callbacks.
+func (d *statusDelivery) clear() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.view, d.err = daemon.View{}, nil
+	d.received, d.applied = 0, 0
+}
+
+func (d *statusDelivery) readStatus(ctx context.Context, previous status.Snapshot) ui.StatusUpdate {
+	if update, ok := d.replayStatus(ctx); ok {
+		return update
+	}
+	if err := ctx.Err(); err != nil {
+		return d.receiveStatus(ctx, daemon.View{}, previous, err)
+	}
+
+	view, err := d.readView(ctx)
+	return d.receiveStatus(ctx, view, previous, err)
+}
+
+func (d *statusDelivery) receiveStatus(ctx context.Context, view daemon.View, previous status.Snapshot, err error) ui.StatusUpdate {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.ctx.Err() != nil {
 		return ui.StatusUpdate{Values: previous.Invalidate()}
 	}
 	contextErr := ctx.Err()
@@ -29,85 +62,67 @@ func (e *uiEffects) receiveStatus(ctx context.Context, view daemon.View, previou
 		err = contextErr
 	}
 	if err != nil {
-		view = e.delivery.view
-		if e.delivery.received == 0 {
+		view = d.view
+		if d.received == 0 {
 			view.Values = previous
 		}
 		view.Values = view.Values.Invalidate()
 		view.Cursor = daemon.Cursor{}
 	}
-	e.delivery.view = view
-	e.delivery.err = nil
+	d.view = view
+	d.err = nil
 	if err != nil && !errors.Is(contextErr, context.Canceled) {
-		e.delivery.err = fmt.Errorf("status unavailable: %w", err)
+		d.err = fmt.Errorf("status unavailable: %w", err)
 	}
-	e.delivery.received++
-	return e.readStatusUpdateLocked()
+	d.received++
+	return d.readStatusUpdateLocked()
 }
 
 // A watch cursor records receipt, not UI acceptance. Rebind an unaccepted
 // delivery instead of waiting for an unrelated daemon change.
-func (e *uiEffects) replayStatus(ctx context.Context) (ui.StatusUpdate, bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (d *statusDelivery) replayStatus(ctx context.Context) (ui.StatusUpdate, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	if e.ctx.Err() != nil || ctx.Err() != nil || e.delivery.received == e.delivery.applied {
+	if d.ctx.Err() != nil || ctx.Err() != nil || d.received == d.applied {
 		return ui.StatusUpdate{}, false
 	}
-	return e.readStatusUpdateLocked(), true
+	return d.readStatusUpdateLocked(), true
 }
 
-func (e *uiEffects) acceptStatus(received uint64) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (d *statusDelivery) acceptStatus(received uint64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	if e.ctx.Err() == nil {
-		e.delivery.applied = max(e.delivery.applied, received)
+	if d.ctx.Err() == nil {
+		d.applied = max(d.applied, received)
 	}
 }
 
-func (e *uiEffects) projectionStatus() *ui.StatusUpdate {
-	if e.reader == nil {
-		return nil
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (d *statusDelivery) projectionStatus() *ui.StatusUpdate {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	update := e.statusUpdateLocked()
-	if _, ok := e.reader.(statusViewReader); ok && e.delivery.received != 0 {
-		update.Bindings = e.bindReceivedView()
-	} else {
-		update.Bindings = e.statusBindings()
-	}
+	update := d.statusUpdateLocked()
+	update.Bindings = d.adapter.bindStatusView(d.view)
 	return &update
 }
 
-func (e *uiEffects) statusUpdateLocked() ui.StatusUpdate {
+func (d *statusDelivery) statusUpdateLocked() ui.StatusUpdate {
 	update := ui.StatusUpdate{
-		Values: e.delivery.view.Values, Err: e.delivery.err,
-		Watching: e.delivery.view.Cursor.Revision != 0,
+		Values: d.view.Values, Err: d.err,
+		Watching: d.view.Cursor.Revision != 0,
 	}
-	if received := e.delivery.received; received != 0 {
-		update.Accept = func() { e.acceptStatus(received) }
-	}
-	return update
-}
-
-func (e *uiEffects) readStatusUpdateLocked() ui.StatusUpdate {
-	update := e.statusUpdateLocked()
-	if _, ok := e.reader.(statusViewReader); ok && e.delivery.err == nil {
-		update.Bindings = e.bindReceivedView()
+	if received := d.received; received != 0 {
+		update.Accept = func() { d.acceptStatus(received) }
 	}
 	return update
 }
 
-// The view's values and locations stay together; row bindings are always rebuilt
-// against the driver's current projection and exact server incarnation.
-func (e *uiEffects) bindReceivedView() ui.StatusBindings {
-	if driver, ok := e.driver.(interface {
-		bindStatusView(daemon.View) ui.StatusBindings
-	}); ok {
-		return driver.bindStatusView(e.delivery.view)
+func (d *statusDelivery) readStatusUpdateLocked() ui.StatusUpdate {
+	update := d.statusUpdateLocked()
+	if d.err == nil {
+		update.Bindings = d.adapter.bindStatusView(d.view)
 	}
-	return make(ui.StatusBindings)
+	return update
 }

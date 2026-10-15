@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -72,6 +73,66 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	second, err := client.Ping(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, first, second)
+}
+
+type unwatchedStatusSource struct {
+	view  daemon.View
+	reads atomic.Int32
+}
+
+func (s *unwatchedStatusSource) ReadStatus(context.Context) (status.Snapshot, error) {
+	return s.view.Values, nil
+}
+
+func (s *unwatchedStatusSource) ReadView(context.Context) (daemon.View, error) {
+	s.reads.Add(1)
+	return s.view, nil
+}
+
+func (*unwatchedStatusSource) Close() error { return nil }
+
+func TestNativePickerPollsUnwatchedViews(t *testing.T) {
+	b, client, _ := pickerDaemonFixture(t)
+	_, server, err := b.QueryStatusState(t.Context())
+	require.NoError(t, err)
+	ref := status.PaneRef{Server: server.Identity(), ID: "%0", Generation: "fixture"}
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+		ref: {State: status.Blocked, ValidUntil: time.Now().Add(time.Minute)},
+	})
+	require.NoError(t, err)
+	source := &unwatchedStatusSource{view: daemon.View{
+		Values: values, Locations: []daemon.Location{{Session: "$0", Window: "@0", Pane: "%0"}},
+	}}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- daemon.Serve(ctx, daemon.Binding{Server: server.Identity(), Alive: func(ctx context.Context) bool {
+			return ctx.Err() == nil
+		}}, func(context.Context, func(error)) (daemon.Source, error) { return source, nil })
+	}()
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, awaitChannel(t, done))
+	})
+	require.Eventually(t, func() bool {
+		_, err := client.Ping(ctx)
+		return err == nil
+	}, 3*time.Second, 10*time.Millisecond)
+	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
+	service := Service{Driver: adapter}
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+		for range 2 {
+			update := options.Read(ctx, status.Snapshot{})
+			require.NoError(t, update.Err)
+			require.False(t, update.Watching, "a daemon without watches must keep the polling cadence")
+			require.Equal(t, status.Blocked, update.Bindings.StateAt(destinationItemID("$0", "@0", "%0"), update.Values, time.Now()))
+			acceptStatusUpdate(update)
+		}
+		return list.ItemID{}, nil
+	}
+
+	require.NoError(t, service.Run(t.Context()))
+	require.EqualValues(t, 2, source.reads.Load(), "accepted polling views must be read again")
 }
 
 func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
@@ -174,15 +235,6 @@ func pickerRowValues(update ui.StatusUpdate, now time.Time) map[list.ItemID]stat
 		values[id] = update.Bindings.ValueAt(id, update.Values, now)
 	}
 	return values
-}
-
-func firstPaneRef(t *testing.T, values status.Snapshot) status.PaneRef {
-	t.Helper()
-	for ref := range values.All() {
-		return ref
-	}
-	t.Fatal("expected a reported pane")
-	return status.PaneRef{}
 }
 
 func buildPickerExecutable(t *testing.T) string {

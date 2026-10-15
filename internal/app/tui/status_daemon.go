@@ -11,10 +11,9 @@ import (
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 )
 
-// OpenStatus prepares a lazy reader for the loaded projection. Daemon startup or
-// reuse occurs on the first asynchronous read, never before entering the UI.
-// The reader owns no workers or persistent connections.
-func (a *LiveAdapter) OpenStatus(ctx context.Context) (StatusReader, error) {
+// OpenStatus prepares status delivery for this picker. Daemon startup or reuse
+// occurs on the first asynchronous read, never before entering the UI.
+func (a *LiveAdapter) OpenStatus(ctx context.Context) (*statusDelivery, error) {
 	a.mu.RLock()
 	server, err := a.statusServer, a.statusErr
 	a.mu.RUnlock()
@@ -24,7 +23,8 @@ func (a *LiveAdapter) OpenStatus(ctx context.Context) (StatusReader, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &daemonReader{server: server}, nil
+	reader := &daemonReader{server: server}
+	return &statusDelivery{ctx: ctx, adapter: a, readView: reader.readView}, nil
 }
 
 type daemonReader struct {
@@ -49,23 +49,9 @@ func (r *daemonReader) connect(ctx context.Context) error {
 	return r.err
 }
 
-func (r *daemonReader) ReadStatus(ctx context.Context) (status.Snapshot, error) {
-	if err := r.connect(ctx); err != nil {
-		return status.Snapshot{}, err
-	}
-	return r.client.ReadStatus(ctx)
-}
-
-func (r *daemonReader) ReadView(ctx context.Context) (daemon.View, error) {
-	if err := r.connect(ctx); err != nil {
-		return daemon.View{}, err
-	}
-	return r.client.ReadView(ctx)
-}
-
-// WatchView retains the last delivered cursor. Old development daemons that do
+// readView retains the last delivered cursor. Old development daemons that do
 // not advertise watches keep using ordinary reads and the UI's polling cadence.
-func (r *daemonReader) WatchView(ctx context.Context) (daemon.View, error) {
+func (r *daemonReader) readView(ctx context.Context) (daemon.View, error) {
 	if err := r.connect(ctx); err != nil {
 		return daemon.View{}, err
 	}
@@ -89,6 +75,8 @@ func (r *daemonReader) WatchView(ctx context.Context) (daemon.View, error) {
 	return view, err
 }
 
+// bindStatusView uses the current projection and exact server incarnation;
+// retained evidence never owns or copies the row index.
 func (a *LiveAdapter) bindStatusView(view daemon.View) ui.StatusBindings {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

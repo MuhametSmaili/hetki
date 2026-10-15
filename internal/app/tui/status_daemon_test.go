@@ -17,11 +17,12 @@ import (
 
 func TestCachedLocationsRebindLinkedRowsAndRespawns(t *testing.T) {
 	state := linkedPaneState()
-	adapter := testAdapter(&stubBackend{state: state})
+	server := observe.Server{PID: 123, Birth: "fixture", Started: 1}
+	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
+	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
+	adapter.projection = projectionTree
 	_, err := adapter.Load(t.Context())
 	require.NoError(t, err)
-	server := observe.Server{PID: 123, Birth: "fixture", Started: 1}
-	adapter.statusServer = server
 	ref := status.PaneRef{Server: server.Identity(), ID: "%1", Generation: "respawned"}
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{ref: {State: status.Blocked, ValidUntil: time.Now().Add(time.Minute)}})
 	require.NoError(t, err)
@@ -35,52 +36,64 @@ func TestCachedLocationsRebindLinkedRowsAndRespawns(t *testing.T) {
 	require.Equal(t, ui.StatusBindings{
 		windowItemID("$1", "@1"): {ref}, windowItemID("$2", "@1"): {ref},
 	}, bindings)
+	bindings[windowItemID("$1", "@1")][0] = status.PaneRef{}
+	delete(bindings, windowItemID("$2", "@1"))
+	require.Equal(t, ref, adapter.bindStatusView(view)[windowItemID("$1", "@1")][0])
+	require.Len(t, adapter.bindStatusView(view), 2, "bindings own their map and pane slices")
+
 	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
 	require.NoError(t, err)
-	adapter.statusServer = server
 	flat := adapter.bindStatusView(view)
 	require.Equal(t, ui.StatusBindings{
 		destinationItemID("$1", "@1", "%1"): {ref}, destinationItemID("$2", "@1", "%1"): {ref},
 	}, flat)
 	view.Locations = []daemon.Location{{Session: "$1", Window: "@99", Pane: "%1"}}
 	require.Empty(t, adapter.bindStatusView(view), "moved pane must not bind its old window occurrence")
-	view.Locations = []daemon.Location{{Session: "$1", Window: "@1", Pane: "%1"}}
+	pane := b.state.Sessions[0].Windows[0].Panes[0]
+	for i := range b.state.Sessions {
+		b.state.Sessions[i].Windows[0].Panes = b.state.Sessions[i].Windows[0].Panes[1:]
+	}
+	b.state.Sessions[0].Windows = append(b.state.Sessions[0].Windows, backend.Window{
+		ID: "@99", Name: "moved", Panes: []backend.Pane{pane},
+	})
+	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionRefresh})
+	require.NoError(t, err)
+	require.Equal(t, ui.StatusBindings{destinationItemID("$1", "@99", "%1"): {ref}}, adapter.bindStatusView(view))
+
 	adapter.statusServer.Birth = "replacement server"
 	require.Empty(t, adapter.bindStatusView(view), "reused backend IDs must not bind another server's evidence")
 }
 
 type openingStatusDriver struct {
 	switchDriver
-	err    error
-	opened bool
-}
-
-func (d *openingStatusDriver) OpenStatus(context.Context) (StatusReader, error) {
-	d.opened = true
-	return nil, d.err
-}
-
-func TestStatusStartupFailureKeepsPickerUsable(t *testing.T) {
-	driver := &openingStatusDriver{err: errors.New("invalid profile fixture.yaml")}
-	service := Service{Driver: driver, RunUI: func(_ context.Context, snapshot list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		require.True(t, driver.opened)
-		require.Contains(t, snapshot.Notice, "invalid profile fixture.yaml")
-		require.Nil(t, options.Read)
-		return list.ItemID{}, nil
-	}}
-
-	err := service.Run(t.Context())
-
-	require.NoError(t, err)
-}
-
-type failingViewReader struct {
-	statusReaderFunc
 	err error
 }
 
-func (r failingViewReader) ReadView(context.Context) (daemon.View, error) {
-	return daemon.View{}, r.err
+func (d *openingStatusDriver) OpenStatus(context.Context) (*statusDelivery, error) {
+	return nil, d.err
+}
+
+func TestStatusAvailabilityKeepsPickerUsable(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		driver Driver
+		notice string
+	}{
+		{"absent", &switchDriver{}, ""},
+		{"opening fails", &openingStatusDriver{err: errors.New("invalid profile fixture.yaml")}, "status unavailable: invalid profile fixture.yaml"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := Service{Driver: tc.driver, RunUI: func(_ context.Context, snapshot list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+				require.Equal(t, tc.notice, snapshot.Notice)
+				require.Nil(t, options.Read)
+				return list.ItemID{}, nil
+			}}
+
+			err := service.Run(t.Context())
+
+			require.NoError(t, err)
+		})
+	}
 }
 
 type replacedServerBackend struct {
@@ -98,8 +111,8 @@ func TestOpeningStatusDefersDaemonWorkUntilRead(t *testing.T) {
 
 	require.NoError(t, err, "opening must not validate or launch the daemon")
 	require.NotNil(t, reader)
-	_, err = reader.ReadStatus(t.Context())
-	require.Error(t, err, "the asynchronous read validates the descriptor")
+	update := reader.options().Read(t.Context(), status.Snapshot{})
+	require.Error(t, update.Err, "the asynchronous read validates the descriptor")
 }
 
 func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {
@@ -112,33 +125,4 @@ func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {
 	require.NoError(t, loadErr, "browsing does not depend on status startup")
 	require.Nil(t, reader)
 	require.ErrorIs(t, statusErr, observe.ErrServerChanged)
-}
-
-type blockingViewWatcher struct {
-	failingViewReader
-	started chan struct{}
-}
-
-func (r blockingViewWatcher) WatchView(ctx context.Context) (daemon.View, error) {
-	close(r.started)
-	<-ctx.Done()
-	return daemon.View{}, ctx.Err()
-}
-
-func TestPickerShutdownCancelsAndJoinsOutstandingWatch(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	reader := blockingViewWatcher{started: make(chan struct{})}
-	effects := uiEffects{ctx: ctx, cancel: cancel, reader: reader}
-	options := effects.statusOptions()
-	finished := make(chan ui.StatusUpdate, 1)
-	go func() { finished <- options.Read(ctx, status.Snapshot{}) }()
-	awaitChannel(t, reader.started)
-
-	effects.stop()
-	update := awaitChannel(t, finished)
-
-	require.Equal(t, daemon.WatchTimeout+time.Second, options.ReadTimeout)
-	require.NoError(t, update.Err, "picker cancellation stays quiet")
-	require.False(t, update.Watching)
 }

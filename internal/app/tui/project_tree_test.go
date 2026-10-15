@@ -5,21 +5,26 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTreeShowsActivePaneProgramButAggregatesEveryPaneStatus(t *testing.T) {
 	now := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
-	active := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
-	inactive := status.PaneRef{Server: "server", ID: "%2", Generation: "birth"}
+	server := observe.Server{PID: 123, Birth: "fixture", Started: 1}
+	active := status.PaneRef{Server: server.Identity(), ID: "%1", Generation: "birth"}
+	inactive := status.PaneRef{Server: server.Identity(), ID: "%2", Generation: "birth"}
 	state := liveState()
 	state.Sessions[0].Windows[0].Panes = []backend.Pane{
-		{ID: "%2", Program: "opencode", Command: "node", StatusRef: inactive},
-		{ID: "%1", Active: true, Program: "pi", Command: "node", StatusRef: active},
+		{ID: "%2", Program: "opencode", Command: "node"},
+		{ID: "%1", Active: true, Program: "pi", Command: "node"},
 	}
-	adapter := testAdapter(&stubBackend{state: state})
+	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
+	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
+	adapter.projection = projectionTree
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
 		active:   {State: status.Idle, ValidUntil: now.Add(time.Minute)},
 		inactive: {State: status.Blocked, ValidUntil: now.Add(time.Minute)},
@@ -30,7 +35,10 @@ func TestTreeShowsActivePaneProgramButAggregatesEveryPaneStatus(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "pi", snapshot.Items[0].Children[0].Trailing)
-	require.Equal(t, status.Blocked, adapter.StatusBindings().StateAt(windowItemID("$1", "@1"), values, now))
+	bindings := adapter.bindStatusView(daemon.View{Values: values, Locations: []daemon.Location{
+		{Session: "$1", Window: "@1", Pane: "%1"}, {Session: "$1", Window: "@1", Pane: "%2"},
+	}})
+	require.Equal(t, status.Blocked, bindings.StateAt(windowItemID("$1", "@1"), values, now))
 
 	model, err := list.New(snapshot)
 	require.NoError(t, err)
