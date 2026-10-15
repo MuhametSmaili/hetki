@@ -162,10 +162,11 @@ func TestLayoutSwitchPreservesScopeAndQuery(t *testing.T) {
 	m.dispatch = func(request ActionRequest) (ActionResult, error) {
 		requested = request.ActionID
 		return ActionResult{
-			Snapshot: &replacement, StatusBindings: tree.paneStatus.options.Bindings, SelectItemID: list.ItemID{ID: "idle"},
+			Snapshot: &replacement, Status: &StatusUpdate{Values: tree.paneStatus.values, Bindings: tree.paneStatus.options.Bindings}, SelectItemID: list.ItemID{ID: "idle"},
 		}, nil
 	}
 	m.scope.tracked = true
+	m.paneStatus.values = status.Snapshot{}
 	m.applyScope("idle", now)
 	m.mode = modeFilter
 
@@ -190,7 +191,7 @@ func TestStatusMembershipChangeCancelsJumpInsteadOfRelabeling(t *testing.T) {
 	m = jumping.(model)
 	m.jump.input = "a"
 
-	next, _ := m.handleStatusResult(statusResultMsg{values: status.Snapshot{}})
+	next, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Values: status.Snapshot{}}})
 	m = next.(model)
 
 	require.Equal(t, modeBrowse, m.mode)

@@ -83,22 +83,6 @@ func (r failingViewReader) ReadView(context.Context) (daemon.View, error) {
 	return daemon.View{}, r.err
 }
 
-func TestViewFailureInvalidatesEvidenceAndPreservesBindingOwnership(t *testing.T) {
-	ref := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
-	previous, err := status.NewSnapshot(map[status.PaneRef]status.Value{ref: {State: status.Working, ValidUntil: time.Now().Add(time.Minute)}})
-	require.NoError(t, err)
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	failure := errors.New("daemon gone")
-	effects := uiEffects{ctx: ctx, cancel: cancel, reader: failingViewReader{err: failure}}
-
-	update := effects.readStatus(ctx, previous)
-
-	require.Equal(t, status.Unknown, update.Values.At(ref, time.Now()))
-	require.Nil(t, update.Bindings)
-	require.ErrorIs(t, update.Err, failure)
-}
-
 type replacedServerBackend struct {
 	stubBackend
 }

@@ -43,7 +43,10 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.preview.invalidate()
-	m.paneStatus.options.Bindings = result.StatusBindings
+	m.paneStatus.options.Bindings = nil
+	if result.Status != nil {
+		m.applyStatusUpdate(*result.Status)
+	}
 	m.paneStatus.bindingGeneration++
 	m.applyScope(m.items.Query(), time.Now())
 	if !result.SelectItemID.IsZero() {

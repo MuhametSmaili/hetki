@@ -2,8 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -20,6 +18,8 @@ type uiEffects struct {
 	reader StatusReader
 	mu     sync.Mutex
 	active sync.WaitGroup
+
+	delivery statusDelivery // Protected by mu; one coherent received state.
 }
 
 func (e *uiEffects) begin() error {
@@ -38,6 +38,10 @@ func (e *uiEffects) stop() {
 	e.cancel()
 	e.mu.Unlock()
 	e.active.Wait()
+
+	e.mu.Lock()
+	e.delivery = statusDelivery{}
+	e.mu.Unlock()
 }
 
 func (e *uiEffects) dispatch(request ui.ActionRequest) (ui.ActionResult, error) {
@@ -47,7 +51,7 @@ func (e *uiEffects) dispatch(request ui.ActionRequest) (ui.ActionResult, error) 
 	defer e.active.Done()
 	result, err := e.driver.Execute(e.ctx, request)
 	if err == nil && result.Snapshot != nil {
-		result.StatusBindings = e.statusBindings()
+		result.Status = e.projectionStatus()
 	}
 	return result, err
 }
@@ -97,11 +101,14 @@ func (e *uiEffects) readStatus(ctx context.Context, previous status.Snapshot) ui
 	defer cancel()
 	stop := context.AfterFunc(e.ctx, cancel)
 	defer stop()
+	if update, ok := e.replayStatus(readCtx); ok {
+		return update
+	}
 	if reader, ok := e.reader.(statusViewReader); ok {
 		return e.readView(readCtx, reader, previous)
 	}
 	values, err := ReadStatus(readCtx, e.reader, previous)
-	return ui.StatusUpdate{Values: values, Err: statusReadError(readCtx, err)}
+	return e.receiveStatus(readCtx, daemon.View{Values: values}, previous, err)
 }
 
 type statusViewReader interface {
@@ -119,27 +126,5 @@ func (e *uiEffects) readView(ctx context.Context, reader statusViewReader, previ
 		read = watcher.WatchView
 	}
 	view, err := read(ctx)
-	if err != nil || ctx.Err() != nil {
-		return ui.StatusUpdate{Values: previous.Invalidate(), Err: statusReadError(ctx, err)}
-	}
-	update := ui.StatusUpdate{Values: view.Values, Bindings: make(ui.StatusBindings), Watching: view.Cursor.Revision != 0}
-	if driver, ok := e.driver.(interface {
-		bindStatusView(daemon.View) ui.StatusBindings
-	}); ok {
-		update.Bindings = driver.bindStatusView(view)
-	}
-	return update
-}
-
-func statusReadError(ctx context.Context, err error) error {
-	if errors.Is(ctx.Err(), context.Canceled) {
-		return nil
-	}
-	if ctx.Err() != nil {
-		err = ctx.Err()
-	}
-	if err == nil {
-		return nil
-	}
-	return fmt.Errorf("status unavailable: %w", err)
+	return e.receiveStatus(ctx, view, previous, err)
 }

@@ -167,12 +167,12 @@ type ItemMenu struct {
 }
 
 type ActionResult struct {
-	Message        string
-	Snapshot       *list.Snapshot
-	StatusBindings StatusBindings
-	SelectItemID   list.ItemID
-	Input          *InputPrompt
-	Confirmation   *Confirmation
-	Menu           *ItemMenu
-	Navigation     list.ItemID
+	Message      string
+	Snapshot     *list.Snapshot
+	Status       *StatusUpdate
+	SelectItemID list.ItemID
+	Input        *InputPrompt
+	Confirmation *Confirmation
+	Menu         *ItemMenu
+	Navigation   list.ItemID
 }

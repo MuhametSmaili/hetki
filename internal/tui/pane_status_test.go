@@ -129,18 +129,20 @@ func TestStatusPollingWithoutProvider(t *testing.T) {
 func TestStatusPollingIsSingleFlight(t *testing.T) {
 	m := newModel(viewSnapshot(), nil)
 	reads := 0
+	accepted := false
 	var deadline time.Time
 	var hasDeadline bool
 	m.paneStatus.options.Read = func(ctx context.Context, previous status.Snapshot) StatusUpdate {
 		deadline, hasDeadline = ctx.Deadline()
 		reads++
-		return StatusUpdate{Values: previous}
+		return StatusUpdate{Values: previous, Accept: func() { accepted = true }}
 	}
 
 	next, cmd := m.readPaneStatus()
 	reading := next.(model)
 	_, duplicate := reading.readPaneStatus()
 	result := cmd().(statusResultMsg)
+	require.False(t, accepted, "receipt is not application")
 	finished, poll := reading.handleStatusResult(result)
 
 	require.True(t, reading.paneStatus.reading)
@@ -149,6 +151,7 @@ func TestStatusPollingIsSingleFlight(t *testing.T) {
 	require.True(t, hasDeadline)
 	require.LessOrEqual(t, time.Until(deadline), statusReadTimeout)
 	require.False(t, finished.(model).paneStatus.reading)
+	require.True(t, accepted)
 	require.NotNil(t, poll)
 }
 
@@ -158,7 +161,7 @@ func TestStatusPollingStopsOnQuit(t *testing.T) {
 	m.quitting = true
 
 	_, read := m.readPaneStatus()
-	_, poll := m.handleStatusResult(statusResultMsg{values: m.paneStatus.values})
+	_, poll := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Values: m.paneStatus.values}})
 
 	require.Nil(t, read)
 	require.Nil(t, poll)
@@ -210,19 +213,31 @@ func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 			m := paneStatusModel(t, status.Working, now.Add(time.Minute))
-			pending := statusResultMsg{values: m.paneStatus.values, bindings: m.paneStatus.options.Bindings}
+			readAccepted, replacementAccepted := false, false
+			pending := statusResultMsg{update: StatusUpdate{
+				Values: m.paneStatus.values, Bindings: m.paneStatus.options.Bindings,
+				Accept: func() { readAccepted = true },
+			}}
 			pane := m.paneStatus.options.Bindings[list.ItemID{ID: "window"}][0]
 			pane.Generation = test.generation
 			flat := list.Snapshot{Items: []list.Item{{ID: list.ItemID{ID: "pane"}, Primary: "pane"}}}
 			replacement := actionResultMsg{result: ActionResult{
-				Snapshot: &flat, StatusBindings: StatusBindings{{ID: "pane"}: {pane}},
+				Snapshot: &flat, Status: &StatusUpdate{
+					Values: m.paneStatus.values, Bindings: StatusBindings{{ID: "pane"}: {pane}},
+					Accept: func() { replacementAccepted = true },
+				},
 			}}
 
-			rebound, cmd := m.handleActionResult(replacement)
+			m.busy = true
+			ignored, _ := m.handleStatusResult(pending)
+			require.False(t, readAccepted, "busy UI must not acknowledge the read")
+			rebound, cmd := ignored.(model).handleActionResult(replacement)
 			completed, _ := rebound.(model).handleStatusResult(pending)
 			current := completed.(model)
 
 			require.Nil(t, cmd)
+			require.False(t, readAccepted, "stale generation must not acknowledge the read")
+			require.True(t, replacementAccepted)
 			require.Equal(t, test.want, current.paneStatus.options.Bindings.StateAt(list.ItemID{ID: "pane"}, current.paneStatus.values, now))
 		})
 	}
@@ -231,7 +246,7 @@ func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {
 func TestStatusPollReplacesBindingsAndClearsReadFailure(t *testing.T) {
 	m := paneStatusModel(t, status.Working, time.Now().Add(time.Minute))
 	pane := m.paneStatus.options.Bindings[list.ItemID{ID: "window"}][0]
-	failed, _ := m.handleStatusResult(statusResultMsg{values: m.paneStatus.values.Invalidate(), err: errors.New("status unavailable")})
+	failed, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Values: m.paneStatus.values.Invalidate(), Err: errors.New("status unavailable")}})
 	m = failed.(model)
 	require.Equal(t, status.Unknown, m.paneStatus.options.Bindings.StateAt(list.ItemID{ID: "window"}, m.paneStatus.values, time.Now()))
 	require.ErrorContains(t, m.paneStatus.readErr, "status unavailable")
@@ -239,11 +254,11 @@ func TestStatusPollReplacesBindingsAndClearsReadFailure(t *testing.T) {
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: {State: status.Idle, ValidUntil: time.Now().Add(time.Minute)}})
 	require.NoError(t, err)
 
-	recovered, _ := m.handleStatusResult(statusResultMsg{values: values, bindings: StatusBindings{{ID: "window"}: {pane}}})
+	recovered, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Values: values, Bindings: StatusBindings{{ID: "window"}: {pane}}}})
 	m = recovered.(model)
 
 	require.NoError(t, m.paneStatus.readErr)
 	require.Equal(t, status.Idle, m.paneStatus.options.Bindings.StateAt(list.ItemID{ID: "window"}, m.paneStatus.values, time.Now()))
-	cleared, _ := m.handleStatusResult(statusResultMsg{bindings: StatusBindings{}})
+	cleared, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Bindings: StatusBindings{}}})
 	require.Empty(t, cleared.(model).paneStatus.options.Bindings)
 }

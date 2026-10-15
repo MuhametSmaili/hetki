@@ -34,6 +34,10 @@ type StatusUpdate struct {
 
 	// Watching means the next read waits for change rather than polling immediately.
 	Watching bool
+
+	// Accept acknowledges application to the UI, not just receipt. It must be
+	// local bookkeeping only, with no I/O; discarded results must not call it.
+	Accept func()
 }
 
 func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time.Time) status.State {
@@ -89,11 +93,8 @@ type paneStatusState struct {
 
 type statusPollMsg struct{}
 type statusResultMsg struct {
-	values     status.Snapshot
-	bindings   StatusBindings
+	update     StatusUpdate
 	generation uint64
-	err        error
-	watching   bool
 }
 type statusFrameMsg struct{ generation uint64 }
 
@@ -120,7 +121,7 @@ func (m model) readPaneStatus() (tea.Model, tea.Cmd) {
 		ctx, cancel := context.WithTimeout(parent, timeout)
 		defer cancel()
 		update := read(ctx, previous)
-		return statusResultMsg{values: update.Values, bindings: update.Bindings, generation: generation, err: update.Err, watching: update.Watching}
+		return statusResultMsg{update: update, generation: generation}
 	}
 }
 
@@ -132,17 +133,24 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 	if m.busy || msg.generation != m.paneStatus.bindingGeneration {
 		return m, statusPoll(0)
 	}
-	m.paneStatus.values = msg.values
-	m.paneStatus.readErr = msg.err
-	if msg.bindings != nil {
-		m.paneStatus.options.Bindings = msg.bindings
-	}
+	m.applyStatusUpdate(msg.update)
 	m.applyScope(m.items.Query(), time.Now())
-	if msg.watching && msg.err == nil {
+	if msg.update.Watching && msg.update.Err == nil {
 		return m, statusPoll(0)
 	}
 
 	return m, statusPoll(statusPollInterval)
+}
+
+func (m *model) applyStatusUpdate(update StatusUpdate) {
+	m.paneStatus.values = update.Values
+	m.paneStatus.readErr = update.Err
+	if update.Bindings != nil {
+		m.paneStatus.options.Bindings = update.Bindings
+	}
+	if update.Accept != nil {
+		update.Accept()
+	}
 }
 
 func (m model) syncStatusFrame(now time.Time) (model, tea.Cmd) {
