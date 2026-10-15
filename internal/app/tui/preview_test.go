@@ -48,7 +48,9 @@ func TestPreviewResolvesOnlyTheSelectedTarget(t *testing.T) {
 	window.Panes = append(window.Panes, window.Panes[0])
 	window.Panes[0].ID, window.Panes[0].Active = "%0", false
 	stub.state = state
-	_, err := adapter.toggleProjection(context.Background(), windowItemID("$1", "@1"))
+	_, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionRefresh})
+	require.NoError(t, err)
+	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: windowItemID("$1", "@1")})
 	require.NoError(t, err)
 	id := destinationItemID("$1", "@1", "%1")
 	_, err = adapter.Preview(context.Background(), id)

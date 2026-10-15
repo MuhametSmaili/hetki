@@ -27,6 +27,7 @@ type LiveAdapter struct {
 	mu            sync.RWMutex // Protects published projection state and the cached backend; never held during capture.
 	cached        Backend
 	index         itemIndex
+	input         *projectionInput // Owned and immutable between successful loads.
 	statusServer  observe.Server
 	statusErr     error
 	projection    projectionKind

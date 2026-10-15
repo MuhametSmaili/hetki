@@ -115,7 +115,7 @@ func TestLiveAdapterStartsWithTheFlatProjection(t *testing.T) {
 	assert.Equal(t, destinationItemID("$1", "@1", "%1"), snapshot.ActiveItemID)
 }
 
-func TestLiveAdapterLoadsFrecencyBeforeProjectingFlatRows(t *testing.T) {
+func TestLiveAdapterKeepsLoadedFrecencyUntilRefresh(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frecency.json")
 	store := frecency.NewStore(path)
 	require.NoError(t, store.Record(context.Background(), "/z", "zeta"))
@@ -130,6 +130,22 @@ func TestLiveAdapterLoadsFrecencyBeforeProjectingFlatRows(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, snapshot.Items, 2)
 	assert.Equal(t, destinationItemID("$2", "@2", "%2"), snapshot.Items[0].ID)
+	require.NoError(t, store.Record(t.Context(), "/a", "alpha"))
+	require.NoError(t, store.Record(t.Context(), "/a", "alpha"))
+
+	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+	require.NoError(t, err)
+	flat, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+
+	require.NoError(t, err)
+	require.Equal(t, destinationItemID("$2", "@2", "%2"), flat.Snapshot.Items[0].ID, "toggle must keep the loaded ranking")
+	require.Equal(t, 1, stub.queryCalls)
+
+	refreshed, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionRefresh})
+
+	require.NoError(t, err)
+	require.Equal(t, destinationItemID("$1", "@1", "%1"), refreshed.Snapshot.Items[0].ID)
+	require.Equal(t, 2, stub.queryCalls)
 }
 
 func TestLiveAdapterRecordsOnlyAfterSuccessfulNavigation(t *testing.T) {
@@ -227,6 +243,14 @@ func TestLiveAdapterShowsInvalidFrecencyAndPreservesItBeforeRecording(t *testing
 	snapshot, err := adapter.Load(context.Background())
 	require.NoError(t, err)
 	assert.Contains(t, snapshot.Notice, "frecency state")
+	require.NoError(t, os.Remove(path))
+	for range 2 {
+		rebound, toggleErr := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+		require.NoError(t, toggleErr)
+		require.Equal(t, snapshot.Notice, rebound.Snapshot.Notice, "toggle must retain the loaded notice without reading the repaired store")
+	}
+	require.NoError(t, os.WriteFile(path, []byte(`{"version":`), 0600))
+
 	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: snapshot.Items[0].ID})
 	require.NoError(t, err)
 	require.NoError(t, adapter.Navigate(context.Background(), result.Navigation))
@@ -616,29 +640,56 @@ func TestInvalidProjectionRetainsPreviousOwnerIndex(t *testing.T) {
 	assert.Equal(t, windowItemID("$1", "@1"), result.Navigation)
 }
 
-func TestLiveAdapterTogglesBetweenTreeAndFlatWithStableSelection(t *testing.T) {
+func TestLiveAdapterTogglesOwnedStateUntilRefresh(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := loadedAdapter(t, stub)
 	destinationID := destinationItemID("$1", "@1", "%1")
+	stub.state.Active = backend.ActiveContext{}
+	stub.state.Sessions[0].Name = "renamed session"
+	window := &stub.state.Sessions[0].Windows[0]
+	window.Name = "renamed window"
+	window.Panes[0].Path = "/changed/path"
+	window.Panes = append(window.Panes, backend.Pane{ID: "%2", Path: "/new/pane"})
 
-	flat, err := adapter.Execute(context.Background(), ui.ActionRequest{
+	flat, err := adapter.Execute(t.Context(), ui.ActionRequest{
 		ActionID: ui.ActionToggleProjection, ItemID: windowItemID("$1", "@1"),
 	})
+
 	require.NoError(t, err)
+	require.Equal(t, 1, stub.queryCalls, "toggle must not acquire inventory")
 	require.Len(t, flat.Snapshot.Items, 1)
 	assert.Equal(t, destinationID, flat.SelectItemID)
+	assert.Equal(t, destinationID, flat.Snapshot.ActiveItemID)
 	assert.Empty(t, flat.Snapshot.Items[0].Children)
+	assert.Equal(t, "core", flat.Snapshot.Items[0].Context)
+	assert.Equal(t, "editor", flat.Snapshot.Items[0].Primary)
+	assert.Equal(t, "/work/editor", flat.Snapshot.Items[0].Secondary)
 
-	opened, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: destinationID})
+	opened, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: destinationID})
 	require.NoError(t, err)
-	assert.Equal(t, destinationItemID("$1", "@1", "%1"), opened.Navigation)
+	assert.Equal(t, destinationID, opened.Navigation)
+	require.Equal(t, 2, stub.queryCalls, "navigation still validates fresh inventory")
+	require.NotNil(t, adapter.pendingRecord)
+	assert.Equal(t, "/changed/path", adapter.pendingRecord.path)
 
-	tree, err := adapter.Execute(context.Background(), ui.ActionRequest{
+	tree, err := adapter.Execute(t.Context(), ui.ActionRequest{
 		ActionID: ui.ActionToggleProjection, ItemID: destinationID,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, windowItemID("$1", "@1"), tree.SelectItemID)
-	assert.Equal(t, projectionTree, adapter.projection)
+	assert.Equal(t, "core", tree.Snapshot.Items[0].Primary)
+	assert.Equal(t, "1 editor", tree.Snapshot.Items[0].Children[0].Primary)
+	require.Equal(t, 2, stub.queryCalls)
+
+	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionRefresh})
+	require.NoError(t, err)
+	refreshed, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+	require.NoError(t, err)
+	require.Equal(t, 3, stub.queryCalls, "only Refresh reacquires the projection input")
+	require.Len(t, refreshed.Snapshot.Items, 2)
+	assert.Equal(t, "renamed session", refreshed.Snapshot.Items[0].Context)
+	assert.Equal(t, "renamed window", refreshed.Snapshot.Items[0].Primary)
+	assert.Equal(t, "/changed/path", refreshed.Snapshot.Items[0].Secondary)
 }
 
 func TestTreeToFlatPrefersTheSelectedSessionsActiveDestination(t *testing.T) {
@@ -694,6 +745,14 @@ func TestFlatDestinationActionsUseTheOwningWindowAndSession(t *testing.T) {
 	result, err = adapter.Execute(context.Background(), remove)
 	require.NoError(t, err)
 	assert.Empty(t, result.SelectItemID, "flat deletion must let the list choose the next or previous surviving row")
+
+	queries := stub.queryCalls
+	tree, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+
+	require.NoError(t, err)
+	require.Equal(t, queries, stub.queryCalls)
+	require.Len(t, tree.Snapshot.Items[0].Children, 1)
+	assert.Equal(t, "2 logs", tree.Snapshot.Items[0].Children[0].Primary, "mutations must replace the input used by the next toggle")
 }
 
 func TestInvalidFlatProjectionRetainsTreeAndOwnerIndex(t *testing.T) {

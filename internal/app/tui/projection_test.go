@@ -20,13 +20,33 @@ type projectionStatusBackend struct {
 }
 
 func (b *projectionStatusBackend) QueryStatusState(context.Context) (backend.StateResult, observe.Server, error) {
+	b.queryCalls++
 	if b.afterQuery != nil {
 		b.afterQuery()
 	}
 	return b.state, b.server, b.statusErr
 }
 
-func TestInvalidProjectionPreservesStatusMetadata(t *testing.T) {
+func TestToggleDistinguishesUnloadedAndEmptyState(t *testing.T) {
+	b := &stubBackend{}
+	adapter := testAdapter(b)
+
+	_, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+
+	require.ErrorContains(t, err, "live state is not loaded")
+	require.Zero(t, b.queryCalls)
+
+	_, err = adapter.Load(t.Context())
+	require.NoError(t, err)
+	for range 2 {
+		result, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+		require.NoError(t, err)
+		require.Empty(t, result.Snapshot.Items)
+	}
+	require.Equal(t, 1, b.queryCalls, "empty loaded inventory is still a usable local input")
+}
+
+func TestInvalidRefreshPreservesProjectionInputAndStatusMetadata(t *testing.T) {
 	server := observe.Server{PID: 123, Birth: "original", Started: 1}
 	state := liveState()
 	state.Sessions[0].Windows[0].Panes[0].StatusRef = status.PaneRef{Server: server.Identity(), ID: "%1", Generation: "pane"}
@@ -40,7 +60,7 @@ func TestInvalidProjectionPreservesStatusMetadata(t *testing.T) {
 	b.statusErr = observe.ErrServerChanged
 	b.state.Sessions = append(b.state.Sessions, b.state.Sessions[0])
 
-	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: initial.Items[0].ID})
+	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionRefresh, ItemID: initial.Items[0].ID})
 
 	require.Error(t, err)
 	require.Equal(t, server, adapter.statusServer)
@@ -48,10 +68,18 @@ func TestInvalidProjectionPreservesStatusMetadata(t *testing.T) {
 	reader, statusErr := adapter.OpenStatus(t.Context())
 	require.NoError(t, statusErr)
 	require.NotNil(t, reader)
+
+	result, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+
+	require.NoError(t, err)
+	require.Len(t, result.Snapshot.Items, 1, "failed refresh must not replace the cached input")
+	require.Equal(t, "core", result.Snapshot.Items[0].Primary)
+	require.Equal(t, server, adapter.statusServer)
+	require.Equal(t, 3, b.queryCalls, "initial status query, then failed refresh with fallback; no toggle query")
 }
 
 func TestCanceledSnapshotPreparationPreservesLastGoodState(t *testing.T) {
-	for _, operation := range []string{"load", "toggle"} {
+	for _, operation := range []string{"load", "refresh", "toggle"} {
 		t.Run(operation, func(t *testing.T) {
 			statusFailure := errors.New("status unavailable")
 			b := &projectionStatusBackend{stubBackend: stubBackend{state: liveState()}, statusErr: statusFailure}
@@ -65,10 +93,15 @@ func TestCanceledSnapshotPreparationPreservesLastGoodState(t *testing.T) {
 			defer cancel()
 			b.afterQuery = cancel
 
-			if operation == "toggle" {
-				_, err = adapter.Execute(ctx, ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: initial.Items[0].ID})
-			} else {
+			switch operation {
+			case "load":
 				_, err = adapter.Load(ctx)
+			case "refresh":
+				_, err = adapter.Execute(ctx, ui.ActionRequest{ActionID: ui.ActionRefresh})
+			case "toggle":
+				cancel()
+				// Exercise publication rollback rather than Execute's early cancellation guard.
+				_, err = adapter.toggleProjection(ctx, initial.Items[0].ID)
 			}
 
 			require.ErrorIs(t, err, context.Canceled)
@@ -80,6 +113,15 @@ func TestCanceledSnapshotPreparationPreservesLastGoodState(t *testing.T) {
 			menu, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionContextMenu, ItemID: initial.Items[0].ID})
 			require.NoError(t, err)
 			require.NotNil(t, menu.Menu)
+
+			queries := b.queryCalls
+			rebound, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+			require.NoError(t, err)
+			require.Len(t, rebound.Snapshot.Items, 1)
+			require.Equal(t, "core", rebound.Snapshot.Items[0].Primary)
+			require.Zero(t, adapter.statusServer)
+			require.ErrorIs(t, adapter.statusErr, statusFailure)
+			require.Equal(t, queries, b.queryCalls)
 		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,7 +32,7 @@ func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
 	projection := a.projection
 	a.mu.RUnlock()
 
-	prepared, err := a.prepareSnapshot(ctx, projection)
+	prepared, err := a.loadProjection(ctx, projection)
 	if err != nil {
 		return list.Snapshot{}, err
 	}
@@ -42,15 +43,41 @@ func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
 	return prepared.snapshot, nil
 }
 
+type projectionInput struct {
+	state  liveStateResult
+	scores frecency.Scores
+	notice string
+}
+
+func newProjectionInput(state liveStateResult, scores frecency.Scores, notice string) *projectionInput {
+	state.Sessions = slices.Clone(state.Sessions)
+	for i := range state.Sessions {
+		session := &state.Sessions[i]
+		session.Windows = slices.Clone(session.Windows)
+		for j := range session.Windows {
+			window := &session.Windows[j]
+			window.Panes = slices.Clone(window.Panes)
+		}
+	}
+	return &projectionInput{state: state, scores: scores, notice: notice}
+}
+
+func (input *projectionInput) project(projection projectionKind) (preparedSnapshot, error) {
+	snapshot, index, err := projectState(input.state.StateResult, projection, input.scores, input.notice)
+	if err != nil {
+		return preparedSnapshot{}, err
+	}
+	return preparedSnapshot{snapshot: snapshot, index: index, projection: projection, input: input}, nil
+}
+
 type preparedSnapshot struct {
 	snapshot   list.Snapshot
 	index      itemIndex
 	projection projectionKind
-	server     observe.Server
-	statusErr  error
+	input      *projectionInput
 }
 
-func (a *LiveAdapter) prepareSnapshot(ctx context.Context, projection projectionKind) (preparedSnapshot, error) {
+func (a *LiveAdapter) loadProjection(ctx context.Context, projection projectionKind) (preparedSnapshot, error) {
 	result, err := a.queryState(ctx)
 	if err != nil {
 		return preparedSnapshot{}, err
@@ -61,14 +88,8 @@ func (a *LiveAdapter) prepareSnapshot(ctx context.Context, projection projection
 		return preparedSnapshot{}, err
 	}
 
-	snapshot, index, err := projectState(result.StateResult, projection, scores, notice)
-	if err != nil {
-		return preparedSnapshot{}, err
-	}
-	return preparedSnapshot{
-		snapshot: snapshot, index: index, projection: projection,
-		server: result.server, statusErr: result.statusErr,
-	}, nil
+	input := newProjectionInput(result, scores, notice)
+	return input.project(projection)
 }
 
 func (a *LiveAdapter) publishSnapshot(ctx context.Context, prepared preparedSnapshot) error {
@@ -81,7 +102,8 @@ func (a *LiveAdapter) publishSnapshot(ctx context.Context, prepared preparedSnap
 
 	a.projection = prepared.projection
 	a.index = prepared.index
-	a.statusServer, a.statusErr = prepared.server, prepared.statusErr
+	a.input = prepared.input
+	a.statusServer, a.statusErr = prepared.input.state.server, prepared.input.state.statusErr
 	return nil
 }
 
@@ -160,8 +182,11 @@ func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.Item
 		}
 	}
 	a.mu.RLock()
-	current := a.projection
+	current, input := a.projection, a.input
 	a.mu.RUnlock()
+	if input == nil {
+		return ui.ActionResult{}, fmt.Errorf("live state is not loaded")
+	}
 
 	next := projectionFlat
 	message := "showing panes"
@@ -170,7 +195,7 @@ func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.Item
 		message = "showing session tree"
 	}
 
-	prepared, err := a.prepareSnapshot(ctx, next)
+	prepared, err := input.project(next)
 	if err != nil {
 		return ui.ActionResult{}, err
 	}
