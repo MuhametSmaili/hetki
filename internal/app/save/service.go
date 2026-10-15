@@ -181,6 +181,9 @@ func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPat
 		if err != nil {
 			return "", fmt.Errorf("existing destination is invalid: %w", err)
 		}
+		if err := preserveCommands(existing, workspace, validateLayout); err != nil {
+			return "", err
+		}
 		if !saveAll {
 			workspace = appshared.MergeWorkspaces(existing, workspace)
 		}

@@ -67,10 +67,13 @@ func Parse(data []byte, path string, validateLayout func(string) error) (*Worksp
 	if err != nil {
 		return nil, err
 	}
-	return prepare(raw, validateLayout)
+	return Normalize(raw, validateLayout)
 }
 
-func prepare(raw *Workspace, validateLayout func(string) error) (*Workspace, error) {
+// Normalize validates a workspace and returns a normalized copy without changing
+// the input. It resolves directories and compiles first-pane commands. The layout
+// validator is required and must be pure and bounded, as for Parse.
+func Normalize(raw *Workspace, validateLayout func(string) error) (*Workspace, error) {
 	if errs := Validate(raw, validateLayout); len(errs) > 0 {
 		return nil, ToError(errs)
 	}

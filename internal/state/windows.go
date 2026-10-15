@@ -79,13 +79,12 @@ func (c windowComparer) windowsMatch(desired, actual *Window) bool {
 		}
 	}
 
-	if len(desired.Panes) != len(actual.Panes) {
+	if !WindowsCorrespond(desired, actual) {
 		return false
 	}
 
-	// Panes are matched by stable positional order after window matching by name+path.
 	for i := range desired.Panes {
-		if !panesMatch(desired.Panes[i], actual.Panes[i]) {
+		if desired.Panes[i].Zoom != actual.Panes[i].Zoom {
 			return false
 		}
 	}
@@ -93,11 +92,20 @@ func (c windowComparer) windowsMatch(desired, actual *Window) bool {
 	return true
 }
 
-// panesMatch compares steady-state pane properties only. Command is a
-// creation-time effect (D1): a running command never makes a pane look
-// drifted, so start/force never re-sends it.
-func panesMatch(desired, actual *Pane) bool {
-	return desired.Path == actual.Path && desired.Zoom == actual.Zoom
+// WindowsCorrespond compares names and resolved directories, pairing panes by
+// position. Layout and zoom are mutable properties, not correspondence keys.
+// Commands are creation-time effects, never evidence of identity or drift.
+// Callers must supply canonical paths and an explicit first pane for each window.
+func WindowsCorrespond(desired, actual *Window) bool {
+	if keyForWindow(desired) != keyForWindow(actual) || len(desired.Panes) != len(actual.Panes) {
+		return false
+	}
+	for i := range desired.Panes {
+		if desired.Panes[i].Path != actual.Panes[i].Path {
+			return false
+		}
+	}
+	return true
 }
 
 func keyForWindow(w *Window) windowKey {

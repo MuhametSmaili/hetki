@@ -51,7 +51,7 @@ func TestServiceRunWritesCurrentSessionWorkspace(t *testing.T) {
 				Name:   "editor",
 				Path:   filepath.Join(home, "code", "hetki"),
 				Layout: "tiled",
-				Panes:  []backend.Pane{{Path: filepath.Join(home, "code", "hetki")}},
+				Panes:  []backend.Pane{{Path: filepath.Join(home, "code", "hetki"), Command: "node", Program: "pi"}},
 			}},
 		}},
 		Active: backend.ActiveContext{Session: "dev"},
@@ -70,6 +70,7 @@ func TestServiceRunWritesCurrentSessionWorkspace(t *testing.T) {
 	require.Len(t, workspace.Sessions[0].Windows, 1)
 	assert.Equal(t, filepath.Join(home, "code", "hetki"), workspace.Sessions[0].Windows[0].Path)
 	assert.Empty(t, workspace.Sessions[0].Windows[0].Layout, "single-pane layouts remain omitted")
+	assert.Empty(t, workspace.Sessions[0].Windows[0].Panes[0].Command, "foreground observations are not startup commands")
 
 	contents, err := os.ReadFile(outputPath)
 	require.NoError(t, err)
