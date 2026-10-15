@@ -5,16 +5,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 )
 
 const (
 	columnGap          = "  "
 	contextSeparator   = " › "
-	statusGap          = " "
-	statusCellWidth    = 1
-	commandStatusWidth = len(statusGap) + statusCellWidth
 	minColumnPathWidth = 6
 )
 
@@ -99,31 +95,10 @@ func renderColumnRow(row rowProps, columns columnWidths, width int, styles theme
 
 	bodyWidth := max(0, width-columns.trailing-len(columnGap))
 	line = truncateWidth(line, bodyWidth)
-	trailing := renderColumnTrailing(row, columns.trailing, styles)
+	trailing := renderTrailing(row, columns.trailing, styles)
 	padding := max(0, width-columns.trailing-terminal.Width(line))
 	line += style.Render(strings.Repeat(" ", padding)) + trailing
 	return styleRowLine(row, line, width, styles)
-}
-
-func renderColumnTrailing(row rowProps, width int, styles theme) string {
-	if width <= 0 {
-		return ""
-	}
-
-	style := styles.itemStyle(row.Active, row.Selected)
-	commandWidth := max(0, width-commandStatusWidth)
-	command := truncateWidth(columnText(row.Trailing), commandWidth)
-	padding := strings.Repeat(" ", max(0, commandWidth-terminal.Width(command)))
-	text := padding + command
-	if width > statusCellWidth {
-		text += statusGap
-	}
-
-	glyph, color := statusIndicator(row.Status, row.StatusTime)
-	if glyph == "" {
-		return style.Render(text + strings.Repeat(" ", statusCellWidth))
-	}
-	return style.Render(text) + style.Foreground(lipgloss.Color(color)).Render(glyph)
 }
 
 func columnText(value string) string {

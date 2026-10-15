@@ -64,7 +64,7 @@ func TestStatusRenderingPreservesSelectionAndTrailingContent(t *testing.T) {
 			}
 			wantTrailing := test.glyph
 			if test.command != "" {
-				wantTrailing += " " + test.command
+				wantTrailing = test.command + " " + test.glyph
 			}
 			position := 40 - terminal.Width(wantTrailing)
 			screen := uv.NewScreenBuffer(40, 1)
@@ -74,7 +74,7 @@ func TestStatusRenderingPreservesSelectionAndTrailingContent(t *testing.T) {
 
 			require.Equal(t, 40, terminal.Width(line))
 			require.Equal(t, wantTrailing, terminal.Sanitize(terminal.Cut(line, position, 40)))
-			cell := screen.CellAt(position, 0)
+			cell := screen.CellAt(39, 0)
 			require.Equal(t, test.glyph, cell.Content)
 			if test.glyph != " " {
 				require.Equal(t, lipgloss.Color(test.color), cell.Style.Fg)
@@ -105,17 +105,26 @@ func TestAbsentStatusRendersWithoutIndicator(t *testing.T) {
 }
 
 func TestStatusRowsFitNarrowWidths(t *testing.T) {
-	for _, width := range []int{0, 1, 2, 3, 6, 12, 24, 80} {
+	for width := 0; width <= 80; width++ {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			row := rowProps{
-				Primary: "中👨‍👩‍👧éditor", Secondary: "~/src",
+				Primary: "中👨‍👩‍👧éditor", Secondary: "~/src", Depth: 1, TreePrefix: "└─ ",
+				Selected: true, Active: true,
 				Trailing: "\x1b]0;bad\aopencode", Status: status.Value{State: status.Working},
 			}
 
-			line := renderList(listProps{Width: width, Rows: []rowProps{row}})[0]
+			styles := defaultTheme()
+			line := renderList(listProps{Width: width, Rows: []rowProps{row}, Theme: styles})[0]
 
-			require.LessOrEqual(t, terminal.Width(line), width)
+			require.Equal(t, width, terminal.Width(line))
 			require.NotContains(t, line, "\x1b]0")
+			screen := uv.NewScreenBuffer(width, 1)
+			uv.NewStyledString(line).Draw(screen, screen.Bounds())
+			for x := 0; x < width; {
+				cell := screen.CellAt(x, 0)
+				require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg, "cell %d", x)
+				x += max(1, cell.Width)
+			}
 		})
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/stretchr/testify/require"
 )
 
 func TestShortenPath(t *testing.T) {
@@ -133,7 +134,7 @@ func TestRenderListDefaultThemeStylesEveryRowShapeTheSame(t *testing.T) {
 		{name: "flat", row: rowProps{Primary: "flat"}, normal: "  flat", active: "│ flat", selected: "  flat"},
 		{
 			name: "tree root", row: rowProps{Primary: "root", Branch: true},
-			normal: "  \uf0da root", active: "│ \uf0da root", selected: "  \uf0da root",
+			normal: "  ▸ root", active: "│ ▸ root", selected: "  ▸ root",
 		},
 		{
 			name: "tree child", row: rowProps{Primary: "child", Depth: 1, TreePrefix: "└─ "},
@@ -192,7 +193,7 @@ func TestRenderListAlignsSecondaryColumnsAndTruncatesBothSides(t *testing.T) {
 	line := renderList(listProps{Width: 24, Rows: []rowProps{{
 		Primary: "a-very-long-session > a-very-long-window", Secondary: "~/a/very/long/final-path",
 	}}})[0]
-	if !strings.Contains(line, "...") || !strings.Contains(line, "path") {
+	if !strings.Contains(line, "...") || !strings.HasSuffix(line, "ath") {
 		t.Fatalf("expected independent middle path elision, got %q", line)
 	}
 	if width := lipgloss.Width(line); width > 24 {
@@ -213,26 +214,28 @@ func TestRenderListSanitizesAndFitsNarrowWidths(t *testing.T) {
 	}
 }
 
-func TestRenderListAlignsTrailingTextAtTheRightEdge(t *testing.T) {
+func TestRenderListAlignsTrailingTextBeforeTheStatusCell(t *testing.T) {
 	for _, compact := range []bool{false, true} {
 		for _, width := range []int{40, 64, 100} {
-			rows := []rowProps{
-				{Primary: "deveditor", Secondary: "~/code", Trailing: "pi", Selected: true},
-				{Primary: "devtests", Secondary: "~/tests", Trailing: "opencode", Active: true, JumpLabel: "a"},
-			}
-			lines := renderList(listProps{Width: width, Rows: rows, Compact: compact, Theme: defaultTheme()})
-			for i, line := range lines {
-				plain := terminal.Sanitize(line)
-				if terminal.Width(plain) != width || !strings.HasSuffix(plain, rows[i].Trailing) {
-					t.Fatalf("width %d: trailing text is not at the right edge: %q", width, plain)
+			t.Run(fmt.Sprintf("compact=%t/width=%d", compact, width), func(t *testing.T) {
+				rows := []rowProps{
+					{Primary: "deveditor", Secondary: "~/code", Trailing: "pi", Selected: true},
+					{Primary: "devtests", Secondary: "~/tests", Trailing: "opencode", Active: true, JumpLabel: "a"},
 				}
-				if !strings.Contains(plain, rows[i].Secondary) {
-					t.Fatalf("width %d: path disappeared: %q", width, plain)
+
+				lines := renderList(listProps{Width: width, Rows: rows, Compact: compact, Theme: defaultTheme()})
+
+				for i, line := range lines {
+					plain := terminal.Sanitize(line)
+					require.Equal(t, width, terminal.Width(plain))
+					require.True(t, strings.HasSuffix(plain, rows[i].Trailing+"  "))
+					require.Contains(t, plain, rows[i].Secondary)
 				}
-			}
-			if terminal.Width(strings.Split(terminal.Sanitize(lines[0]), "~/code")[0]) != terminal.Width(strings.Split(terminal.Sanitize(lines[1]), "~/tests")[0]) {
-				t.Fatalf("paths lost their aligned middle column: %#v", lines)
-			}
+				require.Equal(t,
+					terminal.Width(strings.Split(terminal.Sanitize(lines[0]), "~/code")[0]),
+					terminal.Width(strings.Split(terminal.Sanitize(lines[1]), "~/tests")[0]),
+				)
+			})
 		}
 	}
 }
@@ -241,7 +244,7 @@ func TestRenderListPreservesCommandWhileShorteningOtherColumns(t *testing.T) {
 	line := renderList(listProps{Width: 40, Rows: []rowProps{{
 		Primary: "a-very-long-sessiona-very-long-window", Secondary: "~/a/very/long/path/src", Trailing: "opencode",
 	}}})[0]
-	if !strings.HasSuffix(line, "opencode") || !strings.Contains(line, "...") || terminal.Width(line) != 40 {
+	if !strings.HasSuffix(line, "opencode  ") || !strings.Contains(line, "...") || terminal.Width(line) != 40 {
 		t.Fatalf("expected independently fitted columns: %q", line)
 	}
 	line = renderList(listProps{Width: 12, Rows: []rowProps{{Primary: "dev", Trailing: "a-very-long-command"}}})[0]

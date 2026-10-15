@@ -23,34 +23,45 @@ func TestLiveAdapterHidesDefaultShellCommandsFromLabelsAndSearch(t *testing.T) {
 		{name: "visible shell window", shell: "/bin/zsh", command: "zsh", windowName: "zsh", query: "zsh", matches: true},
 		{name: "visible shell program", shell: "/bin/zsh", command: "zsh", program: "zsh", want: "zsh", query: "zsh", matches: true},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			state := liveState()
-			state.Sessions[0].DefaultShell = test.shell
-			window := &state.Sessions[0].Windows[0]
-			window.Name = "editor"
-			if test.windowName != "" {
-				window.Name = test.windowName
-			}
-			window.Panes[0].Command = test.command
-			window.Panes[0].Program = test.program
-			window.Panes[0].Dead = test.dead
-			stub := &stubBackend{state: state}
-			adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
+		for _, projection := range []struct {
+			name string
+			kind projectionKind
+		}{{"flat", projectionFlat}, {"tree", projectionTree}} {
+			t.Run(test.name+"/"+projection.name, func(t *testing.T) {
+				state := liveState()
+				state.Sessions[0].DefaultShell = test.shell
+				window := &state.Sessions[0].Windows[0]
+				window.Name = "editor"
+				if test.windowName != "" {
+					window.Name = test.windowName
+				}
+				window.Panes[0].Command = test.command
+				window.Panes[0].Program = test.program
+				window.Panes[0].Dead = test.dead
+				stub := &stubBackend{state: state}
+				adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
+				adapter.projection = projection.kind
 
-			snapshot, err := adapter.Load(t.Context())
+				snapshot, err := adapter.Load(t.Context())
 
-			require.NoError(t, err)
-			require.Len(t, snapshot.Items, 1)
-			require.Equal(t, test.want, snapshot.Items[0].Trailing)
-			require.Contains(t, snapshot.Items[0].Primary, window.Name)
-			require.Equal(t, test.command, window.Panes[0].Command)
+				require.NoError(t, err)
+				require.Len(t, snapshot.Items, 1)
+				item := snapshot.Items[0]
+				if projection.kind == projectionTree {
+					require.Len(t, item.Children, 1)
+					item = item.Children[0]
+				}
+				require.Equal(t, test.want, item.Trailing)
+				require.Contains(t, item.Primary, window.Name)
+				require.Equal(t, test.command, window.Panes[0].Command)
 
-			model, err := list.New(snapshot)
-			require.NoError(t, err)
+				model, err := list.New(snapshot)
+				require.NoError(t, err)
 
-			model.SetQuery(test.query)
+				model.SetQuery(test.query)
 
-			require.Equal(t, test.matches, len(model.Rows()) > 0)
-		})
+				require.Equal(t, test.matches, len(model.Rows()) > 0)
+			})
+		}
 	}
 }

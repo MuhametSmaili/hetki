@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -46,14 +45,12 @@ func renderList(props listProps) []string {
 	left := make([]string, len(props.Rows))
 	columnWidth := 0
 	secondaryWidth := 0
-	trailingWidth := 0
-	alignSecondary := false
+	trailingWidth := commandStatusWidth
 	for i, row := range props.Rows {
 		left[i] = renderRowLine(row, props.Theme, props.Compact)
 		columnWidth = max(columnWidth, terminal.Width(left[i]))
 		secondaryWidth = max(secondaryWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Secondary))))
 		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
-		alignSecondary = alignSecondary || (row.Depth == 0 && strings.TrimSpace(row.Secondary) != "")
 	}
 	const gap = 2
 	const minSecondaryWidth = 6
@@ -64,30 +61,27 @@ func renderList(props listProps) []string {
 	if trailingWidth > 0 {
 		bodyWidth = max(0, props.Width-gap-trailingWidth)
 	}
-	if alignSecondary && secondaryWidth > 0 && bodyWidth >= gap+minSecondaryWidth {
+	if secondaryWidth > 0 && bodyWidth >= gap+minSecondaryWidth {
 		reserve := min(secondaryWidth, max(minSecondaryWidth, bodyWidth/2))
 		columnWidth = min(columnWidth, bodyWidth-gap-reserve)
 	}
 	lines := make([]string, 0, len(props.Rows))
 	for i, row := range props.Rows {
-		line := composeRowLine(row, left[i], columnWidth, bodyWidth, props.Compact, alignSecondary, props.Theme)
-		if trailingWidth > 0 {
+		line := composeRowLine(row, left[i], columnWidth, bodyWidth, props.Theme)
+		if trailingWidth > 0 && rowTrailingWidth(row) > 0 {
 			trailing := renderTrailing(row, trailingWidth, props.Theme)
-			if trailing != "" {
-				padding := max(0, props.Width-terminal.Width(line)-terminal.Width(trailing))
-				// The path's nested style resets ANSI attributes. Reapply the
-				// row style to both the remaining gap and right-hand text.
-				line += props.Theme.itemStyle(row.Active, row.Selected).Render(strings.Repeat(" ", padding) + trailing)
-			}
+			padding := max(0, props.Width-terminal.Width(line)-trailingWidth)
+			// The path resets ANSI attributes; style the gap to retain selection.
+			line += props.Theme.itemStyle(row.Active, row.Selected).Render(strings.Repeat(" ", padding)) + trailing
 		}
 		lines = append(lines, styleRowLine(row, line, props.Width, props.Theme))
 	}
 	return lines
 }
 
-func composeRowLine(row rowProps, left string, columnWidth, width int, compact, alignSecondary bool, styles theme) string {
+func composeRowLine(row rowProps, left string, columnWidth, width int, styles theme) string {
 	secondary := strings.TrimSpace(terminal.Sanitize(row.Secondary))
-	if (compact && !alignSecondary) || secondary == "" {
+	if secondary == "" {
 		return truncateWidth(left, width)
 	}
 	const gap = 2
@@ -96,22 +90,12 @@ func composeRowLine(row rowProps, left string, columnWidth, width int, compact, 
 	if row.Selected {
 		secondaryStyle = styles.secondarySelected
 	}
-	leftWidth := terminal.Width(left)
-	if !alignSecondary {
-		available := width - leftWidth - gap
-		if available < minSecondaryWidth {
-			return truncateWidth(left, width)
-		}
-		shortened := shortenPath(secondary, available)
-		padding := max(gap, width-leftWidth-terminal.Width(shortened))
-		return left + strings.Repeat(" ", padding) + secondaryStyle.Render(shortened)
-	}
 	if width < gap+minSecondaryWidth {
 		return truncateWidth(left, width)
 	}
 	leftBudget := min(columnWidth, width-gap-minSecondaryWidth)
 	left = truncateWidth(left, leftBudget)
-	leftWidth = terminal.Width(left)
+	leftWidth := terminal.Width(left)
 	available := width - leftBudget - gap
 	shortened := shortenPath(secondary, available)
 	padding := leftBudget - leftWidth + gap
@@ -203,10 +187,6 @@ func decoratedLabel(row rowProps, compact bool) string {
 	if primary == "" {
 		primary = "-"
 	}
-	if compact {
-		return strings.Repeat("  ", max(row.Depth-1, 0)) + primary
-	}
-	prefix := row.TreePrefix
 	branch := branchGlyph(row)
 	if row.Depth == 0 {
 		if !row.Branch {
@@ -214,7 +194,10 @@ func decoratedLabel(row rowProps, compact bool) string {
 		}
 		return branch + primary
 	}
-	return fmt.Sprintf("  %s%s", prefix, primary)
+	if compact {
+		return row.TreePrefix + primary
+	}
+	return "  " + row.TreePrefix + primary
 }
 
 func branchGlyph(row rowProps) string {
@@ -222,7 +205,7 @@ func branchGlyph(row rowProps) string {
 		return "  "
 	}
 	if row.Expanded {
-		return "\uf0d7 "
+		return "▾ "
 	}
-	return "\uf0da "
+	return "▸ "
 }

@@ -98,7 +98,9 @@ func TestLiveAdapterProjectsPresentationAndKeepsTargetsInOwnerIndex(t *testing.T
 	assert.Equal(t, sessionItemID("$1"), snapshot.Items[0].ID)
 	assert.Equal(t, windowItemID("$1", "@1"), snapshot.Items[0].Children[0].ID)
 	assert.Equal(t, windowItemID("$1", "@1"), snapshot.ActiveItemID)
-	assert.Contains(t, snapshot.Items[0].Primary, "core")
+	assert.Equal(t, "core", snapshot.Items[0].Primary)
+	assert.Equal(t, "1 editor", snapshot.Items[0].Children[0].Primary)
+	assert.Empty(t, snapshot.Items[0].Children[0].Children)
 	assert.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1"}, adapter.index[windowItemID("$1", "@1")].Target)
 }
 

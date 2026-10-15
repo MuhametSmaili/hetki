@@ -290,7 +290,7 @@ func flattenAtDepth(items []Item, ancestors []bool, expanded map[ItemID]bool, in
 		hasNext := i < len(items)-1
 		isExpanded := includeAll || expanded[item.ID]
 		*rows = append(*rows, Row{
-			Item: item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors),
+			Item: item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
 			Expanded: isExpanded, Branch: len(item.Children) > 0,
 		})
 		if len(item.Children) > 0 && isExpanded {
@@ -337,7 +337,7 @@ func flattenMatches(items []matchedItem, ancestors []bool, rows *[]Row) {
 	for i, matched := range items {
 		hasNext := i < len(items)-1
 		*rows = append(*rows, Row{
-			Item: matched.item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors),
+			Item: matched.item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
 			Expanded: true, Branch: len(matched.item.Children) > 0, Score: matched.score,
 		})
 		flattenMatches(matched.children, append(append([]bool(nil), ancestors...), hasNext), rows)
@@ -407,19 +407,23 @@ func markActivePathExpanded(items []Item, activeID ItemID, expanded map[ItemID]b
 	return false
 }
 
-func treePrefix(ancestors []bool) string {
+func treePrefix(ancestors []bool, hasNext bool) string {
 	if len(ancestors) == 0 {
 		return ""
 	}
 	var builder strings.Builder
-	for _, ancestorHasNext := range ancestors[:len(ancestors)-1] {
+	for _, ancestorHasNext := range ancestors[1:] {
 		if ancestorHasNext {
-			builder.WriteString(" │  ")
+			builder.WriteString("│  ")
 		} else {
-			builder.WriteString("    ")
+			builder.WriteString("   ")
 		}
 	}
-	builder.WriteString(" │  ")
+	if hasNext {
+		builder.WriteString("├─ ")
+	} else {
+		builder.WriteString("└─ ")
+	}
 	return builder.String()
 }
 

@@ -7,11 +7,6 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
-const (
-	sessionIcon = "\U000f018d"
-	windowIcon  = "\ueb14"
-)
-
 func projectTree(result backend.StateResult, homeDir string) (list.Snapshot, itemIndex, error) {
 	snapshot := list.Snapshot{Items: make([]list.Item, 0, len(result.Sessions))}
 	index := make(itemIndex)
@@ -40,7 +35,7 @@ func appendTreeSession(
 	sessionID := sessionItemID(session.ID)
 	sessionItem := list.Item{
 		ID:           sessionID,
-		Primary:      sessionIcon + " " + session.Name,
+		Primary:      session.Name,
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: session.Name}},
 	}
 	index[sessionID] = liveItem{
@@ -89,12 +84,19 @@ func appendTreeWindow(
 		{Tier: list.SearchPrimary, Text: label},
 		{Tier: list.SearchPrimary, Text: session.Name},
 	}
+	program := ""
+	if pane, found := activePane(window.Panes); found {
+		program = paneProgramLabel(pane, session.DefaultShell)
+	}
+	if program != "" {
+		fields = append(fields, list.SearchField{Tier: list.SearchPrimary, Text: program})
+	}
 	if path != "" {
 		fields = append(fields, list.SearchField{Tier: list.SearchSecondary, Text: path})
 	}
 
 	last := session.Last && window.Active
-	primary := windowIcon + " " + label
+	primary := label
 	if last {
 		primary += " ↶"
 	}
@@ -102,6 +104,7 @@ func appendTreeWindow(
 		ID:           windowID,
 		Primary:      primary,
 		Secondary:    path,
+		Trailing:     program,
 		SearchFields: fields,
 	})
 	index[windowID] = liveItem{

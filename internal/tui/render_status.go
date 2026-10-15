@@ -9,6 +9,12 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 )
 
+const (
+	statusGap          = " "
+	statusCellWidth    = 1
+	commandStatusWidth = len(statusGap) + statusCellWidth
+)
+
 var statusSpinnerFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func statusIndicator(value status.Value, now time.Time) (string, string) {
@@ -35,26 +41,31 @@ func statusIndicator(value status.Value, now time.Time) (string, string) {
 }
 
 func rowTrailingWidth(row rowProps) int {
-	width := terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Trailing)))
-	if glyph, _ := statusIndicator(row.Status, row.StatusTime); glyph != "" {
-		if width > 0 {
-			width++
-		}
-		width++
+	width := terminal.Width(columnText(row.Trailing))
+	glyph, _ := statusIndicator(row.Status, row.StatusTime)
+	if width == 0 && glyph == "" {
+		return 0
 	}
-	return width
+	return width + commandStatusWidth
 }
 
 func renderTrailing(row rowProps, width int, styles theme) string {
-	command := strings.TrimSpace(terminal.Sanitize(row.Trailing))
+	if width <= 0 {
+		return ""
+	}
+
+	style := styles.itemStyle(row.Active, row.Selected)
+	commandWidth := max(0, width-commandStatusWidth)
+	command := truncateWidth(columnText(row.Trailing), commandWidth)
+	padding := strings.Repeat(" ", max(0, commandWidth-terminal.Width(command)))
+	text := padding + command
+	if width > statusCellWidth {
+		text += statusGap
+	}
+
 	glyph, color := statusIndicator(row.Status, row.StatusTime)
 	if glyph == "" {
-		return truncateWidth(command, width)
+		return style.Render(text + strings.Repeat(" ", statusCellWidth))
 	}
-	style := styles.itemStyle(row.Active, row.Selected)
-	indicator := style.Foreground(lipgloss.Color(color)).Render(glyph)
-	if command == "" || width < 3 {
-		return indicator
-	}
-	return indicator + style.Render(" "+truncateWidth(command, width-2))
+	return style.Render(text) + style.Foreground(lipgloss.Color(color)).Render(glyph)
 }

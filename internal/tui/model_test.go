@@ -98,7 +98,7 @@ func TestViewPassesTrailingTextToTheRightColumn(t *testing.T) {
 	line := terminal.Sanitize(m.viewList(m.layout()))
 	require.Contains(t, line, "deveditor")
 	require.Contains(t, line, "~/code")
-	require.True(t, strings.HasSuffix(line, "pi"))
+	require.True(t, strings.HasSuffix(line, "pi  "))
 	require.Equal(t, m.layout().listWidth, terminal.Width(line))
 }
 
