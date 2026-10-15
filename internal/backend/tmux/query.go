@@ -11,6 +11,7 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/format"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 )
 
 type Query[T any] interface {
@@ -77,7 +78,9 @@ func (q LoadStateQuery) Args() []string {
 		args[len(args)-1] += "|#{pane_pid}|#{pane_dead}|#{q:default-shell}"
 	}
 	if q.IncludeClients {
-		args = append(args, ";", "list-clients", "-F", "client|#{session_id}|#{pane_id}|#{q:client_last_session}")
+		clientFormat := "client|#{session_id}|#{pane_id}|#{q:client_last_session}" +
+			"|#{&&:#{client_control_mode},#{m:" + observe.ClientNamePrefix + "*,#{client_name}}}"
+		args = append(args, ";", "list-clients", "-F", clientFormat)
 	}
 	return args
 }
@@ -321,10 +324,11 @@ type clientState struct {
 	sessionID   string
 	paneID      string
 	lastSession string
+	observer    bool
 }
 
 func parseClientLine(line string) (clientState, error) {
-	fields, err := format.Fields(line, 4)
+	fields, err := format.Fields(line, 5)
 	if err != nil {
 		return clientState{}, err
 	}
@@ -334,7 +338,11 @@ func parseClientLine(line string) (clientState, error) {
 	if err := format.ValidateObjectID("client pane", fields[2], '%'); err != nil {
 		return clientState{}, err
 	}
-	return clientState{sessionID: fields[1], paneID: fields[2], lastSession: fields[3]}, nil
+	observer, err := parseFlag("observer client", fields[4])
+	if err != nil {
+		return clientState{}, err
+	}
+	return clientState{sessionID: fields[1], paneID: fields[2], lastSession: fields[3], observer: observer}, nil
 }
 
 func invokingClient(clients []clientState) clientState {
@@ -349,7 +357,7 @@ func invokingClient(clients []clientState) clientState {
 	}
 	var found clientState
 	for _, client := range clients {
-		if (pane != "" && client.paneID != pane) || (pane == "" && client.sessionID != session) {
+		if client.observer || (pane != "" && client.paneID != pane) || (pane == "" && client.sessionID != session) {
 			continue
 		}
 		if found.sessionID != "" {

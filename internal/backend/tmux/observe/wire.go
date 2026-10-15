@@ -11,6 +11,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// ClientNamePrefix is reserved for native status control clients.
+const ClientNamePrefix = "hetki-status-"
+
 // Message IDs and required client flags are shared by the audited 3.2–3.8
 // releases (tmux.h and, in later releases, tmux-protocol.h).
 const (
@@ -131,7 +134,7 @@ func identifyNative(wire *net.UnixConn, layout headerLayout, session string, inp
 		{identifyLongFlags, flags, -1},
 		{identifyTerm, []byte("xterm-256color\x00"), -1},
 		{identifyFeatures, make([]byte, 4), -1},
-		{identifyTTY, []byte(fmt.Sprintf("hetki-status-%d-%s\x00", os.Getpid(), session)), -1},
+		{identifyTTY, []byte(fmt.Sprintf("%s%d-%s\x00", ClientNamePrefix, os.Getpid(), session)), -1},
 		{identifyCWD, []byte("/\x00"), -1},
 		{identifyInput, nil, int(input.Fd())},
 		{identifyOutput, nil, int(output.Fd())},

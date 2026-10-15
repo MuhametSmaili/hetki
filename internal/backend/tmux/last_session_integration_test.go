@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/stretchr/testify/require"
 )
 
 func TestLastSessionUsesTheInvokingClientOnAnIsolatedServer(t *testing.T) {
 	b := newIsolatedTmuxBackend(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	run := func(args ...string) string {
 		t.Helper()
@@ -51,22 +53,61 @@ func TestLastSessionUsesTheInvokingClientOnAnIsolatedServer(t *testing.T) {
 	t.Setenv("TMUX", ",,0")
 	t.Setenv("TMUX_PANE", "") // A popup inherits the session, not a pane ID.
 
-	markedSession := func() string {
-		t.Helper()
-		state, err := b.QueryState(ctx)
-		require.NoError(t, err)
-		id := ""
-		for _, session := range state.Sessions {
-			if session.Last {
-				require.Empty(t, id, "only one session may be marked")
-				id = session.ID
-			}
-		}
-		return id
-	}
-	require.Equal(t, previousID, markedSession())
+	requireLastSessionMarker(t, ctx, b, "before observer", previousID)
+	server, err := b.StatusServer(ctx)
+	require.NoError(t, err)
+	currentID := run("display-message", "-p", "-t", "current", "#{session_id}")
+	observer, err := observe.Open(ctx, server, currentID)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, observer.Close())
+	})
+
+	requireLastSessionMarker(t, ctx, b, "observer attached popup", previousID)
+	t.Setenv("TMUX_PANE", run("display-message", "-p", "-t", "current", "#{pane_id}"))
+	requireLastSessionMarker(t, ctx, b, "observer attached shell", previousID)
 	run("rename-session", "-t", previousID, "renamed")
-	require.Equal(t, previousID, markedSession())
+	requireLastSessionMarker(t, ctx, b, "renamed previous session", previousID)
+
+	other := run("list-clients", "-t", "other", "-F", "#{client_name}")
+	run("switch-client", "-c", other, "-t", "current")
+	requireLastSessionMarker(t, ctx, b, "ambiguous real clients", "")
+	run("switch-client", "-c", other, "-t", "other")
+	requireLastSessionMarker(t, ctx, b, "owner unambiguous again", previousID)
+	require.NoError(t, observer.Close())
+	requireLastSessionMarker(t, ctx, b, "observer closed", previousID)
+
 	run("kill-session", "-t", previousID)
-	require.Empty(t, markedSession())
+	requireLastSessionMarker(t, ctx, b, "deleted previous session", "")
+}
+
+func requireLastSessionMarker(t *testing.T, ctx context.Context, b *TmuxBackend, stage, want string) {
+	t.Helper()
+	t.Run(stage, func(t *testing.T) {
+		queries := []struct {
+			name string
+			read func(context.Context) (backend.StateResult, error)
+		}{
+			{"ordinary", b.QueryState},
+			{"status-aware", func(ctx context.Context) (backend.StateResult, error) {
+				state, _, err := b.QueryStatusState(ctx)
+				return state, err
+			}},
+		}
+		for _, query := range queries {
+			t.Run(query.name, func(t *testing.T) {
+				state, err := query.read(ctx)
+
+				require.NoError(t, err)
+				marked := ""
+				for _, session := range state.Sessions {
+					if session.Last {
+						require.Empty(t, marked, "only one session may be marked")
+						marked = session.ID
+					}
+				}
+				require.Equal(t, want, marked)
+			})
+		}
+	})
 }
