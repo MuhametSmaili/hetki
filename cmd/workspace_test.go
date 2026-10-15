@@ -26,7 +26,7 @@ func TestWorkspaceCommandsRejectInvalidSelectorsBeforeDetection(t *testing.T) {
 			want string
 		}{
 			{"missing", nil, "choose exactly one workspace target"},
-			{"positional name", []string{"work"}, "unknown command"},
+			{"positional name", []string{"work"}, "does not accept positional arguments"},
 			{"empty name", []string{"--name="}, "--name must not be empty"},
 			{"empty path", []string{"--path", ""}, "--path must not be empty"},
 			{"both selectors", []string{"-n", "work", "-p", "./work.yaml"}, "cannot use both"},

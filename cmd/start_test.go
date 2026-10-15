@@ -85,7 +85,6 @@ func TestRunStartFailsWhenBackendStateQueryFails(t *testing.T) {
 	err = runStart(startCmd, nil)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "failed to query backend state: query failed")
-	assert.ErrorContains(t, err, "Verify tmux is running and retry")
 	assert.Zero(t, stub.dryRunCalls)
 	assert.Zero(t, stub.applyCalls)
 }

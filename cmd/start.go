@@ -22,7 +22,7 @@ Session names come from YAML. Normal start adds missing resources.
 Force also replaces mismatched windows and removes extra windows inside declared
 sessions. It can terminate their processes, but preserves unrelated sessions.`,
 	Example:           "  hetki start -n work\n  hetki start -p ./work.yaml --dry-run",
-	Args:              cobra.NoArgs,
+	Args:              workspaceArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE:              runStart,
 }

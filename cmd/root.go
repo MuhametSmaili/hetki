@@ -9,7 +9,6 @@ import (
 	"syscall"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
-	"github.com/MuhametSmaili/hetki/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -23,18 +22,17 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:           "hetki",
-	Short:         "hetki - Terminal Multiplexer Session Manager",
+	Short:         "Manage tmux workspaces from a keyboard-first picker or the CLI",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Args:          cobra.NoArgs,
 	RunE:          runBareHetki,
-	Long: `hetki is a terminal multiplexer session manager that helps you manage complex tmux sessions with less manual setup.
+	Long: `Hetki manages tmux sessions, windows, and panes.
 
-It supports:
-- Multiple sessions and windows with panes
-- Strict YAML configuration files
-- Named and local workspaces
-- Templates for reusable configurations`,
+Run hetki in a terminal to open the interactive picker.
+Use start or save with exactly one workspace selector: --name or --path.
+Workspaces use strict YAML. A workspace name selects a file, not session ownership.`,
+	Example: "  hetki\n  hetki start -n work\n  hetki save -p ./work.yaml",
 	Version: Version,
 }
 
@@ -69,8 +67,8 @@ func Execute() {
 	ctx, stop := commandSignalContext()
 	err := rootCmd.ExecuteContext(ctx)
 	stop()
+	reportCommandError(err)
 	if err != nil {
-		logger.Error("%v", err)
 		os.Exit(1)
 	}
 }

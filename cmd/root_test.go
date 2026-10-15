@@ -121,14 +121,32 @@ func TestRootDoesNotExposePreviewConfiguration(t *testing.T) {
 	require.ErrorContains(t, err, "unknown flag: --preview-width")
 }
 
-func TestUpdateRejectsRemovedFlags(t *testing.T) {
+func TestUpdateRejectsUnsupportedArguments(t *testing.T) {
 	require.NotNil(t, updateCmd.Flags().Lookup("head"))
-	t.Cleanup(func() { rootCmd.SetArgs(nil) })
-	for _, flag := range []string{"--source", "--pre"} {
-		require.NotContains(t, updateCmd.Flags().FlagUsages(), flag)
-		rootCmd.SetArgs([]string{"update", flag})
-		_, err := rootCmd.ExecuteC()
-		require.ErrorContains(t, err, "unknown flag: "+flag)
+
+	previousRun := updateCmd.RunE
+	updateCmd.RunE = func(*cobra.Command, []string) error {
+		return errors.New("update executed before argument validation")
+	}
+	t.Cleanup(func() {
+		updateCmd.RunE = previousRun
+		rootCmd.SetArgs(nil)
+	})
+
+	for _, test := range []struct {
+		argument, want string
+	}{
+		{"--source", "unknown flag: --source"},
+		{"--pre", "unknown flag: --pre"},
+		{"unexpected", "unknown command"},
+	} {
+		t.Run(test.argument, func(t *testing.T) {
+			rootCmd.SetArgs([]string{"update", test.argument})
+
+			_, err := rootCmd.ExecuteC()
+
+			require.ErrorContains(t, err, test.want)
+		})
 	}
 }
 

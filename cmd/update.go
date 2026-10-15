@@ -24,7 +24,9 @@ Use --head to build the latest pushed commit on main (requires Go; unreleased co
 The commit is pinned before building; repeated --head updates compare commits.
 All source builds use the Go checksum database. Emergency-only bypass:
 HETKI_UNSAFE_SKIP_VERIFY=1.`,
-	RunE: runUpdate,
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
+	RunE:              runUpdate,
 }
 
 func init() {

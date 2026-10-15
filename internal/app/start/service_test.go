@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	appshared "github.com/MuhametSmaili/hetki/internal/app"
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/logger"
 	"github.com/MuhametSmaili/hetki/internal/manifest"
@@ -254,7 +255,7 @@ func TestServiceRunFailsWhenBackendStateQueryFails(t *testing.T) {
 	err = service.Run(context.Background(), Options{Path: new("./.hetki.yaml")})
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "failed to query backend state: query failed")
-	assert.ErrorContains(t, err, "Verify tmux is running and retry")
+	assert.Equal(t, "Check access to the tmux server and retry.", appshared.ErrorHint(err))
 	assert.Zero(t, stub.dryRunCalls)
 	assert.Zero(t, stub.applyCalls)
 }

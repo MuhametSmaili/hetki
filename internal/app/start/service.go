@@ -53,7 +53,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 
 	path, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
 	if err != nil {
-		return err
+		return appshared.WithHint(err, "Use hetki start -n work or hetki start -p ./work.yaml.")
 	}
 
 	workspace, workspacePath, err := s.loadWorkspace(path)
@@ -66,7 +66,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 
 	b, err := s.detectBackend()
 	if err != nil {
-		return fmt.Errorf("failed to detect backend: %w", err)
+		return appshared.WithHint(fmt.Errorf("failed to detect backend: %w", err), "Install tmux and make sure it is available on PATH.")
 	}
 
 	p, err := buildPlan(ctx, b, workspace, opts.Force)
@@ -83,7 +83,7 @@ func (s Service) loadWorkspace(path string) (*manifest.Workspace, string, error)
 	}
 	workspace, err := manifest.NewFileLoader(path, s.validateLayout).Load()
 	if err != nil {
-		return nil, "", fmt.Errorf("loading workspace: %w", err)
+		return nil, "", appshared.WithHint(fmt.Errorf("loading workspace: %w", err), "Check that the selected file exists, is readable, and contains valid workspace YAML.")
 	}
 	return workspace, path, nil
 }
@@ -100,7 +100,7 @@ func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, fo
 
 	result, err := b.QueryState(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query backend state: %w\nHint: Verify tmux is running and retry", err)
+		return nil, appshared.WithHint(fmt.Errorf("failed to query backend state: %w", err), "Check access to the tmux server and retry.")
 	}
 	actual := converter.BackendResultToState(result)
 
@@ -142,7 +142,7 @@ func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspace *manife
 	}
 
 	if err := b.Apply(ctx, actions); err != nil {
-		return fmt.Errorf("failed to execute plan: %w\nHint: Check tmux server logs or try with --dry-run to see planned actions", err)
+		return appshared.WithHint(fmt.Errorf("failed to execute plan: %w", err), "Earlier actions are not rolled back. Inspect tmux state and use --dry-run before retrying.")
 	}
 
 	warnIfMetadataStampFails(ctx, b, workspace, workspacePath)

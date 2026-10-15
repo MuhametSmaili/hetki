@@ -43,7 +43,7 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 	}
 	outputPath, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
 	if err != nil {
-		return "", err
+		return "", appshared.WithHint(err, "Use hetki save -n work or hetki save -p ./work.yaml.")
 	}
 
 	if s.validateLayout == nil {
@@ -52,7 +52,7 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 
 	b, err := s.detectBackend()
 	if err != nil {
-		return "", fmt.Errorf("failed to detect backend: %w\nHint: Make sure a supported multiplexer is running", err)
+		return "", appshared.WithHint(fmt.Errorf("failed to detect backend: %w", err), "Install tmux and make sure it is available on PATH.")
 	}
 
 	sessions, err := getTargetSessions(ctx, b, opts.All)
@@ -78,11 +78,11 @@ func (s Service) detectBackend() (Backend, error) {
 func getTargetSessions(ctx context.Context, b Backend, saveAll bool) ([]backend.Session, error) {
 	result, err := b.QueryState(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query sessions: %w", err)
+		return nil, appshared.WithHint(fmt.Errorf("failed to query sessions: %w", err), "Check access to the tmux server and retry.")
 	}
 
 	if len(result.Sessions) == 0 {
-		return nil, fmt.Errorf("no sessions found\nHint: Create a session first")
+		return nil, appshared.WithHint(errors.New("no sessions found"), "Create a tmux session, then save again.")
 	}
 
 	if saveAll {
@@ -94,7 +94,7 @@ func getTargetSessions(ctx context.Context, b Backend, saveAll bool) ([]backend.
 
 func findCurrentSession(result backend.StateResult) ([]backend.Session, error) {
 	if result.Active.Session == "" {
-		return nil, fmt.Errorf("not in a session\nHint: Run this command from inside a multiplexer session, or pass --all with --name or --path")
+		return nil, appshared.WithHint(errors.New("not in a session"), "Run save inside tmux, or pass --all with --name or --path.")
 	}
 
 	for _, s := range result.Sessions {
@@ -146,7 +146,7 @@ func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPat
 	if observed.exists {
 		existing, err := manifest.Parse(observed.data, absPath, validateLayout)
 		if err != nil {
-			return "", fmt.Errorf("existing destination is invalid: %w", err)
+			return "", appshared.WithHint(fmt.Errorf("existing destination is invalid: %w", err), "Fix the existing YAML or use a new destination file.")
 		}
 		if err := preserveCommands(existing, workspace, validateLayout); err != nil {
 			return "", err

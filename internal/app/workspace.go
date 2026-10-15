@@ -13,10 +13,10 @@ import (
 // omitted; a pointer to an empty string is an explicitly empty selector.
 func ResolveWorkspaceTarget(name, path *string) (string, error) {
 	if name == nil && path == nil {
-		return "", fmt.Errorf("choose exactly one workspace target: --name work or --path ./work.yaml")
+		return "", fmt.Errorf("choose exactly one workspace target: --name or --path")
 	}
 	if name != nil && path != nil {
-		return "", fmt.Errorf("cannot use both --name and --path; choose one workspace target")
+		return "", fmt.Errorf("cannot use both --name and --path")
 	}
 
 	if name != nil {
