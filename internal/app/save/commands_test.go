@@ -40,7 +40,7 @@ func TestServiceRunPreservesAuthoredCommands(t *testing.T) {
 			}}
 			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-			_, err := service.Run(t.Context(), Options{Path: path})
+			_, err := service.Run(t.Context(), Options{Path: new(path)})
 
 			require.NoError(t, err)
 			saved, err := manifest.NewFileLoader(path, acceptLayout).Load()
@@ -53,7 +53,7 @@ func TestServiceRunPreservesAuthoredCommands(t *testing.T) {
 			before, err := os.ReadFile(path)
 			require.NoError(t, err)
 
-			_, err = service.Run(t.Context(), Options{Path: path})
+			_, err = service.Run(t.Context(), Options{Path: new(path)})
 
 			require.NoError(t, err)
 			after, err := os.ReadFile(path)
@@ -99,7 +99,7 @@ func TestServiceRunPreservesCommandsAcrossScopeAndLiveChanges(t *testing.T) {
 			}}
 			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-			_, err := service.Run(t.Context(), Options{Path: path, All: test.all})
+			_, err := service.Run(t.Context(), Options{Path: new(path), All: test.all})
 
 			require.NoError(t, err)
 			saved, err := manifest.NewFileLoader(path, acceptLayout).Load()
@@ -156,7 +156,7 @@ func TestServiceRunRefusesUnsafeCommandPreservation(t *testing.T) {
 			}}
 			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-			_, err = service.Run(t.Context(), Options{Path: path, All: test.all})
+			_, err = service.Run(t.Context(), Options{Path: new(path), All: test.all})
 
 			require.ErrorIs(t, err, ErrCommandPreservation)
 			require.ErrorContains(t, err, "session \"dev\", window \"worker\"")

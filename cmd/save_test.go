@@ -23,7 +23,7 @@ func TestRunSaveRetainsAuthoredLayoutForAnotherSession(t *testing.T) {
 		Sessions: []backend.Session{{Name: "dev", Windows: []backend.Window{{Name: "editor", Path: t.TempDir()}}}},
 		Active:   backend.ActiveContext{Session: "dev"},
 	}})
-	savePath = path
+	require.NoError(t, saveCmd.Flags().Set("path", path))
 
 	err := runSave(saveCmd, nil)
 
@@ -53,7 +53,7 @@ func TestRunSaveWritesCurrentSessionWorkspace(t *testing.T) {
 		Active: backend.ActiveContext{Session: "dev"},
 	}}
 	withStubBackend(t, stub)
-	savePath = outputPath
+	require.NoError(t, saveCmd.Flags().Set("path", outputPath))
 
 	logOutput := captureLoggerOutput(t, func() {
 		require.NoError(t, runSave(saveCmd, nil))

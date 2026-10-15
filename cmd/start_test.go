@@ -22,7 +22,9 @@ func TestRunStartValidatesLayoutBeforeBackendDetection(t *testing.T) {
 	}
 	t.Cleanup(func() { detectBackend = previous })
 
-	err := runStart(startCmd, []string{path})
+	require.NoError(t, startCmd.Flags().Set("path", path))
+
+	err := runStart(startCmd, nil)
 
 	require.ErrorContains(t, err, "sessions[0].windows[0].layout")
 	require.ErrorContains(t, err, "unknown layout")
@@ -45,6 +47,7 @@ func TestRunStartDryRunOutputsPlan(t *testing.T) {
 	stub := &stubBackend{dryRunLines: []string{"tmux new-session -d -s dev -n editor -c " + tmpDir}}
 	withStubBackend(t, stub)
 	dryRun = true
+	require.NoError(t, startCmd.Flags().Set("path", "./.hetki.yaml"))
 
 	output := captureLoggerOutput(t, func() {
 		require.NoError(t, runStart(startCmd, nil))
@@ -76,6 +79,8 @@ func TestRunStartFailsWhenBackendStateQueryFails(t *testing.T) {
 
 	stub := &stubBackend{queryErr: errors.New("query failed")}
 	withStubBackend(t, stub)
+
+	require.NoError(t, startCmd.Flags().Set("path", "./.hetki.yaml"))
 
 	err = runStart(startCmd, nil)
 	require.Error(t, err)

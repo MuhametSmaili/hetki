@@ -25,7 +25,7 @@ func TestServiceRunPreservesPaneZoom(t *testing.T) {
 	}}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-	_, err := service.Run(t.Context(), Options{Path: path})
+	_, err := service.Run(t.Context(), Options{Path: new(path)})
 
 	require.NoError(t, err)
 	workspace, err := manifest.NewFileLoader(path, acceptLayout).Load()

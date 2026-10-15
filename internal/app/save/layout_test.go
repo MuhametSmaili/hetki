@@ -28,7 +28,7 @@ func TestServiceRunSavesBackendLayoutPreset(t *testing.T) {
 	}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-	_, err := service.Run(t.Context(), Options{Path: path})
+	_, err := service.Run(t.Context(), Options{Path: new(path)})
 
 	require.NoError(t, err)
 	workspace, err := manifest.NewFileLoader(path, acceptLayout).Load()
@@ -49,7 +49,7 @@ func TestServiceRunPreservesDestinationWhenBackendCannotExportLayout(t *testing.
 	}}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-	_, err := service.Run(t.Context(), Options{Path: path, All: true})
+	_, err := service.Run(t.Context(), Options{Path: new(path), All: true})
 
 	require.ErrorIs(t, err, failure)
 	assert.ErrorContains(t, err, `session "dev": window "editor"`)

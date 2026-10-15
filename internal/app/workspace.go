@@ -9,50 +9,26 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/manifest"
 )
 
-type WorkspaceLoader struct {
-	validateLayout func(string) error
-	Resolve        func(string) (string, error)
-	LoadFile       func(string) (*manifest.Workspace, error)
-}
-
-// NewWorkspaceLoader binds a required pure layout policy to default file loading.
-func NewWorkspaceLoader(validateLayout func(string) error) WorkspaceLoader {
-	resolver := manifest.NewResolver()
-	return WorkspaceLoader{
-		validateLayout: validateLayout,
-		Resolve:        resolver.Resolve,
-		LoadFile: func(path string) (*manifest.Workspace, error) {
-			return manifest.NewFileLoader(path, validateLayout).Load()
-		},
+// ResolveWorkspaceTarget requires exactly one selector. A nil pointer means
+// omitted; a pointer to an empty string is an explicitly empty selector.
+func ResolveWorkspaceTarget(name, path *string) (string, error) {
+	if name == nil && path == nil {
+		return "", fmt.Errorf("choose exactly one workspace target: --name work or --path ./work.yaml")
 	}
-}
-
-func (l WorkspaceLoader) LoadWorkspace(nameOrPath string) (*manifest.Workspace, string, error) {
-	if l.validateLayout == nil {
-		return nil, "", manifest.ErrLayoutValidatorRequired
+	if name != nil && path != nil {
+		return "", fmt.Errorf("cannot use both --name and --path; choose one workspace target")
 	}
 
-	if l.Resolve == nil || l.LoadFile == nil {
-		defaults := NewWorkspaceLoader(l.validateLayout)
-		if l.Resolve == nil {
-			l.Resolve = defaults.Resolve
+	if name != nil {
+		if *name == "" {
+			return "", fmt.Errorf("--name must not be empty")
 		}
-		if l.LoadFile == nil {
-			l.LoadFile = defaults.LoadFile
-		}
+		return manifest.NewResolver().NamedPath(*name)
 	}
-
-	workspacePath, err := l.Resolve(nameOrPath)
-	if err != nil {
-		return nil, "", err
+	if *path == "" {
+		return "", fmt.Errorf("--path must not be empty")
 	}
-
-	workspace, err := l.LoadFile(workspacePath)
-	if err != nil {
-		return nil, "", fmt.Errorf("loading workspace: %w", err)
-	}
-
-	return workspace, workspacePath, nil
+	return manifest.FilePath(*path)
 }
 
 // WorkspaceFromSessions projects observations using the backend's pure preset

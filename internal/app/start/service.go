@@ -16,9 +16,11 @@ import (
 )
 
 type Options struct {
-	Workspace string
-	DryRun    bool
-	Force     bool
+	// Nil selectors are omitted; non-nil empty values are invalid.
+	Name   *string
+	Path   *string
+	DryRun bool
+	Force  bool
 }
 
 // Backend provides the reconciliation and attachment operations used by starting.
@@ -49,7 +51,12 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 		return manifest.ErrLayoutValidatorRequired
 	}
 
-	workspace, workspacePath, err := s.loadWorkspace(opts.Workspace)
+	path, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
+	if err != nil {
+		return err
+	}
+
+	workspace, workspacePath, err := s.loadWorkspace(path)
 	if err != nil {
 		return err
 	}
@@ -70,11 +77,15 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 	return executePlan(ctx, b, p, workspace, workspacePath, opts.DryRun)
 }
 
-func (s Service) loadWorkspace(nameOrPath string) (*manifest.Workspace, string, error) {
+func (s Service) loadWorkspace(path string) (*manifest.Workspace, string, error) {
 	if s.LoadWorkspace != nil {
-		return s.LoadWorkspace(nameOrPath)
+		return s.LoadWorkspace(path)
 	}
-	return appshared.NewWorkspaceLoader(s.validateLayout).LoadWorkspace(nameOrPath)
+	workspace, err := manifest.NewFileLoader(path, s.validateLayout).Load()
+	if err != nil {
+		return nil, "", fmt.Errorf("loading workspace: %w", err)
+	}
+	return workspace, path, nil
 }
 
 func (s Service) detectBackend() (Backend, error) {

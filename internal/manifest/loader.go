@@ -25,7 +25,9 @@ type FileLoader struct {
 	validateLayout func(string) error
 }
 
-// NewFileLoader binds a required pure, bounded layout validator to file loading.
+// NewFileLoader loads a resolved file path literally, without expanding it again.
+// Use FilePath or Resolver.NamedPath to resolve a user-supplied target.
+// The layout validator must be pure and bounded.
 func NewFileLoader(path string, validateLayout func(string) error) *FileLoader {
 	return &FileLoader{Path: path, validateLayout: validateLayout}
 }
@@ -35,8 +37,7 @@ func (l *FileLoader) Load() (*Workspace, error) {
 		return nil, ErrLayoutValidatorRequired
 	}
 
-	extendedPath := expandPath(l.Path)
-	file, err := os.Open(extendedPath)
+	file, err := os.Open(l.Path)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
@@ -47,7 +48,7 @@ func (l *FileLoader) Load() (*Workspace, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	return Parse(data, extendedPath, l.validateLayout)
+	return Parse(data, l.Path, l.validateLayout)
 }
 
 // Parse is the single manifest pipeline: bounded read → strict decode →
@@ -234,11 +235,10 @@ func expandPath(p string) string {
 	return p
 }
 
-// ScanWorkspaces lists YAML workspaces in dir. For duplicate basename
-// variants, .yaml wins over .yml.
+// ScanWorkspaces maps usable selectors to YAML files in a literal directory.
+// Short names prefer .yaml over .yml; names needing an extension retain it.
 func ScanWorkspaces(dir string) (map[string]string, error) {
-	expandedDir := expandPath(dir)
-	entries, err := os.ReadDir(expandedDir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil
@@ -255,8 +255,14 @@ func ScanWorkspaces(dir string) (map[string]string, error) {
 		if !hasValidExt(name) {
 			continue
 		}
+		if _, err := workspaceFilename(name); err != nil {
+			continue
+		}
 		base := strings.TrimSuffix(name, filepath.Ext(name))
-		path := filepath.Join(expandedDir, name)
+		if _, err := workspaceFilename(base); err != nil || hasValidExt(base) {
+			base = name
+		}
+		path := filepath.Join(dir, name)
 		if existing, ok := paths[base]; !ok || extPrecedence(name) < extPrecedence(existing) {
 			paths[base] = path
 		}

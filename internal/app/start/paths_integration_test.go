@@ -62,7 +62,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 			require.NoError(t, os.WriteFile(workspacePath, data, 0600))
 			service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 
-			err = service.Run(ctx, Options{Workspace: workspacePath})
+			err = service.Run(ctx, Options{Path: new(workspacePath)})
 
 			require.NoError(t, err)
 			output, err := exec.CommandContext(ctx, "tmux", "wait-for", "directory-started").CombinedOutput()
@@ -83,7 +83,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, second.IsEmpty(), "reloaded second start must plan no actions (force=%v): %v", force, second.Actions)
 
-				require.NoError(t, service.Run(ctx, Options{Workspace: workspacePath, Force: force}))
+				require.NoError(t, service.Run(ctx, Options{Path: new(workspacePath), Force: force}))
 			}
 
 			after, err := b.QueryState(ctx)

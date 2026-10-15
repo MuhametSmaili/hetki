@@ -61,7 +61,7 @@ func TestForceKeepsUnrelatedSessionOnIsolatedTmux(t *testing.T) {
 	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
-	require.NoError(t, service.Run(context.Background(), Options{Force: true}))
+	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml"), Force: true}))
 	after, err := b.QueryState(context.Background())
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"dev", "personal"}, backendSessionNames(after.Sessions))
@@ -113,7 +113,7 @@ func TestCreationFollowupsUseReturnedIDsOnNonEmptyBaseOneSession(t *testing.T) {
 	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
-	require.NoError(t, service.Run(context.Background(), Options{}))
+	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml")}))
 	after, err := b.QueryState(context.Background())
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"dev", "personal"}, backendSessionNames(after.Sessions), "unrelated session must survive the force matrix on base index 1")

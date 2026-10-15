@@ -8,14 +8,17 @@ import (
 )
 
 var saveCmd = &cobra.Command{
-	Use:   "save [.]",
+	Use:   "save (--name <name> | --path <file>)",
 	Short: "Save tmux session state to a workspace file",
-	Long: `Save tmux session state to a workspace configuration file.
-
-The destination is required: use -n for a named workspace, -p for an
-explicit path, or '.' to save into a local .hetki.y[a]ml file. Without
---all, the currently attached session is saved; --all saves every session.`,
-	RunE: runSave,
+	Long: `Save a workspace selected by exactly one of --name or --path.
+Names select files in Hetki's configured workspace directory, never local files.
+Paths identify YAML files, not directories, and can create new files.
+Without --all, save updates the current session and retains other saved sessions.
+With --all, save replaces the file's session set with all live sessions.`,
+	Example:           "  hetki save -n work\n  hetki save -p ./.hetki.yaml --all",
+	Args:              cobra.NoArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
+	RunE:              runSave,
 }
 
 var (
@@ -26,24 +29,23 @@ var (
 
 func init() {
 	rootCmd.AddCommand(saveCmd)
-	saveCmd.Flags().StringVarP(&savePath, "path", "p", "", "Path to save workspace file")
-	saveCmd.Flags().StringVarP(&saveName, "name", "n", "", "Name for the workspace")
+	saveCmd.Flags().StringVarP(&savePath, "path", "p", "", "Workspace YAML file to save (not a directory)")
+	saveCmd.Flags().StringVarP(&saveName, "name", "n", "", "Workspace name in Hetki's configured directory")
 	saveCmd.Flags().BoolVar(&saveAll, "all", false, "Save all tmux sessions")
 
-	saveCmd.ValidArgs = []string{"."}
 	saveCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames)
+	saveCmd.MarkFlagFilename("path", "yaml", "yml")
 }
 
-func runSave(cmd *cobra.Command, args []string) error {
+func runSave(cmd *cobra.Command, _ []string) error {
 	service := appsave.NewService(func() (appsave.Backend, error) {
 		return detectBackend()
 	}, tmux.ValidateAuthoredLayout)
 
 	outputPath, err := service.Run(cmd.Context(), appsave.Options{
-		Path:  savePath,
-		Name:  saveName,
-		Local: len(args) > 0 && args[0] == ".",
-		All:   saveAll,
+		Path: selectedWorkspaceFlag(cmd, "path", savePath),
+		Name: selectedWorkspaceFlag(cmd, "name", saveName),
+		All:  saveAll,
 	})
 	if err != nil {
 		return err

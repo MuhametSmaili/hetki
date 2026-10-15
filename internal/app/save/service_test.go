@@ -39,6 +39,31 @@ func (s *stubBackend) QueryState(context.Context) (backend.StateResult, error) {
 	return s.queryResult, nil
 }
 
+func TestServiceRunRejectsInvalidTargetBeforeDetection(t *testing.T) {
+	directory := t.TempDir()
+	for _, test := range []struct {
+		name string
+		opts Options
+	}{
+		{"both with empty path", Options{Name: new("work"), Path: new("")}},
+		{"directory", Options{Path: new(directory)}},
+		{"unsupported format", Options{Path: new(filepath.Join(directory, "work.json"))}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			detected := false
+			service := NewService(func() (Backend, error) {
+				detected = true
+				return nil, errors.New("unexpected detection")
+			}, acceptLayout)
+
+			_, err := service.Run(t.Context(), test.opts)
+
+			require.Error(t, err)
+			require.False(t, detected)
+		})
+	}
+}
+
 func TestServiceRunWritesCurrentSessionWorkspace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -58,7 +83,7 @@ func TestServiceRunWritesCurrentSessionWorkspace(t *testing.T) {
 	}}
 
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
-	path, err := service.Run(context.Background(), Options{Path: outputPath})
+	path, err := service.Run(context.Background(), Options{Path: new(outputPath)})
 	require.NoError(t, err)
 	assert.Equal(t, outputPath, path)
 
@@ -108,7 +133,7 @@ func TestServiceRunPreservesDestinationOnLayoutRejection(t *testing.T) {
 			}}
 			service := NewService(func() (Backend, error) { return stub, nil }, policy)
 
-			_, err := service.Run(t.Context(), Options{Path: path, All: tc.all})
+			_, err := service.Run(t.Context(), Options{Path: new(path), All: tc.all})
 
 			require.ErrorIs(t, err, denied)
 			require.ErrorContains(t, err, "sessions[0].windows[0].layout")
@@ -128,7 +153,7 @@ func TestServiceRunRequiresLayoutPolicyBeforeDetection(t *testing.T) {
 		return nil, nil
 	}, nil)
 
-	_, err := service.Run(t.Context(), Options{Path: filepath.Join(t.TempDir(), "workspace.yaml")})
+	_, err := service.Run(t.Context(), Options{Path: new(filepath.Join(t.TempDir(), "workspace.yaml"))})
 
 	require.ErrorIs(t, err, manifest.ErrLayoutValidatorRequired)
 }

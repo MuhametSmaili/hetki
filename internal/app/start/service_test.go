@@ -66,6 +66,32 @@ func (s *stubBackend) Attach(context.Context, string) error {
 	return nil
 }
 
+func TestServiceRunRejectsInvalidTargetBeforeDetection(t *testing.T) {
+	directory := t.TempDir()
+	for _, test := range []struct {
+		name string
+		opts Options
+		want error
+	}{
+		{"both", Options{Name: new("work"), Path: new("")}, nil},
+		{"missing file", Options{Path: new(filepath.Join(directory, "missing.yaml"))}, os.ErrNotExist},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := NewService(func() (Backend, error) {
+				t.Fatal("backend detected before target validation")
+				return nil, nil
+			}, acceptLayout)
+
+			err := service.Run(t.Context(), test.opts)
+
+			require.Error(t, err)
+			if test.want != nil {
+				require.ErrorIs(t, err, test.want)
+			}
+		})
+	}
+}
+
 func TestServiceRunRejectsAuthoredLayoutBeforeDetection(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "workspace.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("sessions:\n  - name: dev\n    windows:\n      - layout: opaque\n"), 0600))
@@ -90,7 +116,7 @@ func TestServiceRunRejectsAuthoredLayoutBeforeDetection(t *testing.T) {
 				return nil, nil
 			}, tc.policy)
 
-			err := service.Run(t.Context(), Options{Workspace: path})
+			err := service.Run(t.Context(), Options{Path: new(path)})
 
 			require.ErrorIs(t, err, tc.want)
 		})
@@ -117,7 +143,7 @@ func TestServiceRunUsesBackendLayoutPolicy(t *testing.T) {
 		}}}}}, "", nil
 	}
 
-	err := service.Run(t.Context(), Options{Force: true, DryRun: true})
+	err := service.Run(t.Context(), Options{Path: new("./.hetki.yaml"), Force: true, DryRun: true})
 
 	require.NoError(t, err)
 	assert.Zero(t, stub.dryRunCalls, "recognized layouts must not plan a replacement")
@@ -138,7 +164,7 @@ func TestServiceRunCancellationAfterLoadPreventsBackendDetection(t *testing.T) {
 		},
 	}
 
-	err := service.Run(ctx, Options{})
+	err := service.Run(ctx, Options{Path: new("./.hetki.yaml")})
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.False(t, detected)
@@ -160,7 +186,7 @@ func TestServiceRunDryRunOutputsPlan(t *testing.T) {
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
 	output := captureLoggerOutput(t, func() {
-		require.NoError(t, service.Run(context.Background(), Options{DryRun: true}))
+		require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml"), DryRun: true}))
 	})
 
 	assert.Contains(t, output, "Dry run - actions to execute:")
@@ -199,7 +225,7 @@ func TestServiceRunDryRunIsReadOnlyWhenPlanIsEmpty(t *testing.T) {
 			var err error
 
 			output := captureLoggerOutput(t, func() {
-				err = service.Run(context.Background(), Options{DryRun: true, Force: tc.force})
+				err = service.Run(context.Background(), Options{Path: new("./.hetki.yaml"), DryRun: true, Force: tc.force})
 			})
 
 			require.NoError(t, err)
@@ -225,7 +251,7 @@ func TestServiceRunFailsWhenBackendStateQueryFails(t *testing.T) {
 	stub := &stubBackend{queryErr: errors.New("query failed")}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-	err = service.Run(context.Background(), Options{})
+	err = service.Run(context.Background(), Options{Path: new("./.hetki.yaml")})
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "failed to query backend state: query failed")
 	assert.ErrorContains(t, err, "Verify tmux is running and retry")
@@ -259,7 +285,7 @@ func TestServiceRunStampsWorkspacePathWhenPlanIsEmpty(t *testing.T) {
 	}}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-	require.NoError(t, service.Run(context.Background(), Options{}))
+	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml")}))
 	assert.Equal(t, 1, stub.applyCalls)
 	assert.Equal(t, 1, stub.attachCalls)
 	expectedPath, err := canonicalPath(filepath.Join(tmpDir, ".hetki.yaml"))
@@ -303,7 +329,7 @@ func TestServiceRunColdStartAppliesCreateActions(t *testing.T) {
 	stub := &stubBackend{queryResult: backend.StateResult{}}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-	require.NoError(t, service.Run(context.Background(), Options{}))
+	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml")}))
 
 	// Two Apply calls: first the plan, second the workspace-path metadata stamp.
 	require.Equal(t, 2, stub.applyCalls)
@@ -346,7 +372,7 @@ func TestServiceRunForcePreservesUnrelatedSessionsInNormalAndDryRun(t *testing.T
 			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
-			require.NoError(t, service.Run(context.Background(), Options{Force: true, DryRun: dryRun}))
+			require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml"), Force: true, DryRun: dryRun}))
 			assert.Equal(t, want, stub.lastActions)
 			for _, action := range stub.lastActions {
 				_, killsSession := action.(backend.KillSessionAction)

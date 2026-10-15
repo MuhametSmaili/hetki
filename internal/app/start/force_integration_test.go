@@ -67,7 +67,7 @@ func TestForceReplacementPreservesSessionOnIsolatedTmux(t *testing.T) {
 			service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
-			err = service.Run(ctx, Options{Force: true})
+			err = service.Run(ctx, Options{Path: new("./.hetki.yaml"), Force: true})
 
 			require.NoError(t, err)
 			after, err := b.QueryState(ctx)
@@ -120,7 +120,7 @@ func TestForceReplacementFailurePreservesOldWindows(t *testing.T) {
 			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 			t.Setenv("HETKI_TEST_FAIL_COMMAND", tc.failCommand)
 
-			err = service.Run(ctx, Options{Force: true})
+			err = service.Run(ctx, Options{Path: new("./.hetki.yaml"), Force: true})
 
 			var exitError *exec.ExitError
 			require.ErrorAs(t, err, &exitError)

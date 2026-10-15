@@ -15,10 +15,10 @@ import (
 )
 
 type Options struct {
-	Path  string
-	Name  string
-	Local bool
-	All   bool
+	// Nil selectors are omitted; non-nil empty values are invalid.
+	Path *string
+	Name *string
+	All  bool
 }
 
 // Backend provides the observation and layout export operations used by saving.
@@ -41,7 +41,8 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if err := validateOptions(opts); err != nil {
+	outputPath, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
+	if err != nil {
 		return "", err
 	}
 
@@ -59,11 +60,6 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 		return "", err
 	}
 
-	outputPath, err := determineSavePath(opts)
-	if err != nil {
-		return "", err
-	}
-
 	workspace, err := appshared.WorkspaceFromSessions(sessions, b.LayoutPreset)
 	if err != nil {
 		return "", fmt.Errorf("convert observed workspace: %w", err)
@@ -77,13 +73,6 @@ func (s Service) detectBackend() (Backend, error) {
 		return s.DetectBackend()
 	}
 	return backend.Detect()
-}
-
-func validateOptions(opts Options) error {
-	if opts.Path != "" && opts.Name != "" {
-		return fmt.Errorf("cannot use both -p and -n flags\nUse either: hetki save -p <path> OR hetki save -n <name>")
-	}
-	return nil
 }
 
 func getTargetSessions(ctx context.Context, b Backend, saveAll bool) ([]backend.Session, error) {
@@ -105,7 +94,7 @@ func getTargetSessions(ctx context.Context, b Backend, saveAll bool) ([]backend.
 
 func findCurrentSession(result backend.StateResult) ([]backend.Session, error) {
 	if result.Active.Session == "" {
-		return nil, fmt.Errorf("not in a session\nHint: Run this command from inside a multiplexer session, or pass --all with -p, -n, or the '.' target")
+		return nil, fmt.Errorf("not in a session\nHint: Run this command from inside a multiplexer session, or pass --all with --name or --path")
 	}
 
 	for _, s := range result.Sessions {
@@ -115,28 +104,6 @@ func findCurrentSession(result backend.StateResult) ([]backend.Session, error) {
 	}
 
 	return nil, fmt.Errorf("session %q not found", result.Active.Session)
-}
-
-func determineSavePath(opts Options) (string, error) {
-	if opts.Path != "" {
-		return opts.Path, nil
-	}
-
-	resolver := manifest.NewResolver()
-
-	if opts.Name != "" {
-		return resolver.NamedPath(opts.Name)
-	}
-
-	if opts.Local {
-		return resolver.LocalPath()
-	}
-
-	if opts.All {
-		return "", fmt.Errorf("--all requires a destination\nUse: hetki save --all -p <path>, hetki save --all -n <name>, or hetki save --all '.'")
-	}
-
-	return "", fmt.Errorf("no save target specified\nHint: Use -p <path>, -n <name>, or . to specify where to save")
 }
 
 type destinationSnapshot struct {

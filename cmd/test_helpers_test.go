@@ -11,6 +11,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/logger"
 	"github.com/fatih/color"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,6 +76,10 @@ func (s *stubBackend) Switch(context.Context, backend.Target) error {
 func resetCommandGlobals() {
 	saveCmd.SetContext(context.Background())
 	startCmd.SetContext(context.Background())
+	startName = ""
+	startPath = ""
+	startCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
+	saveCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
 	dryRun = false
 	force = false
 	savePath = ""

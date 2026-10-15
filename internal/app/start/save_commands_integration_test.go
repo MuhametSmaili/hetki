@@ -42,7 +42,7 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(path, data, 0600))
 	starter := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
-	require.NoError(t, starter.Run(ctx, Options{Workspace: path}))
+	require.NoError(t, starter.Run(ctx, Options{Path: new(path)}))
 	for i := range markers {
 		output, err := exec.CommandContext(ctx, "tmux", "wait-for", fmt.Sprintf("saved-command-%d", i)).CombinedOutput()
 		require.NoError(t, err, "initial startup: %s", output)
@@ -51,7 +51,7 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 	require.NoError(t, err)
 	saver := appsave.NewService(func() (appsave.Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 
-	_, err = saver.Run(ctx, appsave.Options{Path: path, All: true})
+	_, err = saver.Run(ctx, appsave.Options{Path: new(path), All: true})
 
 	require.NoError(t, err)
 	saved, err := manifest.NewFileLoader(path, backendtmux.ValidateAuthoredLayout).Load()
@@ -63,7 +63,7 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 	require.True(t, dev.Windows[0].Panes[1].Zoom)
 
 	require.NoError(t, b.Apply(ctx, []backend.Action{backend.KillSessionAction{Name: "dev"}}))
-	require.NoError(t, starter.Run(ctx, Options{Workspace: path}))
+	require.NoError(t, starter.Run(ctx, Options{Path: new(path)}))
 	for i := range markers {
 		output, err := exec.CommandContext(ctx, "tmux", "wait-for", fmt.Sprintf("saved-command-%d", i)).CombinedOutput()
 		require.NoError(t, err, "restored startup: %s", output)
@@ -77,7 +77,7 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 		planned, err := buildPlan(ctx, b, saved, force)
 		require.NoError(t, err)
 		require.True(t, planned.IsEmpty(), "matching start must not recreate panes or resend commands: %v", planned.Actions)
-		require.NoError(t, starter.Run(ctx, Options{Workspace: path, Force: force}))
+		require.NoError(t, starter.Run(ctx, Options{Path: new(path), Force: force}))
 	}
 	after, err := b.QueryState(ctx)
 	require.NoError(t, err)

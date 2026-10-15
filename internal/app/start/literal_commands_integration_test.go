@@ -42,7 +42,7 @@ func TestStartupCommandsPreserveEscapesAndRunOnce(t *testing.T) {
 	require.NoError(t, os.WriteFile(workspacePath, source, 0600))
 	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 
-	err = service.Run(ctx, Options{Workspace: workspacePath})
+	err = service.Run(ctx, Options{Path: new(workspacePath)})
 
 	require.NoError(t, err)
 	for _, channel := range []string{"window-started", "pane-started"} {
@@ -64,7 +64,7 @@ func TestStartupCommandsPreserveEscapesAndRunOnce(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, second.IsEmpty(), "matching second start must not repeat commands (force=%v): %v", force, second.Actions)
 
-		require.NoError(t, service.Run(ctx, Options{Workspace: workspacePath, Force: force}))
+		require.NoError(t, service.Run(ctx, Options{Path: new(workspacePath), Force: force}))
 	}
 
 	after, err := b.QueryState(ctx)
