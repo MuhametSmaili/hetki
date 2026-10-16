@@ -62,6 +62,15 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 	require.Equal(t, commands[1], dev.Windows[0].Panes[1].Command)
 	require.True(t, dev.Windows[0].Panes[1].Zoom)
 
+	originalDev := findBackendSession(t, before.Sessions, "dev")
+	originalPane := originalDev.Windows[0].Panes[1]
+	require.True(t, originalPane.Zoom)
+
+	// Avoid tmux 3.4's zoomed-window teardown crash (tmux/tmux#3857).
+	// Only unzoom the disposable instance; the saved workspace remains zoomed.
+	output, err := exec.CommandContext(ctx, "tmux", "resize-pane", "-Z", "-t", originalPane.ID).CombinedOutput()
+	require.NoError(t, err, "unzoom original window: %s", output)
+
 	require.NoError(t, b.Apply(ctx, []backend.Action{backend.KillSessionAction{Name: "dev"}}))
 	require.NoError(t, starter.Run(ctx, Options{Path: new(path)}))
 	for i := range markers {
@@ -71,7 +80,8 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 	restored, err := b.QueryState(ctx)
 	require.NoError(t, err)
 	restoredDev := findBackendSession(t, restored.Sessions, "dev")
-	require.NotEqual(t, findBackendSession(t, before.Sessions, "dev").ID, restoredDev.ID)
+	require.NotEqual(t, originalDev.ID, restoredDev.ID)
+	require.True(t, restoredDev.Windows[0].Panes[1].Zoom)
 
 	for _, force := range []bool{false, true} {
 		planned, err := buildPlan(ctx, b, saved, force)
