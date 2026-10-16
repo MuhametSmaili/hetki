@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	appshared "github.com/MuhametSmaili/hetki/internal/app"
@@ -26,6 +27,7 @@ type stubBackend struct {
 	layoutMatch func(string, string) bool
 	dryRunLines []string
 	applyErr    error
+	onApply     func()
 
 	applyCalls  int
 	attachCalls int
@@ -53,6 +55,9 @@ func (s *stubBackend) Apply(_ context.Context, actions []backend.Action) error {
 	copied := append([]backend.Action(nil), actions...)
 	s.lastActions = copied
 	s.allActions = append(s.allActions, copied)
+	if s.onApply != nil {
+		s.onApply()
+	}
 	return s.applyErr
 }
 
@@ -62,9 +67,9 @@ func (s *stubBackend) DryRun(actions []backend.Action) ([]string, error) {
 	return append([]string(nil), s.dryRunLines...), nil
 }
 
-func (s *stubBackend) Attach(context.Context, string) error {
+func (s *stubBackend) Attach(ctx context.Context, _ string) error {
 	s.attachCalls++
-	return nil
+	return ctx.Err()
 }
 
 func TestServiceRunRejectsInvalidTargetBeforeDetection(t *testing.T) {
@@ -263,43 +268,58 @@ func TestServiceRunFailsWhenBackendStateQueryFails(t *testing.T) {
 func TestServiceRunStampsWorkspacePathWhenPlanIsEmpty(t *testing.T) {
 	tmpDir := t.TempDir()
 	workspace := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: " + filepath.ToSlash(tmpDir) + "\n"
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".hetki.yaml"), []byte(workspace), 0644))
-
-	previousWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmpDir))
-	t.Cleanup(func() {
-		require.NoError(t, os.Chdir(previousWD))
-	})
-
+	path := filepath.Join(tmpDir, ".hetki.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(workspace), 0644))
 	resolvedDir, err := filepath.EvalSymlinks(tmpDir)
 	require.NoError(t, err)
-
-	stub := &stubBackend{queryResult: backend.StateResult{
-		Sessions: []backend.Session{{
-			Name: "dev",
-			Windows: []backend.Window{{
-				Name: "editor",
-				Path: filepath.ToSlash(resolvedDir),
-			}},
-		}},
-	}}
-	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
-
-	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml")}))
-	assert.Equal(t, 1, stub.applyCalls)
-	assert.Equal(t, 1, stub.attachCalls)
-	expectedPath, err := canonicalPath(filepath.Join(tmpDir, ".hetki.yaml"))
+	expectedPath, err := canonicalPath(path)
 	require.NoError(t, err)
-	if assert.Len(t, stub.lastActions, 1) {
-		action, ok := stub.lastActions[0].(backend.SetSessionOptionAction)
-		if assert.True(t, ok) {
+
+	for _, test := range []struct {
+		name        string
+		stampErr    error
+		wantErr     error
+		wantWarning bool
+	}{
+		{"success", nil, nil, false},
+		{"cancellation", context.Canceled, context.Canceled, false},
+		{"failure during cancellation", errors.Join(context.Canceled, errors.New("metadata denied")), context.Canceled, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			stub := &stubBackend{queryResult: backend.StateResult{
+				Sessions: []backend.Session{{
+					Name: "dev",
+					Windows: []backend.Window{{
+						Name: "editor",
+						Path: filepath.ToSlash(resolvedDir),
+					}},
+				}},
+			}, applyErr: test.stampErr}
+			if test.stampErr != nil {
+				stub.onApply = cancel
+			}
+			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
+			var runErr error
+
+			output := captureLoggerOutput(t, func() {
+				runErr = service.Run(ctx, Options{Path: new(path)})
+			})
+
+			require.ErrorIs(t, runErr, test.wantErr)
+			assert.Equal(t, test.wantWarning, strings.Contains(output, "workspace metadata not set"))
+			assert.Equal(t, 1, stub.applyCalls)
+			assert.Equal(t, 1, stub.attachCalls)
+			require.Len(t, stub.lastActions, 1)
+			action, ok := stub.lastActions[0].(backend.SetSessionOptionAction)
+			require.True(t, ok)
 			actualPath, err := canonicalPath(action.Value)
 			require.NoError(t, err)
 			assert.Equal(t, "dev", action.Session)
 			assert.Equal(t, backend.WorkspacePathOption, action.Key)
 			assert.Equal(t, expectedPath, actualPath)
-		}
+		})
 	}
 }
 

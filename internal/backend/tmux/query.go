@@ -26,6 +26,15 @@ func (e *queryParseError) Unwrap() error { return e.err }
 
 func RunQuery[T any](ctx context.Context, c Client, q Query[T]) (T, error) {
 	output, err := c.Run(ctx, q.Args()...)
+	if err != nil {
+		var canceled *backend.CanceledProcessError
+		if backend.IsCancellationOnly(err) || errors.As(err, &canceled) {
+			// Interrupted commands may return partial output; preserve the execution error.
+			var zero T
+			return zero, err
+		}
+	}
+
 	result, parseErr := q.Parse(output)
 	if parseErr != nil {
 		var zero T

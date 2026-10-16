@@ -66,8 +66,8 @@ func commandSignalContext() (context.Context, context.CancelFunc) {
 func Execute() {
 	ctx, stop := commandSignalContext()
 	err := rootCmd.ExecuteContext(ctx)
+	reportCommandError(ctx, err)
 	stop()
-	reportCommandError(err)
 	if err != nil {
 		os.Exit(1)
 	}

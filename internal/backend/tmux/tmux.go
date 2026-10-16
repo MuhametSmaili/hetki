@@ -52,9 +52,12 @@ func (b *TmuxBackend) QueryState(ctx context.Context) (backend.StateResult, erro
 func projectLiveState(ctx context.Context, result LoadStateResult, err error) (backend.StateResult, error) {
 	// tmux exits non-zero when list-panes runs against an empty server, after the
 	// chained show-options calls have already emitted valid base indexes.
-	var parseErr *queryParseError
-	if err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &parseErr) || len(result.Sessions) != 0 || !isEmptyServerError(err)) {
-		return backend.StateResult{}, err
+	if err != nil {
+		var parseErr *queryParseError
+		var canceled *backend.CanceledProcessError
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &canceled) || errors.As(err, &parseErr) || len(result.Sessions) != 0 || !isEmptyServerError(err) {
+			return backend.StateResult{}, err
+		}
 	}
 
 	currentClient := invokingClient(result.clients)

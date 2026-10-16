@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -103,13 +104,29 @@ func TestQueryStateToleratesEmptyServer(t *testing.T) {
 }
 
 func TestQueryStateDoesNotSuppressCancellationFromEmptyServer(t *testing.T) {
-	b := &TmuxBackend{client: &MockClient{RunFunc: func(context.Context, ...string) (string, error) {
-		return "0\n0\n", errors.Join(context.Canceled, errors.New("no server running on /tmp/tmux/default"))
-	}}}
+	sh, err := exec.LookPath("sh")
+	require.NoError(t, err)
+	err = exec.CommandContext(t.Context(), sh, "-c", "kill -INT $$").Run()
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
 
-	_, err := b.QueryState(context.Background())
+	for _, test := range []struct {
+		name, output string
+		cause        error
+	}{
+		{"caller cancellation", "0\n0\n", context.Canceled},
+		{"child interrupted first", "partial", &backend.CanceledProcessError{Cause: exitErr}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			b := &TmuxBackend{client: &MockClient{RunFunc: func(context.Context, ...string) (string, error) {
+				return test.output, errors.Join(test.cause, errors.New("no server running on /tmp/tmux/default"))
+			}}}
 
-	require.ErrorIs(t, err, context.Canceled)
+			_, err := b.QueryState(t.Context())
+
+			require.ErrorIs(t, err, test.cause)
+		})
+	}
 }
 
 func TestQueryStateDoesNotSuppressParseFailureFromEmptyServer(t *testing.T) {

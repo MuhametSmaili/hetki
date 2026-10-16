@@ -151,9 +151,11 @@ func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspace *manife
 }
 
 func warnIfMetadataStampFails(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) {
-	if err := stampWorkspacePath(ctx, b, workspace, workspacePath); err != nil {
-		logger.Warning("workspace metadata not set: %v", err)
+	err := stampWorkspacePath(ctx, b, workspace, workspacePath)
+	if err == nil || (ctx.Err() == context.Canceled && backend.IsCancellationOnly(err)) {
+		return
 	}
+	logger.Warning("workspace metadata not set: %v", err)
 }
 
 func stampWorkspacePath(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) error {
