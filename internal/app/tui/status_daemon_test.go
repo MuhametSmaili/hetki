@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
@@ -105,14 +106,42 @@ func (b *replacedServerBackend) QueryStatusState(context.Context) (backend.State
 }
 
 func TestOpeningStatusDefersDaemonWorkUntilRead(t *testing.T) {
-	adapter := &LiveAdapter{statusServer: observe.Server{PID: -1}}
+	synctest.Test(t, func(t *testing.T) {
+		adapter := &LiveAdapter{statusServer: observe.Server{PID: -1}}
 
-	reader, err := adapter.OpenStatus(t.Context())
+		reader, err := adapter.OpenStatus(t.Context())
 
-	require.NoError(t, err, "opening must not validate or launch the daemon")
-	require.NotNil(t, reader)
-	update := reader.options().Read(t.Context(), status.Snapshot{})
-	require.Error(t, update.Err, "the asynchronous read validates the descriptor")
+		require.NoError(t, err, "opening must not validate or launch the daemon")
+		require.NotNil(t, reader)
+		update := reader.options().Read(t.Context(), status.Snapshot{})
+		require.Error(t, update.Err, "the asynchronous read validates the descriptor")
+		acceptStatusUpdate(update)
+
+		time.Sleep(time.Hour) // Virtual time exceeds any retry suppression.
+		later := reader.options().Read(t.Context(), update.Values)
+
+		require.ErrorIs(t, later.Err, errors.Unwrap(update.Err), "uncertain native identity ends this reader")
+	})
+}
+
+func TestDaemonReaderAdmissionHonorsCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		reader := &daemonReader{gate: make(chan struct{}, 1)}
+		reader.gate <- struct{}{}
+		defer func() { <-reader.gate }()
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan error, 1)
+		go func() {
+			_, err := reader.readView(ctx, daemon.Cursor{})
+			done <- err
+		}()
+		synctest.Wait()
+
+		cancel()
+
+		require.ErrorIs(t, awaitChannel(t, done), context.Canceled)
+	})
 }
 
 func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {

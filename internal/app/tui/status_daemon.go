@@ -2,7 +2,7 @@ package tui
 
 import (
 	"context"
-	"sync"
+	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/app/statusobserver"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
@@ -23,56 +23,112 @@ func (a *LiveAdapter) OpenStatus(ctx context.Context) (*statusDelivery, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	reader := &daemonReader{server: server}
+	reader := &daemonReader{server: server, gate: make(chan struct{}, 1)}
 	return &statusDelivery{ctx: ctx, adapter: a, readView: reader.readView}, nil
 }
 
+const (
+	statusStartupTimeout    = 5 * time.Second
+	statusInitialRetryDelay = 2 * time.Second
+	statusMaxRetryDelay     = 5 * time.Second
+)
+
 type daemonReader struct {
 	server observe.Server
-	once   sync.Once
-	client *daemon.Client
-	err    error
-	watch  bool
-	mu     sync.Mutex
-	cursor daemon.Cursor
+	gate   chan struct{} // Serializes reads and recovery; waiting callers can cancel.
+
+	client     *daemon.Client
+	watch      bool
+	terminal   error
+	err        error
+	retryAt    time.Time
+	retryDelay time.Duration
 }
 
 func (r *daemonReader) connect(ctx context.Context) error {
-	r.once.Do(func() {
-		r.client, r.err = statusobserver.EnsureDaemon(ctx, r.server, "")
-		if r.err != nil {
-			return
-		}
+	if r.client != nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, statusStartupTimeout)
+	defer cancel()
 
-		r.watch, r.err = r.client.SupportsWatch(ctx)
-	})
-	return r.err
+	if err := r.server.Validate(ctx); err != nil {
+		if ctx.Err() == nil {
+			// Uncertain native identity is terminal; never discover a replacement.
+			r.terminal = err
+		}
+		return err
+	}
+	client, err := statusobserver.EnsureDaemon(ctx, r.server, "")
+	if err != nil {
+		return err
+	}
+	watch, err := client.SupportsWatch(ctx)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	r.client, r.watch = client, watch
+	return nil
 }
 
-// readView retains the last delivered cursor. Old development daemons that do
-// not advertise watches keep using ordinary reads and the UI's polling cadence.
-func (r *daemonReader) readView(ctx context.Context) (daemon.View, error) {
-	if err := r.connect(ctx); err != nil {
+// readView returns failures before recovery so the delivery owner can invalidate
+// evidence. Retry eligibility is checked by the existing read loop, not a worker.
+func (r *daemonReader) readView(ctx context.Context, after daemon.Cursor) (daemon.View, error) {
+	select {
+	case r.gate <- struct{}{}:
+		defer func() { <-r.gate }()
+	case <-ctx.Done():
+		return daemon.View{}, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return daemon.View{}, err
+	}
+	if r.terminal != nil {
+		return daemon.View{}, r.terminal
+	}
+	if time.Now().Before(r.retryAt) {
+		return daemon.View{}, r.err
+	}
+
+	connecting := r.client == nil
+	view, err := r.attempt(ctx, after)
+	if contextErr := ctx.Err(); contextErr != nil {
+		if connecting {
+			r.failed(contextErr)
+		}
+		return daemon.View{}, contextErr
+	}
+	if err != nil {
+		r.failed(err)
 		return daemon.View{}, err
 	}
 
-	if !r.watch {
-		return r.client.ReadView(ctx)
+	r.err = nil
+	r.retryAt = time.Time{}
+	r.retryDelay = 0
+	return view, nil
+}
+
+func (r *daemonReader) attempt(ctx context.Context, after daemon.Cursor) (daemon.View, error) {
+	if err := r.connect(ctx); err != nil {
+		return daemon.View{}, err
 	}
-
-	r.mu.Lock()
-	after := r.cursor
-	r.mu.Unlock()
-
-	view, err := r.client.WatchView(ctx, after)
-
-	r.mu.Lock()
-	if r.cursor == after {
-		r.cursor = view.Cursor
+	if r.watch {
+		return r.client.WatchView(ctx, after)
 	}
-	r.mu.Unlock()
+	// Older development daemons keep ordinary views and the UI polling cadence.
+	return r.client.ReadView(ctx)
+}
 
-	return view, err
+func (r *daemonReader) failed(err error) {
+	r.client = nil
+	r.watch = false
+	r.err = err
+	r.retryDelay = min(max(r.retryDelay*2, statusInitialRetryDelay), statusMaxRetryDelay)
+	r.retryAt = time.Now().Add(r.retryDelay)
 }
 
 // bindStatusView uses the current projection and exact server incarnation;

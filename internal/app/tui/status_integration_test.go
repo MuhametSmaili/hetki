@@ -95,29 +95,8 @@ func TestNativePickerPollsUnwatchedViews(t *testing.T) {
 	b, client, _ := pickerDaemonFixture(t)
 	_, server, err := b.QueryStatusState(t.Context())
 	require.NoError(t, err)
-	ref := status.PaneRef{Server: server.Identity(), ID: "%0", Generation: "fixture"}
-	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-		ref: {State: status.Blocked, ValidUntil: time.Now().Add(time.Minute)},
-	})
-	require.NoError(t, err)
-	source := &unwatchedStatusSource{view: daemon.View{
-		Values: values, Locations: []daemon.Location{{Session: "$0", Window: "@0", Pane: "%0"}},
-	}}
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-	go func() {
-		done <- daemon.Serve(ctx, daemon.Binding{Server: server.Identity(), Alive: func(ctx context.Context) bool {
-			return ctx.Err() == nil
-		}}, func(context.Context, func(error)) (daemon.Source, error) { return source, nil })
-	}()
-	t.Cleanup(func() {
-		cancel()
-		require.NoError(t, awaitChannel(t, done))
-	})
-	require.Eventually(t, func() bool {
-		_, err := client.Ping(ctx)
-		return err == nil
-	}, 3*time.Second, 10*time.Millisecond)
+	source := &unwatchedStatusSource{view: blockedPickerView(t, server.Identity())}
+	servePickerSource(t, client, server.Identity(), source)
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	service := Service{Driver: adapter}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
@@ -133,6 +112,37 @@ func TestNativePickerPollsUnwatchedViews(t *testing.T) {
 
 	require.NoError(t, service.Run(t.Context()))
 	require.EqualValues(t, 2, source.reads.Load(), "accepted polling views must be read again")
+}
+
+func blockedPickerView(t *testing.T, identity string) daemon.View {
+	t.Helper()
+	ref := status.PaneRef{Server: identity, ID: "%0", Generation: "fixture"}
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+		ref: {State: status.Blocked, ValidUntil: time.Now().Add(time.Minute)},
+	})
+	require.NoError(t, err)
+	return daemon.View{
+		Values: values, Locations: []daemon.Location{{Session: "$0", Window: "@0", Pane: "%0"}},
+	}
+}
+
+func servePickerSource(t *testing.T, client *daemon.Client, identity string, source daemon.Source) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- daemon.Serve(ctx, daemon.Binding{Server: identity, Alive: func(ctx context.Context) bool {
+			return ctx.Err() == nil
+		}}, func(context.Context, func(error)) (daemon.Source, error) { return source, nil })
+	}()
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, awaitChannel(t, done))
+	})
+	require.Eventually(t, func() bool {
+		_, err := client.Ping(ctx)
+		return err == nil
+	}, 3*time.Second, 10*time.Millisecond)
 }
 
 func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {

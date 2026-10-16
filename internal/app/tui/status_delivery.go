@@ -13,11 +13,11 @@ import (
 )
 
 // statusDelivery owns one picker's received evidence and UI acknowledgements.
-// The adapter owns projection bindings; the reader owns the transport cursor.
+// The adapter owns bindings. Only the retained delivery supplies the next cursor.
 type statusDelivery struct {
 	ctx      context.Context
 	adapter  *LiveAdapter
-	readView func(context.Context) (daemon.View, error)
+	readView func(context.Context, daemon.Cursor) (daemon.View, error)
 
 	mu       sync.Mutex
 	view     daemon.View
@@ -46,7 +46,11 @@ func (d *statusDelivery) readStatus(ctx context.Context, previous status.Snapsho
 		return d.receiveStatus(ctx, daemon.View{}, previous, err)
 	}
 
-	view, err := d.readView(ctx)
+	d.mu.Lock()
+	after := d.view.Cursor
+	d.mu.Unlock()
+
+	view, err := d.readView(ctx, after)
 	return d.receiveStatus(ctx, view, previous, err)
 }
 

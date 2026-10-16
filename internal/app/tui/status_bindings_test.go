@@ -31,7 +31,9 @@ type statusTestDriver struct {
 }
 
 func (d statusTestDriver) OpenStatus(ctx context.Context) (*statusDelivery, error) {
-	return &statusDelivery{ctx: ctx, adapter: d.LiveAdapter, readView: d.read}, nil
+	return &statusDelivery{ctx: ctx, adapter: d.LiveAdapter, readView: func(ctx context.Context, _ daemon.Cursor) (daemon.View, error) {
+		return d.read(ctx)
+	}}, nil
 }
 
 func statusDeliveryFixture(t *testing.T) (*LiveAdapter, daemon.View) {
