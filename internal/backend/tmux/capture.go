@@ -2,40 +2,30 @@ package tmux
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"time"
+
+	"github.com/MuhametSmaili/hetki/internal/backend"
 )
 
-// CapturePane reads the current screen for %N, $N:, or $N:@N.
-func (b *TmuxBackend) CapturePane(ctx context.Context, target string) (string, error) {
+// CapturePane reads a pane occurrence or the session/window's current active pane.
+func (b *TmuxBackend) CapturePane(ctx context.Context, target backend.Target) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if strings.HasPrefix(target, "%") {
-		if err := validateObjectID("pane", target, '%'); err != nil {
-			return "", err
-		}
-	} else {
-		session, window, ok := strings.Cut(target, ":")
-		if !ok {
-			return "", fmt.Errorf("invalid capture target %q", target)
-		}
-		if err := validateObjectID("session", session, '$'); err != nil {
-			return "", err
-		}
-		if window != "" {
-			if err := validateObjectID("window", window, '@'); err != nil {
-				return "", err
-			}
-		}
+	if err := validateTarget(target); err != nil {
+		return "", err
 	}
+	nativeTarget := target.SessionID + ":" + target.WindowID
+	if target.PaneID != "" {
+		nativeTarget += "." + target.PaneID
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	// ponytail: top 200 rows / 1 MiB; make viewport-aware if taller previews are needed.
-	// Nonnegative rows exclude scrollback; omit -a to capture the active screen.
-	// -p leaves paste buffers untouched.
-	output, err := b.client.RunLimited(ctx, 1<<20, "capture-pane", "-p", "-e", "-N", "-S", "0", "-E", "199", "-t", target)
+	// Capture the visible screen through its bottom (the default end row),
+	// bounded to 1 MiB. Starting at zero excludes scrollback; omitting -a
+	// selects the active screen. -p leaves paste buffers untouched.
+	output, err := b.client.RunLimited(ctx, 1<<20, "capture-pane", "-p", "-e", "-N", "-S", "0", "-t", nativeTarget)
 	if err != nil {
 		return "", err
 	}

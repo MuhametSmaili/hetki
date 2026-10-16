@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/MSmaili/hetki/cmd"
+	"github.com/MuhametSmaili/hetki/cmd"
 
-	_ "github.com/MSmaili/hetki/internal/backend/tmux"
+	_ "github.com/MuhametSmaili/hetki/internal/backend/tmux"
 )
 
 func main() {

@@ -3,12 +3,11 @@ package tui
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	ui "github.com/MSmaili/hetki/internal/tui"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 func owningSessionItem(item liveItem) (liveItem, error) {
@@ -17,19 +16,17 @@ func owningSessionItem(item liveItem) (liveItem, error) {
 	default:
 		return liveItem{}, fmt.Errorf("item %q has no owning session action", item.ID)
 	}
-	if strings.TrimSpace(item.SessionTarget) == "" {
+	if item.Target.SessionID == "" {
 		return liveItem{}, fmt.Errorf("item %q has no owning session action", item.ID)
 	}
 	return liveItem{
-		ID:             item.ID,
-		SessionID:      item.SessionID,
-		Kind:           liveSession,
-		Label:          item.SessionName,
-		Name:           item.SessionName,
-		SessionName:    item.SessionName,
-		Target:         item.SessionTarget,
-		MutationTarget: item.SessionTarget,
-		SessionTarget:  item.SessionTarget,
+		ID: item.ID,
+
+		Kind:        liveSession,
+		Label:       item.SessionName,
+		Name:        item.SessionName,
+		SessionName: item.SessionName,
+		Target:      backend.Target{SessionID: item.Target.SessionID},
 	}, nil
 }
 
@@ -85,17 +82,17 @@ func (a *LiveAdapter) createWindow(ctx context.Context, request ui.ActionRequest
 	}
 	existing := make(map[list.ItemID]struct{}, len(a.index))
 	for _, item := range a.index {
-		if item.WindowID != "" {
-			existing[item.WindowID] = struct{}{}
+		if !item.windowRowID().IsZero() {
+			existing[item.windowRowID()] = struct{}{}
 		}
 	}
-	if err := b.Apply(ctx, []backend.Action{backend.CreateWindowAction{Session: selected.SessionTarget, Name: name}}); err != nil {
-		return ui.ActionResult{}, fmt.Errorf("create window %q in %q: %w", name, selected.SessionTarget, err)
+	if err := b.Apply(ctx, []backend.Action{backend.CreateWindowAction{Session: selected.Target.SessionID, Name: name}}); err != nil {
+		return ui.ActionResult{}, fmt.Errorf("create window %q in %q: %w", name, selected.Target.SessionID, err)
 	}
-	return a.refreshAfter(ctx, "created window "+selected.SessionTarget+":"+name, func(snapshot list.Snapshot, index itemIndex) list.ItemID {
+	return a.refreshAfter(ctx, "created window "+name+" in "+selected.SessionName, func(snapshot list.Snapshot, index itemIndex) list.ItemID {
 		return firstMatchingItem(snapshot, index, func(item liveItem) bool {
-			_, existed := existing[item.WindowID]
-			return item.SessionTarget == selected.SessionTarget && item.WindowName == name && !existed
+			_, existed := existing[item.windowRowID()]
+			return item.Target.SessionID == selected.Target.SessionID && item.WindowName == name && !existed
 		})
 	})
 }
@@ -121,15 +118,13 @@ func (a *LiveAdapter) renameItem(ctx context.Context, request ui.ActionRequest, 
 	var action backend.Action
 	var message string
 	if item.Kind == liveSession {
-		action = backend.RenameSessionAction{Current: item.Target, New: name}
-		message = "renamed session " + item.Target + " -> " + name
+		action = backend.RenameSessionAction{Current: item.Target.SessionID, New: name}
+		message = "renamed session " + item.SessionName + " -> " + name
 	} else {
-		session, window, err := sessionWindowFromTarget(ui.BackendTarget(item.MutationTarget))
-		if err != nil {
-			return ui.ActionResult{}, err
+		action = backend.RenameWindowAction{
+			Session: item.Target.SessionID, Window: item.Target.WindowID, WindowID: item.Target.WindowID, New: name,
 		}
-		action = backend.RenameWindowAction{Session: session, Window: window, WindowID: window, New: name}
-		message = "renamed window " + session + ":" + window + " -> " + name
+		message = "renamed window " + item.WindowName + " -> " + name
 	}
 	if err := b.Apply(ctx, []backend.Action{action}); err != nil {
 		return ui.ActionResult{}, fmt.Errorf("rename item %q: %w", item.ID, err)
@@ -153,18 +148,16 @@ func (a *LiveAdapter) deleteItem(ctx context.Context, request ui.ActionRequest, 
 	}
 	var action backend.Action
 	var message string
-	preferred := item.ParentID
+	preferred := item.parentRowID()
 	if item.Kind == liveSession {
-		action = backend.KillSessionAction{Name: item.Target}
-		message = "deleted session " + item.Target
-		preferred = ""
+		action = backend.KillSessionAction{Name: item.Target.SessionID}
+		message = "deleted session " + item.SessionName
+		preferred = list.ItemID{}
 	} else {
-		session, window, err := sessionWindowFromTarget(ui.BackendTarget(item.MutationTarget))
-		if err != nil {
-			return ui.ActionResult{}, err
+		action = backend.KillWindowAction{
+			Session: item.Target.SessionID, Window: item.Target.WindowID, WindowID: item.Target.WindowID,
 		}
-		action = backend.KillWindowAction{Session: session, Window: window, WindowID: window}
-		message = "deleted window " + session + ":" + window
+		message = "deleted window " + item.WindowName
 	}
 	if err := b.Apply(ctx, []backend.Action{action}); err != nil {
 		return ui.ActionResult{}, fmt.Errorf("delete item %q: %w", item.ID, err)
@@ -189,26 +182,10 @@ func workspacePathForSession(sessions []backend.Session, sessionName string) str
 	return ""
 }
 
-func activeWorkspacePath(ctx context.Context, b backend.Backend) (string, error) {
+func activeWorkspacePath(ctx context.Context, b Backend) (string, error) {
 	state, err := b.QueryState(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to query sessions for workspace inheritance: %w", err)
 	}
 	return strings.TrimSpace(workspacePathForSession(state.Sessions, state.Active.Session)), nil
-}
-
-func sessionWindowFromTarget(target ui.BackendTarget) (string, string, error) {
-	value := strings.TrimSpace(string(target))
-	session, rest, hasWindow := strings.Cut(value, ":")
-	if !hasWindow || strings.TrimSpace(session) == "" || strings.TrimSpace(rest) == "" {
-		return "", "", fmt.Errorf("window target must be in session:window format")
-	}
-	window, _, _ := strings.Cut(rest, ".")
-	window = strings.TrimSpace(window)
-	idText := strings.TrimPrefix(window, "@")
-	id, err := strconv.Atoi(idText)
-	if !strings.HasPrefix(window, "@") || err != nil || id < 0 || strconv.Itoa(id) != idText {
-		return "", "", fmt.Errorf("window target must use a stable @N window ID")
-	}
-	return strings.TrimSpace(session), window, nil
 }

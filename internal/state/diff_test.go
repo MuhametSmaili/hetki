@@ -29,7 +29,7 @@ func TestCompareWindows(t *testing.T) {
 		},
 	}}
 
-	diff := Compare(desired, actual)
+	diff := Compare(desired, actual, nil)
 
 	// A|/A is missing (desired but not in actual)
 	// B|/B is missing
@@ -64,7 +64,7 @@ func TestCompareWindowsDuplicateNames(t *testing.T) {
 		},
 	}}
 
-	diff := Compare(desired, actual)
+	diff := Compare(desired, actual, nil)
 
 	// editor|/project2 is missing
 	assert.Len(t, diff.Windows["s"].Missing, 1)
@@ -98,7 +98,7 @@ func TestCompareWindowsMismatchedPaneCount(t *testing.T) {
 		},
 	}}
 
-	diff := Compare(desired, actual)
+	diff := Compare(desired, actual, nil)
 
 	assert.Empty(t, diff.Windows["s"].Missing)
 	assert.Empty(t, diff.Windows["s"].Extra)
@@ -120,7 +120,7 @@ func TestCompareWindowsForMissingSession(t *testing.T) {
 
 	actual := NewState()
 
-	diff := Compare(desired, actual)
+	diff := Compare(desired, actual, nil)
 
 	assert.Contains(t, diff.Sessions.Missing, "new-session")
 	assert.Empty(t, diff.Windows["new-session"].Missing)

@@ -2,9 +2,10 @@ package tui
 
 import (
 	"slices"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type DispatchFunc func(ActionRequest) (ActionResult, error)
@@ -17,6 +18,7 @@ type actionResultMsg struct {
 func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	result := msg.result
 	pending, previousRows := m.pending, m.pendingRows
+	resumeJump := m.mode == modeJump && pending != nil && pending.ActionID == ActionToggleProjection
 	m.pending, m.pendingRows = nil, nil
 	m.busy, m.status = false, ""
 	if result.Snapshot != nil && m.mode == modeJump {
@@ -29,7 +31,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	case result.Menu != nil || result.Input != nil || result.Confirmation != nil:
 		m.openOverlay(result, pending)
 		return m.reflow(), nil
-	case result.Navigation != "":
+	case !result.Navigation.IsZero():
 		m.navigation = result.Navigation
 		return m, tea.Quit
 	case result.Snapshot == nil:
@@ -41,8 +43,20 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.preview.invalidate()
+	m.paneStatus.options.Bindings = nil
+	if result.Status != nil {
+		m.applyStatusUpdate(*result.Status)
+	}
+	m.paneStatus.bindingGeneration++
+	m.applyScope(m.items.Query(), time.Now())
+	if !result.SelectItemID.IsZero() {
+		m.items.Select(result.SelectItemID)
+	}
 	if pending != nil && isDeleteAction(pending.ActionID) {
 		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
+	}
+	if resumeJump {
+		return handleJump(m.reflow(), list.ItemID{})
 	}
 	return m.reflow(), nil
 }
@@ -52,12 +66,12 @@ func isDeleteAction(action ActionID) bool {
 }
 
 func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows []list.ItemID) {
-	if preferred != "" {
+	if !preferred.IsZero() {
 		if m.items.Select(preferred) {
 			return
 		}
 		if m.items.Query() != "" {
-			m.items.SetQuery("")
+			m.setQuery("")
 			if m.items.Select(preferred) {
 				return
 			}
@@ -70,7 +84,7 @@ func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows
 		return
 	}
 	if m.items.Query() != "" {
-		m.items.SetQuery("")
+		m.setQuery("")
 		if m.items.SelectSurvivor(previousRows, deletedID) {
 			return
 		}
@@ -125,7 +139,7 @@ func handleRefresh(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleToggleProjection(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
-	if itemID == "" {
+	if itemID.IsZero() {
 		if selected, ok := m.selectedRow(); ok {
 			itemID = selected.Item.ID
 		}
@@ -134,7 +148,7 @@ func handleToggleProjection(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleLastSession(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	return m.startAction(ActionLastSession, "")
+	return m.startAction(ActionLastSession, list.ItemID{})
 }
 
 func handleOpen(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
@@ -142,7 +156,7 @@ func handleOpen(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 	case modeJump:
 		m.cancelJump()
 	case modeFilter:
-		if itemID == "" {
+		if itemID.IsZero() {
 			m.mode = modeBrowse
 		}
 	}
@@ -150,7 +164,7 @@ func handleOpen(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func (m model) startItemAction(action ActionID, itemID list.ItemID) (tea.Model, tea.Cmd) {
-	if itemID != "" {
+	if !itemID.IsZero() {
 		return m.startAction(action, itemID)
 	}
 	return m.startSelectedRequest(action)

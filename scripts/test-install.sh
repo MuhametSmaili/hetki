@@ -130,7 +130,7 @@ write_stub_go() {
 printf 'GOPROXY=%s GOSUMDB=%s GONOSUMDB=%s GOPRIVATE=%s GONOPROXY=%s GOMODCACHE=%s GOCACHE=%s GOTMPDIR=%s ARGS=%s\n' \
     "$GOPROXY" "$GOSUMDB" "$GONOSUMDB" "$GOPRIVATE" "$GONOPROXY" "$GOMODCACHE" "$GOCACHE" "$GOTMPDIR" "$*" >>"${HETKI_TEST_GO_LOG:-/dev/null}"
 if [[ "$1 $2" == "mod download" ]]; then
-    printf '{\n  "Path": "github.com/MSmaili/hetki",\n  "Version": "v1.0.0",\n  "Sum": "h1:test",\n  "Origin": {\n    "VCS": "git",\n    "URL": "https://github.com/MSmaili/hetki",\n    "Hash": "%s",\n    "Ref": "refs/tags/v1.0.0"\n  }\n}\n' "$HETKI_TEST_COMMIT"
+    printf '{\n  "Path": "github.com/MuhametSmaili/hetki",\n  "Version": "v1.0.0",\n  "Sum": "h1:test",\n  "Origin": {\n    "VCS": "git",\n    "URL": "https://github.com/MuhametSmaili/hetki",\n    "Hash": "%s",\n    "Ref": "refs/tags/v1.0.0"\n  }\n}\n' "$HETKI_TEST_COMMIT"
     exit 0
 fi
 mkdir -p "$GOBIN"
@@ -153,7 +153,7 @@ if [[ "\$1" == "auth" ]]; then exit 0; fi
 if [[ "\$1" == "attestation" ]]; then
     printf '%s\n' "\$*" >>"\${HETKI_TEST_GH_LOG:-/dev/null}"
     args=" \$* "
-    for required in '--repo MSmaili/hetki' '--signer-workflow MSmaili/hetki/.github/workflows/release.yml' '--source-ref refs/tags/v1.0.0' '--source-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' '--deny-self-hosted-runners' '--format json' '--jq' '.verificationResult.statement.subject[]' '.digest.sha256'; do
+    for required in '--repo MuhametSmaili/hetki' '--signer-workflow MuhametSmaili/hetki/.github/workflows/release.yml' '--source-ref refs/tags/v1.0.0' '--source-digest aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' '--deny-self-hosted-runners' '--format json' '--jq' '.verificationResult.statement.subject[]' '.digest.sha256'; do
         case "\$args" in *" \$required "*) ;; *) printf 'missing required attestation flag: %s\n' "\$required" >&2; exit 2 ;; esac
     done
     if [[ "$mode" == "ok" || "$mode" == "wrong-subject" ]]; then
@@ -354,7 +354,7 @@ echo "== source install pins sumdb, tag, and commit =="
 if HETKI_FROM_SOURCE=1 run_case source ok; then
     check "source binary installed" "[[ -x \"\$BIN\" ]]"
     check "source authentication pinned" "grep -q 'GOPROXY=direct GOSUMDB=sum.golang.org GONOSUMDB= GOPRIVATE= GONOPROXY= GOMODCACHE=.* GOCACHE=.* GOTMPDIR=.' \"\$WORK/source/go.log\""
-    check "source tag pinned" "grep -q 'github.com/MSmaili/hetki@v1.0.0' \"\$WORK/source/go.log\""
+    check "source tag pinned" "grep -q 'github.com/MuhametSmaili/hetki@v1.0.0' \"\$WORK/source/go.log\""
 else
     FAIL=$((FAIL + 1)); note "source installer failed: $(tail -3 "$WORK/source/err.log")"
 fi

@@ -3,10 +3,11 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 func (m model) View() tea.View {
@@ -35,21 +36,31 @@ func (m model) View() tea.View {
 }
 
 func (m model) viewHeader(width int) string {
+	scope := "All"
+	if m.scope.tracked {
+		scope = "Tracked"
+	}
 	return renderSearchBar(searchBarProps{
 		Width: width, Filter: m.items.Query(), Hint: headerHint(m), Right: headerRight(m),
-		Prompt: headerPrompt(m), Active: m.mode == modeFilter, Theme: m.theme,
+		Scope:      scope,
+		RightWidth: len(fmt.Sprintf("%d/%d", len(m.items.Snapshot().Items), len(m.items.Snapshot().Items))),
+		Prompt:     headerPrompt(m), Active: m.mode == modeFilter, Theme: m.theme,
 	}) + "\n" + m.theme.sectionLine.Render(strings.Repeat("─", width))
 }
 
 func (m model) viewList(layout layoutMetrics) string {
 	rows := m.items.VisibleRows()
 	visibleRows := make([]rowProps, 0, len(rows))
+	now := time.Now()
 	for i, row := range rows {
 		visibleRows = append(visibleRows, rowProps{
-			ItemID: string(row.Item.ID), Primary: row.Item.Primary, Secondary: row.Item.Secondary,
-			Trailing:  row.Item.Trailing,
-			JumpLabel: m.jumpLabel(row.Item.ID),
-			Depth:     row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,
+			Context: row.Item.Context, Primary: row.Item.Primary, Annotation: row.Item.Annotation,
+			Secondary:  row.Item.Secondary,
+			Trailing:   row.Item.Trailing,
+			Status:     m.paneStatus.options.Bindings.ValueAt(row.Item.ID, m.paneStatus.values, now),
+			StatusTime: now,
+			JumpLabel:  m.jumpLabel(row.Item.ID),
+			Depth:      row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,
 			Active: m.items.IsActive(row.Item.ID), Selected: m.items.Offset()+i == m.items.Cursor(),
 		})
 	}
@@ -171,7 +182,14 @@ func headerRight(m model) string {
 	if notice := m.items.Snapshot().Notice; notice != "" {
 		return notice
 	}
-	return rootCountLabel(m.items.Snapshot(), m.items.ShownRoots(), m.items.Query())
+	if m.paneStatus.readErr != nil {
+		return m.paneStatus.readErr.Error()
+	}
+	query := m.items.Query()
+	if m.scope.tracked {
+		query = "tracked"
+	}
+	return rootCountLabel(m.items.Snapshot(), m.items.ShownRoots(), query)
 }
 
 func rootCountLabel(snapshot list.Snapshot, shown int, query string) string {
@@ -202,6 +220,9 @@ func responsiveFrameStyle(base lipgloss.Style, width, height int) lipgloss.Style
 }
 
 func emptyStateText(m model) string {
+	if m.scope.tracked {
+		return "no matching tracked items"
+	}
 	if strings.TrimSpace(m.items.Query()) != "" {
 		return "no matching items"
 	}

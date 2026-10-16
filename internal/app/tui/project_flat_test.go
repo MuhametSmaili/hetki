@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/frecency"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/frecency"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,10 +21,10 @@ func TestProjectFlatBuildsStablePaneDestinations(t *testing.T) {
 					{ID: "%7", Index: 7, Path: "/home/me/code", Command: "node", Program: "pi", Active: true},
 					{ID: "%2", Index: 2, Path: "/var/log"},
 				}},
-				{ID: "@2", Name: "tests", Index: 2, Panes: []backend.Pane{{ID: "%8", Index: 0, Path: "/home/me/code", Active: true}}},
+				{ID: "@2", Name: " \t ", Index: 2, Panes: []backend.Pane{{ID: "%8", Index: 0, Path: "/home/me/code", Active: true}}},
 			},
 		}},
-		Active: backend.ActiveContext{SessionID: "$1", PaneID: "%7"},
+		Active: backend.ActiveContext{SessionID: "$1", WindowID: "@1", PaneID: "%7"},
 	}
 
 	snapshot, index, err := projectFlat(state, "/home/me")
@@ -33,9 +33,13 @@ func TestProjectFlatBuildsStablePaneDestinations(t *testing.T) {
 
 	codeID := destinationItemID("$1", "@1", "%7")
 	code := index[codeID]
-	assert.Equal(t, "$1:@1.%7", code.Target)
-	assert.Equal(t, "$1:@1", code.MutationTarget)
-	assert.Equal(t, "deveditor", itemByID(snapshot.Items, codeID).Primary)
+	assert.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%7"}, code.Target)
+
+	assert.Equal(t, "dev", itemByID(snapshot.Items, codeID).Context)
+	assert.Equal(t, "editor", itemByID(snapshot.Items, codeID).Primary)
+	assert.Equal(t, "2", itemByID(snapshot.Items, destinationItemID("$1", "@2", "%8")).Primary)
+	assert.Equal(t, "·7", itemByID(snapshot.Items, codeID).Annotation)
+	assert.Empty(t, itemByID(snapshot.Items, destinationItemID("$1", "@2", "%8")).Annotation)
 	assert.Equal(t, "pi", itemByID(snapshot.Items, codeID).Trailing)
 	assert.Equal(t, "node", itemByID(snapshot.Items, destinationItemID("$1", "@1", "%5")).Trailing)
 	assert.Equal(t, "~/code", itemByID(snapshot.Items, codeID).Secondary)
@@ -65,9 +69,9 @@ func TestProjectFlatKeepsDuplicateAndDelimitedContextsDistinct(t *testing.T) {
 	snapshot, index, err := projectFlat(state, "")
 	require.NoError(t, err)
 	require.Len(t, snapshot.Items, 3)
-	assert.Equal(t, "$1:@1.%1", index[destinationItemID("$1", "@1", "%1")].Target)
-	assert.Equal(t, "$1:@3.%3", index[destinationItemID("$1", "@3", "%3")].Target)
-	assert.Equal(t, "$2:@2.%2", index[destinationItemID("$2", "@2", "%2")].Target)
+	assert.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}, index[destinationItemID("$1", "@1", "%1")].Target)
+	assert.Equal(t, backend.Target{SessionID: "$1", WindowID: "@3", PaneID: "%3"}, index[destinationItemID("$1", "@3", "%3")].Target)
+	assert.Equal(t, backend.Target{SessionID: "$2", WindowID: "@2", PaneID: "%2"}, index[destinationItemID("$2", "@2", "%2")].Target)
 }
 
 func TestProjectFlatAllowsWindowsWithoutPanes(t *testing.T) {
@@ -94,8 +98,8 @@ func TestProjectFlatKeepsEveryPaneWithoutAnActivePane(t *testing.T) {
 	snapshot, index, err := projectFlat(state, "")
 	require.NoError(t, err)
 	require.Len(t, snapshot.Items, 2)
-	assert.Equal(t, "$1:@1.%2", index[destinationItemID("$1", "@1", "%2")].Target)
-	assert.Equal(t, "$1:@1.%9", index[destinationItemID("$1", "@1", "%9")].Target)
+	assert.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%2"}, index[destinationItemID("$1", "@1", "%2")].Target)
+	assert.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%9"}, index[destinationItemID("$1", "@1", "%9")].Target)
 	assert.Equal(t, destinationItemID("$1", "@1", "%2"), snapshot.Items[0].ID)
 }
 
@@ -136,15 +140,15 @@ func TestFlatProjectionSearchesSessionWindowAndPathWithNamePriority(t *testing.T
 	assert.Equal(t, destinationItemID("$2", "@2", "%2"), model.Rows()[0].Item.ID)
 }
 
-func TestProjectFlatRejectsUnstablePaneIDs(t *testing.T) {
+func TestProjectFlatRejectsMissingPaneIDs(t *testing.T) {
 	state := backend.StateResult{Sessions: []backend.Session{{
 		ID: "$1", Name: "dev", Windows: []backend.Window{{
-			ID: "@1", Name: "editor", Panes: []backend.Pane{{ID: "editor.0", Path: "/code"}},
+			ID: "@1", Name: "editor", Panes: []backend.Pane{{ID: "", Path: "/code"}},
 		}},
 	}}}
 
 	_, _, err := projectFlat(state, "")
-	require.ErrorContains(t, err, "pane must have a stable %N ID")
+	require.ErrorContains(t, err, "pane is missing its ID")
 }
 
 func TestProjectFlatIdentitySurvivesPathCommandAndIndexChanges(t *testing.T) {
@@ -177,17 +181,45 @@ func TestProjectFlatKeepsLinkedPaneOccurrencesDistinct(t *testing.T) {
 	window := backend.Window{ID: "@1", Name: "shared", Panes: []backend.Pane{{ID: "%1", Path: "/same", Command: "node"}}}
 	state := backend.StateResult{
 		Sessions: []backend.Session{{ID: "$1", Name: "first", Windows: []backend.Window{window}}, {ID: "$2", Name: "second", Windows: []backend.Window{window}}},
-		Active:   backend.ActiveContext{SessionID: "$2", PaneID: "%1"},
+		Active:   backend.ActiveContext{SessionID: "$2", WindowID: "@1", PaneID: "%1"},
 	}
 	snapshot, index, err := projectFlat(state, "")
 	require.NoError(t, err)
 	require.Len(t, snapshot.Items, 2)
 	require.Equal(t, destinationItemID("$2", "@1", "%1"), snapshot.ActiveItemID)
-	require.Equal(t, "$1:@1.%1", index[destinationItemID("$1", "@1", "%1")].Target)
-	require.Equal(t, "$2:@1.%1", index[destinationItemID("$2", "@1", "%1")].Target)
+	require.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}, index[destinationItemID("$1", "@1", "%1")].Target)
+	require.Equal(t, backend.Target{SessionID: "$2", WindowID: "@1", PaneID: "%1"}, index[destinationItemID("$2", "@1", "%1")].Target)
 }
 
-func TestProjectFlatOnlyLabelsOtherwiseIdenticalPanes(t *testing.T) {
+func TestProjectFlatMatchesTheCompleteActiveOccurrence(t *testing.T) {
+	state := backend.StateResult{Sessions: []backend.Session{{
+		ID: "session", Name: "session", Windows: []backend.Window{
+			{ID: "first", Panes: []backend.Pane{{ID: "shared"}}},
+			{ID: "second", Panes: []backend.Pane{{ID: "shared"}}},
+		},
+	}}}
+	for _, test := range []struct {
+		name   string
+		active backend.ActiveContext
+		want   list.ItemID
+	}{
+		{name: "first window", active: backend.ActiveContext{SessionID: "session", WindowID: "first", PaneID: "shared"}, want: destinationItemID("session", "first", "shared")},
+		{name: "second window", active: backend.ActiveContext{SessionID: "session", WindowID: "second", PaneID: "shared"}, want: destinationItemID("session", "second", "shared")},
+		{name: "missing window", active: backend.ActiveContext{SessionID: "session", PaneID: "shared"}},
+		{name: "unknown window", active: backend.ActiveContext{SessionID: "session", WindowID: "unknown", PaneID: "shared"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state.Active = test.active
+
+			snapshot, _, err := projectFlat(state, "")
+
+			require.NoError(t, err)
+			require.Equal(t, test.want, snapshot.ActiveItemID)
+		})
+	}
+}
+
+func TestProjectFlatLabelsEveryPaneInSplitWindows(t *testing.T) {
 	state := backend.StateResult{Sessions: []backend.Session{{
 		ID: "$1", Name: "dev", Windows: []backend.Window{{
 			ID: "@1", Name: "editor", Panes: []backend.Pane{
@@ -198,24 +230,25 @@ func TestProjectFlatOnlyLabelsOtherwiseIdenticalPanes(t *testing.T) {
 			},
 		}},
 	}}}
-	snapshot, index, err := projectFlat(state, "")
+
+	snapshot, _, err := projectFlat(state, "")
+
 	require.NoError(t, err)
-	require.Equal(t, "deveditor [%1]", itemByID(snapshot.Items, destinationItemID("$1", "@1", "%1")).Primary)
-	require.Equal(t, "deveditor [%2]", itemByID(snapshot.Items, destinationItemID("$1", "@1", "%2")).Primary)
-	for _, paneID := range []string{"%3", "%4"} {
-		require.Equal(t, "deveditor", itemByID(snapshot.Items, destinationItemID("$1", "@1", paneID)).Primary)
+	require.Len(t, snapshot.Items, 4)
+	for i, paneID := range []string{"%1", "%2", "%3", "%4"} {
+		item := itemByID(snapshot.Items, destinationItemID("$1", "@1", paneID))
+		require.Equal(t, "dev", item.Context)
+		require.Equal(t, "editor", item.Primary)
+		require.Equal(t, fmt.Sprintf("·%d", i), item.Annotation)
 	}
-	state.Sessions[0].Last = true
-	first := destinationItemID("$1", "@1", "%1")
-	// The last-session marker must not defeat duplicate detection or change
-	// search fields, ordering, stable identity, or the indexed target.
-	state.Sessions[0].Windows[0].Active = true
-	marked, markedIndex, err := projectFlat(state, "")
+
+	model, err := list.New(snapshot)
 	require.NoError(t, err)
-	require.Equal(t, "deveditor [%1] ↶", itemByID(marked.Items, first).Primary)
-	require.Equal(t, itemByID(snapshot.Items, first).SearchFields, itemByID(marked.Items, first).SearchFields)
-	require.Equal(t, index[first].Target, markedIndex[first].Target)
-	require.Equal(t, itemIDs(snapshot.Items), itemIDs(marked.Items))
+
+	model.SetQuery("nvim")
+
+	require.Len(t, model.Rows(), 1)
+	require.Equal(t, "·2", model.Rows()[0].Item.Annotation)
 }
 
 func itemByID(items []list.Item, id list.ItemID) list.Item {
@@ -261,7 +294,7 @@ func TestProjectFlatUsesTotalFrecencyOrderAndFilteredTieBreaks(t *testing.T) {
 }
 
 func TestDestinationOrderHasDeterministicFallbacks(t *testing.T) {
-	base := liveItem{SessionName: "same", WindowIndex: 1, RawPath: "/same", SessionTarget: "$1", WindowID: "window:@1"}
+	base := liveItem{SessionName: "same", WindowIndex: 1, RawPath: "/same", Target: backend.Target{SessionID: "$1", WindowID: "@1"}}
 	for _, test := range []struct {
 		name  string
 		left  liveItem
@@ -270,8 +303,8 @@ func TestDestinationOrderHasDeterministicFallbacks(t *testing.T) {
 		{name: "session name", left: liveItem{SessionName: "a"}, right: liveItem{SessionName: "b"}},
 		{name: "window index", left: liveItem{WindowIndex: 1}, right: liveItem{WindowIndex: 2}},
 		{name: "raw path", left: liveItem{RawPath: "/a"}, right: liveItem{RawPath: "/b"}},
-		{name: "session ID", left: liveItem{SessionTarget: "$1"}, right: liveItem{SessionTarget: "$2"}},
-		{name: "window ID", left: liveItem{WindowID: "window:@1"}, right: liveItem{WindowID: "window:@2"}},
+		{name: "session ID", left: liveItem{Target: backend.Target{SessionID: "$1"}}, right: liveItem{Target: backend.Target{SessionID: "$2"}}},
+		{name: "window ID", left: liveItem{Target: backend.Target{WindowID: "@1"}}, right: liveItem{Target: backend.Target{WindowID: "@2"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			left, right := base, base
@@ -281,10 +314,10 @@ func TestDestinationOrderHasDeterministicFallbacks(t *testing.T) {
 				left.WindowIndex, right.WindowIndex = test.left.WindowIndex, test.right.WindowIndex
 			} else if test.left.RawPath != "" {
 				left.RawPath, right.RawPath = test.left.RawPath, test.right.RawPath
-			} else if test.left.SessionTarget != "" {
-				left.SessionTarget, right.SessionTarget = test.left.SessionTarget, test.right.SessionTarget
+			} else if test.left.Target.SessionID != "" {
+				left.Target.SessionID, right.Target.SessionID = test.left.Target.SessionID, test.right.Target.SessionID
 			} else {
-				left.WindowID, right.WindowID = test.left.WindowID, test.right.WindowID
+				left.Target.WindowID, right.Target.WindowID = test.left.Target.WindowID, test.right.Target.WindowID
 			}
 			assert.True(t, destinationLess(left, right, frecency.Scores{}))
 			assert.False(t, destinationLess(right, left, frecency.Scores{}))

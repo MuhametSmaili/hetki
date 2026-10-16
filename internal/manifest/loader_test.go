@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,7 +28,7 @@ func TestLoadYAML(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
-	loader := NewFileLoader(configPath)
+	loader := NewFileLoader(configPath, acceptLayout)
 	workspace, err := loader.Load()
 	require.NoError(t, err)
 
@@ -46,14 +47,14 @@ func TestLoadUnsupportedFormat(t *testing.T) {
 	err := os.WriteFile(configPath, []byte("invalid"), 0644)
 	require.NoError(t, err)
 
-	loader := NewFileLoader(configPath)
+	loader := NewFileLoader(configPath, acceptLayout)
 	_, err = loader.Load()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported config format")
 }
 
 func TestLoadFileNotFound(t *testing.T) {
-	loader := NewFileLoader("/nonexistent/config.yaml")
+	loader := NewFileLoader("/nonexistent/config.yaml", acceptLayout)
 	_, err := loader.Load()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "read config")
@@ -76,7 +77,7 @@ func TestLoadYAMLWithPanes(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
-	loader := NewFileLoader(configPath)
+	loader := NewFileLoader(configPath, acceptLayout)
 	workspace, err := loader.Load()
 	require.NoError(t, err)
 
@@ -107,7 +108,7 @@ func TestLoadYAMLRejectsUnsupportedPaneFields(t *testing.T) {
 	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
-	_, err = NewFileLoader(configPath).Load()
+	_, err = NewFileLoader(configPath, acceptLayout).Load()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "panes[0].split: unsupported field")
 	assert.ErrorContains(t, err, "panes[0].size: unsupported field")
@@ -117,23 +118,25 @@ func TestLoadYAMLWithSessionRoot(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "test.yaml")
 
-	yamlContent := `sessions:
+	root, err := filepath.EvalSymlinks(tmpDir)
+	require.NoError(t, err)
+	yamlContent := fmt.Sprintf(`sessions:
   - name: myapp
-    root: /home/user/code
+    root: %q
     windows:
       - name: editor
       - name: server
         path: /other/path
-`
+`, root)
 
-	err := os.WriteFile(configPath, []byte(yamlContent), 0644)
+	err = os.WriteFile(configPath, []byte(yamlContent), 0644)
 	require.NoError(t, err)
 
-	loader := NewFileLoader(configPath)
+	loader := NewFileLoader(configPath, acceptLayout)
 	workspace, err := loader.Load()
 	require.NoError(t, err)
 
-	assert.Equal(t, "/home/user/code", workspace.Sessions[0].Windows[0].Path)
+	assert.Equal(t, root, workspace.Sessions[0].Windows[0].Path)
 	assert.Equal(t, "/other/path", workspace.Sessions[0].Windows[1].Path)
 }
 

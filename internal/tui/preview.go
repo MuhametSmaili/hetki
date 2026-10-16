@@ -6,8 +6,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/MSmaili/hetki/internal/terminal"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const DefaultPreviewWidth = 70
@@ -51,11 +52,11 @@ func handleTogglePreview(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 
 // syncPreview coalesces selection changes into one in-flight capture.
 func (m model) syncPreview() (model, tea.Cmd) {
-	if !m.preview.visible && m.preview.itemID == "" {
+	if !m.preview.visible && m.preview.itemID.IsZero() {
 		return m, nil
 	}
 	var id list.ItemID
-	if m.layout().previewWidth > 0 && !m.quitting && m.navigation == "" {
+	if m.layout().previewWidth > 0 && !m.quitting && m.navigation.IsZero() {
 		if row, ok := m.selectedRow(); ok {
 			id = row.Item.ID
 		}
@@ -65,7 +66,7 @@ func (m model) syncPreview() (model, tea.Cmd) {
 		p.itemID = id
 		p.invalidate()
 	}
-	if id == "" || p.ready || p.cancel != nil || m.busy || m.readPreview == nil {
+	if id.IsZero() || p.ready || p.cancel != nil || m.busy || m.readPreview == nil {
 		return m, nil
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -83,10 +84,14 @@ func (m model) handlePreviewResult(msg previewResultMsg) (tea.Model, tea.Cmd) {
 		p.cancel()
 		p.cancel = nil
 	}
-	if msg.generation == p.generation && p.itemID != "" {
+	if msg.generation == p.generation && !p.itemID.IsZero() {
 		p.ready, p.err = true, msg.err
 		if msg.err == nil {
 			p.lines = terminal.ScreenLines(msg.text)
+			for len(p.lines) > 0 && strings.TrimSpace(ansi.Strip(p.lines[len(p.lines)-1])) == "" {
+				p.lines[len(p.lines)-1] = ""
+				p.lines = p.lines[:len(p.lines)-1]
+			}
 		}
 	}
 	return m, nil
@@ -97,7 +102,7 @@ func (m model) viewPreview(width, height int) string {
 	body := m.preview.lines
 	message := ""
 	switch {
-	case m.preview.itemID == "":
+	case m.preview.itemID.IsZero():
 		message = "no selection"
 	case m.readPreview == nil:
 		message = "preview unavailable"
@@ -109,7 +114,8 @@ func (m model) viewPreview(width, height int) string {
 	if message != "" {
 		body = []string{m.theme.meta.Render(terminal.Truncate(message, width))}
 	}
-	for _, line := range body[:min(len(body), max(0, height))] {
+	start := max(0, len(body)-max(0, height))
+	for _, line := range body[start:] {
 		lines = append(lines, terminal.Cut(line, 0, width))
 	}
 	return lipgloss.NewStyle().Width(width).Height(height).Render(strings.Join(lines, "\n"))

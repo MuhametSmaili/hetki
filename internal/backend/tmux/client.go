@@ -8,7 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/MuhametSmaili/hetki/internal/backend"
 )
 
 type Client interface {
@@ -59,7 +62,7 @@ func (c *client) run(ctx context.Context, limit int, args ...string) (string, er
 		cmd.WaitDelay = 100 * time.Millisecond
 	}
 
-	err := cmd.Run()
+	err := runCommand(ctx, cmd)
 	if stdoutLimit != nil && stdoutLimit.exceeded {
 		err = errors.Join(err, fmt.Errorf("stdout exceeds %d bytes", limit))
 	}
@@ -106,10 +109,43 @@ func (c *client) Execute(ctx context.Context, action Action) error {
 	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := runCommand(ctx, cmd); err != nil {
 		return commandError(fmt.Sprintf("tmux %v", action.Args()), err, ctx.Err(), stderr.String())
 	}
 	return nil
+}
+
+func runCommand(ctx context.Context, cmd *exec.Cmd) error {
+	killed := false
+	cancel := cmd.Cancel
+	cmd.Cancel = func() error {
+		err := cancel()
+		killed = err == nil
+		return err
+	}
+
+	err := cmd.Run()
+	// Run/Wait joins os/exec's context watcher before we read its kill result.
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		return err
+	}
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	if !ok {
+		return err
+	}
+	switch status.Signal() {
+	case syscall.SIGINT, syscall.SIGTERM:
+		// A foreground-group interrupt can reach the child before our kill.
+	case syscall.SIGKILL:
+		if !killed || ctx.Err() != context.Canceled {
+			return err
+		}
+	default:
+		return err
+	}
+
+	return &backend.CanceledProcessError{Cause: exitErr}
 }
 
 func commandError(operation string, execErr, ctxErr error, stderr string) error {
@@ -117,7 +153,7 @@ func commandError(operation string, execErr, ctxErr error, stderr string) error 
 		execErr = errors.Join(ctxErr, execErr)
 	}
 	if detail := strings.TrimSpace(stderr); detail != "" {
-		return fmt.Errorf("%s failed: %w (%s)", operation, execErr, detail)
+		return fmt.Errorf("%s failed: %w (%w)", operation, execErr, errors.New(detail))
 	}
 	return fmt.Errorf("%s failed: %w", operation, execErr)
 }

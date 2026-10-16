@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	backendtmux "github.com/MSmaili/hetki/internal/backend/tmux"
-	"github.com/MSmaili/hetki/internal/frecency"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
+	"github.com/MuhametSmaili/hetki/internal/frecency"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 // One pane and unique path per window; five flat search fields, including the

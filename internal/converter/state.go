@@ -3,8 +3,8 @@ package converter
 import (
 	"sort"
 
-	"github.com/MSmaili/hetki/internal/plan"
-	"github.com/MSmaili/hetki/internal/state"
+	"github.com/MuhametSmaili/hetki/internal/plan"
+	"github.com/MuhametSmaili/hetki/internal/state"
 )
 
 func StateDiffToPlanDiff(sd state.Diff, desired *state.State) plan.Diff {

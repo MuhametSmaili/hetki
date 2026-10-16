@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	ui "github.com/MSmaili/hetki/internal/tui"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,7 +49,7 @@ func TestLastSessionMarkerAndShortcutUseTheSameDestination(t *testing.T) {
 			if strings.HasSuffix(row.Item.Primary, " ↶") {
 				lastID = row.Item.ID
 				count++
-				require.Equal(t, list.ItemID("window:@2"), index[row.Item.ID].WindowID)
+				require.Equal(t, windowItemID("$2", "@2"), index[row.Item.ID].windowRowID())
 				require.Equal(t, want.Item.Primary+" ↶", row.Item.Primary)
 			} else {
 				require.Equal(t, want.Item.Primary, row.Item.Primary)
@@ -80,7 +80,7 @@ func TestLastSessionMarkerAndShortcutUseTheSameDestination(t *testing.T) {
 		require.Equal(t, 2, stub.queryCalls, "shortcut must use only ordinary open validation")
 		require.Empty(t, stub.switchCalls, "opening must not switch before terminal restoration")
 		require.NoError(t, adapter.Navigate(ctx, shortcut.Navigation))
-		require.Equal(t, []string{string(ordinary.Navigation)}, stub.switchCalls)
+		require.Equal(t, []backend.Target{index[lastID].Target}, stub.switchCalls)
 		require.Equal(t, 2, stub.queryCalls)
 
 		stub.state = backend.StateResult{}

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/stretchr/testify/assert"
 )
 

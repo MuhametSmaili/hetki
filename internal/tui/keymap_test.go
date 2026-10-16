@@ -87,7 +87,7 @@ func TestDefaultMenuBindingsUseLocalControlsAndNormalActionFallback(t *testing.T
 		{ActionDelete, []string{"x"}},
 		{ActionDeleteSession, []string{"X"}},
 		{ActionRefresh, []string{"ctrl+r"}},
-		{ActionToggleProjection, []string{"tab"}},
+		{ActionToggleProjection, []string{"ctrl+t"}},
 	} {
 		require.Empty(t, keys.Keys(KeyModeMenu, test.action))
 		require.Equal(t, KeyModeNormal, keys.menuMode(test.action))

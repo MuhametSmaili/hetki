@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
-	"github.com/MSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 )
 
 func TestSearchBarRendersModeAppropriateContent(t *testing.T) {

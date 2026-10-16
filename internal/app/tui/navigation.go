@@ -3,21 +3,21 @@ package tui
 import (
 	"context"
 	"fmt"
-	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	ui "github.com/MSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type navigationRecord struct {
-	target  string
+	itemID  list.ItemID
 	path    string
 	session string
 }
 
 func (a *LiveAdapter) openItem(ctx context.Context, item liveItem) (ui.ActionResult, error) {
 	a.pendingRecord = nil
-	if strings.TrimSpace(item.Target) == "" {
+	if item.Target.SessionID == "" {
 		return ui.ActionResult{}, fmt.Errorf("item %q has no navigation target", item.ID)
 	}
 	b, err := a.detectBackend()
@@ -28,75 +28,52 @@ func (a *LiveAdapter) openItem(ctx context.Context, item liveItem) (ui.ActionRes
 	if err != nil {
 		return ui.ActionResult{}, fmt.Errorf("validate selected item %q: %w", item.ID, err)
 	}
-	if !liveItemExists(state, item) {
+	record, exists := prepareNavigation(state, item)
+	if !exists {
 		return ui.ActionResult{}, fmt.Errorf("selected item %q is stale", item.ID)
 	}
-	if record, ok := navigationRecordForItem(state, item); ok {
-		a.pendingRecord = &record
-	}
-	return ui.ActionResult{Message: "switching to " + item.Target, Navigation: ui.BackendTarget(item.Target)}, nil
+	a.pendingRecord = record
+	return ui.ActionResult{Message: "switching to " + item.Label, Navigation: item.ID}, nil
 }
 
-func liveItemExists(state backend.StateResult, item liveItem) bool {
-	session, found := findSession(state.Sessions, item.SessionTarget)
+// prepareNavigation reports target membership independently of record availability.
+// A nil record with true membership permits navigation without frecency data.
+func prepareNavigation(state backend.StateResult, item liveItem) (*navigationRecord, bool) {
+	session, found := findSession(state.Sessions, item.Target.SessionID)
 	if !found {
-		return false
-	}
-	if item.Kind == liveSession {
-		return item.Target == session.ID
+		return nil, false
 	}
 
+	if item.Kind == liveSession {
+		pane, _ := activeWindowPane(session.Windows)
+		return navigationRecordForPane(item.ID, session.Name, pane), true
+	}
+	if item.Kind != liveWindow && item.Kind != liveDestination {
+		return nil, false
+	}
+
+	window, found := findWindow(session, item.Target.WindowID)
+	if !found {
+		return nil, false
+	}
 	if item.Kind == liveWindow {
-		_, found := findWindow(session, item.Target)
-		return found
-	}
-	if item.Kind != liveDestination {
-		return false
+		pane, _ := activePane(window.Panes)
+		return navigationRecordForPane(item.ID, session.Name, pane), true
 	}
 
-	window, found := findWindow(session, item.MutationTarget)
-	if !found {
-		return false
-	}
 	for _, pane := range window.Panes {
-		if pane.ID == item.PaneID {
-			return true
+		if pane.ID == item.Target.PaneID {
+			return navigationRecordForPane(item.ID, session.Name, pane), true
 		}
 	}
-	return false
+	return nil, false
 }
 
-func navigationRecordForItem(state backend.StateResult, item liveItem) (navigationRecord, bool) {
-	session, found := findSession(state.Sessions, item.SessionTarget)
-	if !found {
-		return navigationRecord{}, false
+func navigationRecordForPane(id list.ItemID, session string, pane backend.Pane) *navigationRecord {
+	if pane.Path == "" {
+		return nil
 	}
-
-	if item.Kind == liveSession {
-		pane, found := activeWindowPane(session.Windows)
-		if !found {
-			return navigationRecord{}, false
-		}
-		return navigationRecord{target: item.Target, path: pane.Path, session: session.Name}, true
-	}
-
-	window, found := findWindow(session, item.MutationTarget)
-	if !found {
-		return navigationRecord{}, false
-	}
-	if item.Kind == liveDestination {
-		for _, pane := range window.Panes {
-			if pane.ID == item.PaneID && pane.Path != "" {
-				return navigationRecord{target: item.Target, path: pane.Path, session: session.Name}, true
-			}
-		}
-		return navigationRecord{}, false
-	}
-	pane, found := activePane(window.Panes)
-	if !found || pane.Path == "" {
-		return navigationRecord{}, false
-	}
-	return navigationRecord{target: item.Target, path: pane.Path, session: session.Name}, true
+	return &navigationRecord{itemID: id, path: pane.Path, session: session}
 }
 
 func findSession(sessions []backend.Session, target string) (backend.Session, bool) {
@@ -110,7 +87,7 @@ func findSession(sessions []backend.Session, target string) (backend.Session, bo
 
 func findWindow(session backend.Session, target string) (backend.Window, bool) {
 	for _, window := range session.Windows {
-		if session.ID+":"+window.ID == target {
+		if window.ID == target {
 			return window, true
 		}
 	}
@@ -138,26 +115,27 @@ func activePane(panes []backend.Pane) (backend.Pane, bool) {
 	return backend.Pane{}, false
 }
 
-func (a *LiveAdapter) Navigate(ctx context.Context, navigation ui.BackendTarget) error {
+func (a *LiveAdapter) Navigate(ctx context.Context, navigation list.ItemID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	target := strings.TrimSpace(string(navigation))
-	if target == "" {
-		return fmt.Errorf("empty navigation target")
-	}
 	record := a.pendingRecord
 	a.pendingRecord = nil
+	item, err := a.resolveItem(navigation)
+	if err != nil {
+		return err
+	}
+
 	b, err := a.detectBackend()
 	if err != nil {
 		return fmt.Errorf("failed to detect backend: %w", err)
 	}
-	if err := b.Switch(ctx, target); err != nil {
-		return fmt.Errorf("switch to %q: %w", target, err)
+	if err := b.Switch(ctx, item.Target); err != nil {
+		return fmt.Errorf("switch to item %q: %w", item.ID, err)
 	}
-	if record != nil && record.target == target && a.frecency != nil {
+	if record != nil && record.itemID == item.ID && a.frecency != nil {
 		if err := a.frecency.Record(ctx, record.path, record.session); err != nil {
-			return fmt.Errorf("record navigation to %q: %w", target, err)
+			return fmt.Errorf("record navigation to item %q: %w", item.ID, err)
 		}
 	}
 	return nil

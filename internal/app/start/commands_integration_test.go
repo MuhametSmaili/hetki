@@ -11,9 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	backendtmux "github.com/MSmaili/hetki/internal/backend/tmux"
-	"github.com/MSmaili/hetki/internal/manifest"
+	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,13 +49,13 @@ func TestCommandsExecuteOnceAtCreationTime(t *testing.T) {
           - path: %s
             command: printf '%%s\n' 'hetki ; Enter C-c -foo' >> %s
 `, workDir, marker)
-	workspace, err := manifest.Parse([]byte(source), "dev.yaml")
+	workspace, err := manifest.Parse([]byte(source), "dev.yaml", backendtmux.ValidateAuthoredLayout)
 	require.NoError(t, err, "the loader pipeline is part of the behavior under test")
 
-	service := NewService(func(...string) (backend.Backend, error) { return b, nil })
+	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 
-	require.NoError(t, service.Run(context.Background(), Options{}))
+	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml")}))
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -75,7 +74,7 @@ func TestCommandsExecuteOnceAtCreationTime(t *testing.T) {
 	second, err := buildPlan(context.Background(), b, workspace, false)
 	require.NoError(t, err)
 	require.True(t, second.IsEmpty(), "second start must plan no actions, got %v", second.Actions)
-	require.NoError(t, service.Run(context.Background(), Options{}))
+	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml")}))
 	time.Sleep(1 * time.Second)
 	if data, err := os.ReadFile(marker); err == nil {
 		assert.Equal(t, "hetki ; Enter C-c -foo\n", string(data), "second start must not re-send commands")

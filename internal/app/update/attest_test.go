@@ -19,7 +19,7 @@ import (
 
 func TestFetchAttestationBundlesReturnsAllBundles(t *testing.T) {
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/repos/MSmaili/hetki/attestations/sha256:abc", r.URL.Path)
+		assert.Equal(t, "/repos/MuhametSmaili/hetki/attestations/sha256:abc", r.URL.Path)
 		w.Write([]byte(`{"attestations":[{"bundle":{"mediaType":"1","x":1}},{"bundle":{"x":2}}]}`))
 	})
 
@@ -97,7 +97,7 @@ func stubGh(t *testing.T, version string, verifyJSON string) {
 	} else {
 		script += fmt.Sprintf("if [ \"$1\" = \"--version\" ]; then echo \"gh version %s (2025-01-01)\"; exit 0; fi\n", version)
 		script += fmt.Sprintf(`args=" $* "
-for required in "--repo MSmaili/hetki" "--bundle " "--signer-workflow MSmaili/hetki/.github/workflows/release.yml" "--source-digest %s" "--deny-self-hosted-runners" "--format json"; do
+for required in "--repo MuhametSmaili/hetki" "--bundle " "--signer-workflow MuhametSmaili/hetki/.github/workflows/release.yml" "--source-digest %s" "--deny-self-hosted-runners" "--format json"; do
   case "$args" in *" $required"*) ;; *) echo "missing $required" >&2; exit 8 ;; esac
 done
 case "$args" in *" --source-ref refs/tags/v"*) ;; *) echo "missing source ref" >&2; exit 8 ;; esac

@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 const jumpAlphabet = "asdfghjkl;qwertyuiopzxcvbnm"
@@ -66,7 +66,7 @@ func (j jumpState) neighbor(id list.ItemID, delta int) (list.ItemID, bool) {
 			return j.candidates[min(max(i+delta, 0), len(j.candidates)-1)].itemID, true
 		}
 	}
-	return "", false
+	return list.ItemID{}, false
 }
 
 func (j *jumpState) enter(text string) (list.ItemID, bool, bool) {
@@ -81,10 +81,10 @@ func (j *jumpState) enter(text string) (list.ItemID, bool, bool) {
 		}
 	}
 	if validPrefix {
-		return "", false, true
+		return list.ItemID{}, false, true
 	}
 	j.input = ""
-	return "", false, false
+	return list.ItemID{}, false, false
 }
 
 func handleJump(m model, _ list.ItemID) (tea.Model, tea.Cmd) {

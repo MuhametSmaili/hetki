@@ -13,37 +13,38 @@ import (
 	"testing"
 	"time"
 
-	backendtmux "github.com/MSmaili/hetki/internal/backend/tmux"
-	ui "github.com/MSmaili/hetki/internal/tui"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
 const ptyHelperEnv = "HETKI_TUI_PTY_HELPER"
 
 type ptyDriver struct {
-	navigate func(context.Context, ui.BackendTarget) error
+	navigate func(context.Context, list.ItemID) error
 }
 
 func (ptyDriver) Load(context.Context) (list.Snapshot, error) {
 	return list.Snapshot{Items: []list.Item{{
-		ID: "session:dev", Primary: "dev",
+		ID: sessionItemID("dev"), Primary: "dev",
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "dev"}},
 	}}}, nil
 }
 
 func (ptyDriver) Execute(_ context.Context, request ui.ActionRequest) (ui.ActionResult, error) {
-	if request.ActionID != ui.ActionOpen || request.ItemID != "session:dev" {
+	if request.ActionID != ui.ActionOpen || request.ItemID != sessionItemID("dev") {
 		return ui.ActionResult{}, fmt.Errorf("unexpected jump request: %+v", request)
 	}
-	return ui.ActionResult{Navigation: "dev"}, nil
+	return ui.ActionResult{Navigation: request.ItemID}, nil
 }
 
 func (ptyDriver) Preview(context.Context, list.ItemID) (string, error) {
 	return "PREVIEW CONTENT", nil
 }
 
-func (d ptyDriver) Navigate(ctx context.Context, target ui.BackendTarget) error {
+func (d ptyDriver) Navigate(ctx context.Context, target list.ItemID) error {
 	return d.navigate(ctx, target)
 }
 
@@ -54,8 +55,9 @@ func TestTerminalRestoredBeforeNavigation(t *testing.T) {
 		require.NoError(t, size.Run())
 		b, err := backendtmux.NewBackend()
 		require.NoError(t, err)
-		driver := ptyDriver{navigate: func(ctx context.Context, target ui.BackendTarget) error {
-			if err := b.Switch(ctx, string(target)); err != nil {
+		driver := ptyDriver{navigate: func(ctx context.Context, target list.ItemID) error {
+			require.Equal(t, sessionItemID("dev"), target)
+			if err := b.Switch(ctx, backend.Target{SessionID: "$1"}); err != nil {
 				return err
 			}
 			fmt.Println("RECORDED")

@@ -8,13 +8,15 @@ import (
 	"github.com/charmbracelet/x/ansi/parser"
 )
 
-// ScreenLines keeps text and re-encoded SGR, discarding other terminal controls.
+// ScreenLines prepares captured terminal text for display, keeping text and
+// re-encoded SGR while discarding other terminal controls.
 // Styles carry across rows, but each output line resets at both ends.
 // One final record newline is ignored; blank rows are preserved.
 func ScreenLines(text string) []string {
 	if text == "" {
 		return nil
 	}
+
 	text = strings.TrimSuffix(text, "\n")
 	var lines []string
 	var line strings.Builder
@@ -55,6 +57,15 @@ func ScreenLines(text string) []string {
 			}
 		},
 	})
+
+	feedScreenText(&p, text, printRune)
+	finish()
+	return lines
+}
+
+// Decode before the byte parser: UTF-8 continuation bytes must not become ST,
+// and malformed UTF-8 must not consume a following newline or escape.
+func feedScreenText(p *ansi.Parser, text string, printRune func(rune)) {
 	for i, r := range text {
 		switch {
 		case text[i] < 0xa0: // ASCII and raw C1 controls.
@@ -62,8 +73,6 @@ func ScreenLines(text string) []string {
 		case r <= 0x9f: // UTF-8 encoded C1 controls.
 			p.Advance(byte(r))
 		default:
-			// Decode before the byte parser: continuation bytes are not ST,
-			// and malformed UTF-8 must not consume the next newline or escape.
 			switch p.State() {
 			case parser.OscStringState, parser.DcsStringState, parser.ApcStringState, parser.PmStringState, parser.SosStringState:
 				// Discard string payloads.
@@ -73,6 +82,4 @@ func ScreenLines(text string) []string {
 			}
 		}
 	}
-	finish()
-	return lines
 }

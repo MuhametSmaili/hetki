@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	apptui "github.com/MSmaili/hetki/internal/app/tui"
+	apptui "github.com/MuhametSmaili/hetki/internal/app/tui"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
@@ -12,7 +12,11 @@ import (
 var (
 	isTerminal = term.IsTerminal
 	openTUI    = func(ctx context.Context) error {
-		return apptui.NewService(detectBackend).Run(ctx)
+		service := apptui.NewService(func() (apptui.Backend, error) {
+			return detectBackend()
+		})
+
+		return service.Run(ctx)
 	}
 )
 

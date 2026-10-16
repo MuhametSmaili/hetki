@@ -9,6 +9,7 @@ type Session struct {
 	ID            string
 	Name          string
 	WorkspacePath string
+	DefaultShell  string
 	Last          bool
 	Windows       []Window
 }

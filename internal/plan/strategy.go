@@ -18,9 +18,10 @@ type ForceStrategy struct{}
 
 func (s *ForceStrategy) Plan(diff Diff) *Plan {
 	plan := &Plan{Actions: []Action{}}
-	killExtraWindows(plan, diff)
-	recreateMismatched(plan, diff)
+	// Keep sessions alive until replacement windows and their follow-ups exist.
 	createMissing(plan, diff)
+	recreateMismatched(plan, diff)
+	killExtraWindows(plan, diff)
 	return plan
 }
 
@@ -41,12 +42,12 @@ func recreateMismatched(plan *Plan, diff Diff) {
 	for _, sessionName := range sortedWindowDiffSessions(diff.Windows) {
 		windowDiff := diff.Windows[sessionName]
 		for _, mismatch := range windowDiff.Mismatched {
+			createWindow(plan, sessionName, mismatch.Desired)
 			plan.Actions = append(plan.Actions, KillWindowAction{
 				Session:  sessionName,
 				Window:   mismatch.Actual.Name,
 				WindowID: mismatch.Actual.ID,
 			})
-			createWindow(plan, sessionName, mismatch.Desired)
 		}
 	}
 }

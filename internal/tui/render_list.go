@@ -1,18 +1,22 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
-	"github.com/MSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/status"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 )
 
 type rowProps struct {
-	ItemID     string
+	Context    string
+	Annotation string
 	Primary    string
 	Secondary  string
 	Trailing   string
+	Status     status.Value
+	StatusTime time.Time
 	JumpLabel  string
 	Depth      int
 	TreePrefix string
@@ -34,17 +38,19 @@ func renderList(props listProps) []string {
 	if len(props.Rows) == 0 {
 		return []string{props.Theme.meta.Render(truncateWidth(props.EmptyText, props.Width))}
 	}
+	if props.Rows[0].Context != "" {
+		return renderColumnList(props)
+	}
+
 	left := make([]string, len(props.Rows))
 	columnWidth := 0
 	secondaryWidth := 0
-	trailingWidth := 0
-	alignSecondary := false
+	trailingWidth := commandStatusWidth
 	for i, row := range props.Rows {
 		left[i] = renderRowLine(row, props.Theme, props.Compact)
 		columnWidth = max(columnWidth, terminal.Width(left[i]))
 		secondaryWidth = max(secondaryWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Secondary))))
-		trailingWidth = max(trailingWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Trailing))))
-		alignSecondary = alignSecondary || (row.Depth == 0 && strings.TrimSpace(row.Secondary) != "")
+		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
 	}
 	const gap = 2
 	const minSecondaryWidth = 6
@@ -55,30 +61,27 @@ func renderList(props listProps) []string {
 	if trailingWidth > 0 {
 		bodyWidth = max(0, props.Width-gap-trailingWidth)
 	}
-	if alignSecondary && secondaryWidth > 0 && bodyWidth >= gap+minSecondaryWidth {
+	if secondaryWidth > 0 && bodyWidth >= gap+minSecondaryWidth {
 		reserve := min(secondaryWidth, max(minSecondaryWidth, bodyWidth/2))
 		columnWidth = min(columnWidth, bodyWidth-gap-reserve)
 	}
 	lines := make([]string, 0, len(props.Rows))
 	for i, row := range props.Rows {
-		line := composeRowLine(row, left[i], columnWidth, bodyWidth, props.Compact, alignSecondary, props.Theme)
-		if trailingWidth > 0 {
-			trailing := truncateWidth(strings.TrimSpace(terminal.Sanitize(row.Trailing)), trailingWidth)
-			if trailing != "" {
-				padding := max(0, props.Width-terminal.Width(line)-terminal.Width(trailing))
-				// The path's nested style resets ANSI attributes. Reapply the
-				// row style to both the remaining gap and right-hand text.
-				line += props.Theme.itemStyle(row.Active, row.Selected).Render(strings.Repeat(" ", padding) + trailing)
-			}
+		line := composeRowLine(row, left[i], columnWidth, bodyWidth, props.Theme)
+		if trailingWidth > 0 && rowTrailingWidth(row) > 0 {
+			trailing := renderTrailing(row, trailingWidth, props.Theme)
+			padding := max(0, props.Width-terminal.Width(line)-trailingWidth)
+			// The path resets ANSI attributes; style the gap to retain selection.
+			line += props.Theme.itemStyle(row.Active, row.Selected).Render(strings.Repeat(" ", padding)) + trailing
 		}
 		lines = append(lines, styleRowLine(row, line, props.Width, props.Theme))
 	}
 	return lines
 }
 
-func composeRowLine(row rowProps, left string, columnWidth, width int, compact, alignSecondary bool, styles theme) string {
+func composeRowLine(row rowProps, left string, columnWidth, width int, styles theme) string {
 	secondary := strings.TrimSpace(terminal.Sanitize(row.Secondary))
-	if (compact && !alignSecondary) || secondary == "" {
+	if secondary == "" {
 		return truncateWidth(left, width)
 	}
 	const gap = 2
@@ -87,22 +90,12 @@ func composeRowLine(row rowProps, left string, columnWidth, width int, compact, 
 	if row.Selected {
 		secondaryStyle = styles.secondarySelected
 	}
-	leftWidth := terminal.Width(left)
-	if !alignSecondary {
-		available := width - leftWidth - gap
-		if available < minSecondaryWidth {
-			return truncateWidth(left, width)
-		}
-		shortened := shortenPath(secondary, available)
-		padding := max(gap, width-leftWidth-terminal.Width(shortened))
-		return left + strings.Repeat(" ", padding) + secondaryStyle.Render(shortened)
-	}
 	if width < gap+minSecondaryWidth {
 		return truncateWidth(left, width)
 	}
 	leftBudget := min(columnWidth, width-gap-minSecondaryWidth)
 	left = truncateWidth(left, leftBudget)
-	leftWidth = terminal.Width(left)
+	leftWidth := terminal.Width(left)
 	available := width - leftBudget - gap
 	shortened := shortenPath(secondary, available)
 	padding := leftBudget - leftWidth + gap
@@ -153,6 +146,10 @@ func shortenPath(path string, maxWidth int) string {
 }
 
 func renderRowLine(row rowProps, styles theme, compact bool) string {
+	return renderRowPrefix(row) + decoratedLabel(row, compact)
+}
+
+func renderRowPrefix(row rowProps) string {
 	indicator := " "
 	if row.Active {
 		indicator = "│"
@@ -161,7 +158,7 @@ func renderRowLine(row rowProps, styles theme, compact bool) string {
 	if jumpLabel := displayJumpLabel(row.JumpLabel); jumpLabel != "" {
 		parts = append(parts, jumpLabel)
 	}
-	return strings.Join(append(parts, decoratedLabel(row, compact)), " ")
+	return strings.Join(parts, " ") + " "
 }
 
 func styleRowLine(row rowProps, line string, width int, styles theme) string {
@@ -188,12 +185,8 @@ func displayJumpLabel(label string) string {
 func decoratedLabel(row rowProps, compact bool) string {
 	primary := strings.TrimSpace(terminal.Sanitize(row.Primary))
 	if primary == "" {
-		primary = terminal.Sanitize(row.ItemID)
+		primary = "-"
 	}
-	if compact {
-		return strings.Repeat("  ", max(row.Depth-1, 0)) + primary
-	}
-	prefix := row.TreePrefix
 	branch := branchGlyph(row)
 	if row.Depth == 0 {
 		if !row.Branch {
@@ -201,7 +194,10 @@ func decoratedLabel(row rowProps, compact bool) string {
 		}
 		return branch + primary
 	}
-	return fmt.Sprintf("  %s%s", prefix, primary)
+	if compact {
+		return row.TreePrefix + primary
+	}
+	return "  " + row.TreePrefix + primary
 }
 
 func branchGlyph(row rowProps) string {
@@ -209,7 +205,7 @@ func branchGlyph(row rowProps) string {
 		return "  "
 	}
 	if row.Expanded {
-		return "\uf0d7 "
+		return "▾ "
 	}
-	return "\uf0da "
+	return "▸ "
 }

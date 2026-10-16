@@ -1,43 +1,51 @@
 package cmd
 
 import (
-	appstart "github.com/MSmaili/hetki/internal/app/start"
+	appstart "github.com/MuhametSmaili/hetki/internal/app/start"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/spf13/cobra"
 )
 
 var (
-	dryRun bool
-	force  bool
+	startName string
+	startPath string
+	dryRun    bool
+	force     bool
 )
 
 var startCmd = &cobra.Command{
-	Use:   "start [workspace-name-or-path]",
+	Use:   "start (--name <name> | --path <file>)",
 	Short: "Start a tmux workspace",
-	RunE:  runStart,
+	Long: `Start a workspace selected by exactly one of --name or --path.
+Names select files in Hetki's configured workspace directory, never local files.
+Session names come from YAML. Normal start adds missing resources.
+Force also replaces mismatched windows and removes extra windows inside declared
+sessions. It can terminate their processes, but preserves unrelated sessions.`,
+	Example:           "  hetki start -n work\n  hetki start -p ./work.yaml --dry-run",
+	Args:              workspaceArgs,
+	ValidArgsFunction: cobra.NoFileCompletions,
+	RunE:              runStart,
 }
 
 func init() {
+	startCmd.Flags().StringVarP(&startName, "name", "n", "", "Workspace name in Hetki's configured directory")
+	startCmd.Flags().StringVarP(&startPath, "path", "p", "", "Workspace YAML file to load (not a directory)")
 	startCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Print plan without executing")
 	startCmd.Flags().BoolVarP(&force, "force", "f", false, "Reconcile windows inside declared sessions; never remove other sessions")
+	startCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames)
+	startCmd.MarkFlagFilename("path", "yaml", "yml")
 	rootCmd.AddCommand(startCmd)
-
-	startCmd.ValidArgsFunction = func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return completeWorkspaceNames(cmd, args, toComplete)
-	}
 }
 
-func runStart(cmd *cobra.Command, args []string) error {
-	var nameOrPath string
-	if len(args) > 0 {
-		nameOrPath = args[0]
-	}
+func runStart(cmd *cobra.Command, _ []string) error {
+	service := appstart.NewService(func() (appstart.Backend, error) {
+		return detectBackend()
+	}, tmux.ValidateAuthoredLayout)
 
-	return appstart.NewService(detectBackend).Run(cmd.Context(), appstart.Options{
-		Workspace: nameOrPath,
-		DryRun:    dryRun,
-		Force:     force,
+	return service.Run(cmd.Context(), appstart.Options{
+		Name:   selectedWorkspaceFlag(cmd, "name", startName),
+		Path:   selectedWorkspaceFlag(cmd, "path", startPath),
+		DryRun: dryRun,
+		Force:  force,
 	})
 }

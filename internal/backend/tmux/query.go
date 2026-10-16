@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/internal/format"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 )
 
 type Query[T any] interface {
@@ -24,6 +26,15 @@ func (e *queryParseError) Unwrap() error { return e.err }
 
 func RunQuery[T any](ctx context.Context, c Client, q Query[T]) (T, error) {
 	output, err := c.Run(ctx, q.Args()...)
+	if err != nil {
+		var canceled *backend.CanceledProcessError
+		if backend.IsCancellationOnly(err) || errors.As(err, &canceled) {
+			// Interrupted commands may return partial output; preserve the execution error.
+			var zero T
+			return zero, err
+		}
+	}
+
 	result, parseErr := q.Parse(output)
 	if parseErr != nil {
 		var zero T
@@ -36,6 +47,7 @@ type Session struct {
 	ID            string
 	Name          string
 	WorkspacePath string
+	DefaultShell  string
 	Windows       []Window
 }
 
@@ -72,10 +84,12 @@ func (q LoadStateQuery) Args() []string {
 		"-F", "#{session_id}|#{q:session_name}|#{window_id}|#{q:window_name}|#{window_index}|#{window_layout}|#{window_zoomed_flag}|#{window_active}|#{pane_id}|#{pane_index}|#{pane_active}|#{q:pane_current_path}|#{q:pane_current_command}|#{q:" + backend.WorkspacePathOption + "}",
 	}
 	if q.IncludeProgramInfo {
-		args[len(args)-1] += "|#{pane_pid}|#{pane_dead}"
+		args[len(args)-1] += "|#{pane_pid}|#{pane_dead}|#{q:default-shell}"
 	}
 	if q.IncludeClients {
-		args = append(args, ";", "list-clients", "-F", "client|#{session_id}|#{pane_id}|#{q:client_last_session}")
+		clientFormat := "client|#{session_id}|#{pane_id}|#{q:client_last_session}" +
+			"|#{&&:#{client_control_mode},#{m:" + observe.ClientNamePrefix + "*,#{client_name}}}"
+		args = append(args, ";", "list-clients", "-F", clientFormat)
 	}
 	return args
 }
@@ -141,6 +155,7 @@ type paneLine struct {
 	paneActive                                   bool
 	panePath, paneCmd                            string
 	workspacePath                                string
+	defaultShell                                 string
 	panePID                                      int
 	paneDead                                     bool
 }
@@ -154,9 +169,9 @@ func parsePaneLine(line string) (paneLine, error) {
 func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, error) {
 	count := paneFieldCount
 	if programInfo {
-		count += 2
+		count += 3
 	}
-	fields, err := parseFields(line, count)
+	fields, err := format.Fields(line, count)
 	if err != nil {
 		return paneLine{}, err
 	}
@@ -187,16 +202,17 @@ func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, erro
 	if p.paneActive, err = parseFlag("pane active", fields[10]); err != nil {
 		return paneLine{}, err
 	}
-	if err := validateObjectID("session", p.sessionID, '$'); err != nil {
+	if err := format.ValidateObjectID("session", p.sessionID, '$'); err != nil {
 		return paneLine{}, err
 	}
-	if err := validateObjectID("window", p.windowID, '@'); err != nil {
+	if err := format.ValidateObjectID("window", p.windowID, '@'); err != nil {
 		return paneLine{}, err
 	}
-	if err := validateObjectID("pane", p.paneID, '%'); err != nil {
+	if err := format.ValidateObjectID("pane", p.paneID, '%'); err != nil {
 		return paneLine{}, err
 	}
 	if programInfo {
+		p.defaultShell = fields[16]
 		if p.panePID, err = parseIndex("pane PID", fields[14]); err != nil || p.panePID == 0 {
 			return paneLine{}, fmt.Errorf("invalid pane PID %q", fields[14])
 		}
@@ -207,50 +223,12 @@ func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, erro
 	return p, nil
 }
 
-// parseFields splits one #{q:...}-escaped row: a backslash always
-// introduces one literal byte, so an unescaped '|' is unambiguous.
-func parseFields(line string, want int) ([]string, error) {
-	fields := make([]string, 0, want)
-	var value strings.Builder
-	for i := 0; i < len(line); i++ {
-		switch line[i] {
-		case '\\':
-			if i+1 == len(line) {
-				return nil, fmt.Errorf("dangling escape in row %q", line)
-			}
-			i++
-			value.WriteByte(line[i])
-		case '|':
-			fields = append(fields, value.String())
-			value.Reset()
-		default:
-			value.WriteByte(line[i])
-		}
-	}
-	fields = append(fields, value.String())
-	if len(fields) != want {
-		return nil, fmt.Errorf("expected %d fields, found %d", want, len(fields))
-	}
-	return fields, nil
-}
-
 func parseIndex(kind, value string) (int, error) {
 	index, err := strconv.Atoi(strings.TrimSpace(value))
 	if err != nil || index < 0 {
 		return 0, fmt.Errorf("invalid %s index %q", kind, value)
 	}
 	return index, nil
-}
-
-func validateObjectID(kind, value string, prefix byte) error {
-	if len(value) < 2 || value[0] != prefix {
-		return fmt.Errorf("invalid %s ID %q", kind, value)
-	}
-	number, err := strconv.Atoi(value[1:])
-	if err != nil || number < 0 || strconv.Itoa(number) != value[1:] {
-		return fmt.Errorf("invalid %s ID %q", kind, value)
-	}
-	return nil
 }
 
 func parseFlag(kind, value string) (bool, error) {
@@ -290,6 +268,7 @@ func (b *stateBuilder) addPane(p paneLine, currentID string) {
 	}
 
 	sess := b.getOrCreateSession(p.sessionID, p.sessionName)
+	sess.DefaultShell = p.defaultShell
 	if sess.WorkspacePath == "" && p.workspacePath != "" {
 		sess.WorkspacePath = p.workspacePath
 	}
@@ -354,20 +333,25 @@ type clientState struct {
 	sessionID   string
 	paneID      string
 	lastSession string
+	observer    bool
 }
 
 func parseClientLine(line string) (clientState, error) {
-	fields, err := parseFields(line, 4)
+	fields, err := format.Fields(line, 5)
 	if err != nil {
 		return clientState{}, err
 	}
-	if err := validateObjectID("client session", fields[1], '$'); err != nil {
+	if err := format.ValidateObjectID("client session", fields[1], '$'); err != nil {
 		return clientState{}, err
 	}
-	if err := validateObjectID("client pane", fields[2], '%'); err != nil {
+	if err := format.ValidateObjectID("client pane", fields[2], '%'); err != nil {
 		return clientState{}, err
 	}
-	return clientState{sessionID: fields[1], paneID: fields[2], lastSession: fields[3]}, nil
+	observer, err := parseFlag("observer client", fields[4])
+	if err != nil {
+		return clientState{}, err
+	}
+	return clientState{sessionID: fields[1], paneID: fields[2], lastSession: fields[3], observer: observer}, nil
 }
 
 func invokingClient(clients []clientState) clientState {
@@ -376,13 +360,13 @@ func invokingClient(clients []clientState) clientState {
 	}
 	pane, session := os.Getenv("TMUX_PANE"), getCurrentSessionID()
 	// Popup jobs have TMUX's session ID but usually no TMUX_PANE.
-	if (pane != "" && validateObjectID("invoking pane", pane, '%') != nil) ||
-		(pane == "" && validateObjectID("invoking session", session, '$') != nil) {
+	if (pane != "" && format.ValidateObjectID("invoking pane", pane, '%') != nil) ||
+		(pane == "" && format.ValidateObjectID("invoking session", session, '$') != nil) {
 		return clientState{}
 	}
 	var found clientState
 	for _, client := range clients {
-		if (pane != "" && client.paneID != pane) || (pane == "" && client.sessionID != session) {
+		if client.observer || (pane != "" && client.paneID != pane) || (pane == "" && client.sessionID != session) {
 			continue
 		}
 		if found.sessionID != "" {

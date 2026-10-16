@@ -1,7 +1,6 @@
 package manifest
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -161,23 +160,11 @@ func TestValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := Validate(tt.workspace)
+			errs := Validate(tt.workspace, acceptLayout)
 
 			if tt.wantErr {
-				assert.NotEmpty(t, errs, "expected validation errors")
-				if tt.wantErrCount > 0 {
-					assert.Len(t, errs, tt.wantErrCount, "expected %d validation errors", tt.wantErrCount)
-				}
-				if tt.wantErrContains != "" {
-					found := false
-					for _, e := range errs {
-						if strings.Contains(e.Message, tt.wantErrContains) {
-							found = true
-							break
-						}
-					}
-					assert.True(t, found, "expected '%s' in error messages, got: %v", tt.wantErrContains, errs)
-				}
+				assert.Len(t, errs, tt.wantErrCount)
+				assert.ErrorContains(t, ToError(errs), tt.wantErrContains)
 			} else {
 				assert.Empty(t, errs, "expected no validation errors, got: %v", errs)
 			}

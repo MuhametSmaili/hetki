@@ -6,10 +6,29 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRunStartValidatesLayoutBeforeBackendDetection(t *testing.T) {
+	resetCommandGlobals()
+	t.Setenv("PATH", t.TempDir())
+	path := writeWorkspaceFile(t, t.TempDir(), "workspace.yaml", "sessions:\n  - name: dev\n    windows:\n      - layout: diagonal\n")
+	previous := detectBackend
+	detectBackend = func(...string) (backend.Backend, error) {
+		t.Fatal("unexpected backend detection")
+		return nil, nil
+	}
+	t.Cleanup(func() { detectBackend = previous })
+
+	require.NoError(t, startCmd.Flags().Set("path", path))
+
+	err := runStart(startCmd, nil)
+
+	require.ErrorContains(t, err, "sessions[0].windows[0].layout")
+	require.ErrorContains(t, err, "unknown layout")
+}
 
 func TestRunStartDryRunOutputsPlan(t *testing.T) {
 	resetCommandGlobals()
@@ -28,6 +47,7 @@ func TestRunStartDryRunOutputsPlan(t *testing.T) {
 	stub := &stubBackend{dryRunLines: []string{"tmux new-session -d -s dev -n editor -c " + tmpDir}}
 	withStubBackend(t, stub)
 	dryRun = true
+	require.NoError(t, startCmd.Flags().Set("path", "./.hetki.yaml"))
 
 	output := captureLoggerOutput(t, func() {
 		require.NoError(t, runStart(startCmd, nil))
@@ -60,10 +80,11 @@ func TestRunStartFailsWhenBackendStateQueryFails(t *testing.T) {
 	stub := &stubBackend{queryErr: errors.New("query failed")}
 	withStubBackend(t, stub)
 
+	require.NoError(t, startCmd.Flags().Set("path", "./.hetki.yaml"))
+
 	err = runStart(startCmd, nil)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "failed to query backend state: query failed")
-	assert.ErrorContains(t, err, "Verify tmux is running and retry")
 	assert.Zero(t, stub.dryRunCalls)
 	assert.Zero(t, stub.applyCalls)
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,7 @@ func newNavigableTmuxBackend(t *testing.T) (*TmuxBackend, string) {
 
 	navLog := filepath.Join(socketDir, "nav.log")
 	wrapperDir := t.TempDir()
-	wrapper := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in attach-session|switch-client) printf '%%s\\n' \"$*\" >> %q; exit 0;; esac\nexec %q -S %q \"$@\"\n", navLog, realTmux, socket)
+	wrapper := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in attach-session|switch-client) printf '%%s\\n' \"$*\" >> %q; exit 0;; esac\nexec %q -f /dev/null -S %q \"$@\"\n", navLog, realTmux, socket)
 	require.NoError(t, os.WriteFile(filepath.Join(wrapperDir, "tmux"), []byte(wrapper), 0755))
 	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TMUX", "")
@@ -53,32 +54,29 @@ func TestSwitchTargetsStableIDsOnColonNamedSessions(t *testing.T) {
 	windowIndex := state.Sessions[0].Windows[0].Index
 	paneID := state.Sessions[0].Windows[0].Panes[0].ID
 	paneIndex := state.Sessions[0].Windows[0].Panes[0].Index
-	paneBase := state.PaneBaseIndex
+	target := backend.Target{SessionID: sessionID, WindowID: windowID, PaneID: paneID}
 
-	require.NoError(t, b.Switch(context.Background(), sessionID))
-	require.NoError(t, b.Switch(context.Background(), fmt.Sprintf("%s:%s", sessionID, windowID)))
-	require.NoError(t, b.Switch(context.Background(), fmt.Sprintf("%s:%s.0", sessionID, windowID)))
-	require.NoError(t, b.Switch(context.Background(), paneID))
+	require.NoError(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID}))
+	require.NoError(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: windowID}))
+	require.NoError(t, b.Switch(context.Background(), target))
 
 	stalePane, err := b.client.Run(context.Background(), "split-window", "-d", "-t", windowID, "-P", "-F", "#{pane_id}")
 	require.NoError(t, err)
 	stalePane = strings.TrimSpace(stalePane)
 	_, err = b.client.Run(context.Background(), "kill-pane", "-t", stalePane)
 	require.NoError(t, err)
-	assert.Error(t, b.Switch(context.Background(), stalePane), "stale pane ID must fail closed")
+	assert.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: windowID, PaneID: stalePane}), "stale pane ID must fail closed")
 
 	t.Setenv("TMUX", fmt.Sprintf("%s,1,%s", "isolated", strings.TrimPrefix(sessionID, "$")))
-	require.NoError(t, b.Switch(context.Background(), paneID))
+	require.NoError(t, b.Switch(context.Background(), target))
 
-	assert.Error(t, b.Switch(context.Background(), "a:b"), "ambiguous name form must fail closed")
-	assert.Error(t, b.Switch(context.Background(), fmt.Sprintf("%s:@999", sessionID)), "unknown window ID must fail closed")
+	assert.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: "@999"}), "unknown window ID must fail closed")
 
 	logged, err := os.ReadFile(navLog)
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		fmt.Sprintf("attach-session -t %s", sessionID),
 		fmt.Sprintf("attach-session -t %s:%d", sessionID, windowIndex),
-		fmt.Sprintf("attach-session -t %s:%d.%d", sessionID, windowIndex, paneBase),
 		fmt.Sprintf("attach-session -t %s:%d.%d", sessionID, windowIndex, paneIndex),
 		fmt.Sprintf("switch-client -t %s:%d.%d", sessionID, windowIndex, paneIndex),
 	}, strings.Split(strings.TrimSpace(string(logged)), "\n"))
@@ -98,8 +96,11 @@ func TestSwitchScopedPaneKeepsTheSelectedLinkedSession(t *testing.T) {
 	_, err = b.client.Run(ctx, "link-window", "-s", window.ID, "-t", otherID+":9")
 	require.NoError(t, err)
 	paneID := window.Panes[0].ID
-	require.ErrorContains(t, b.Switch(ctx, paneID), "ambiguous", "bare pane ID must not pick an arbitrary link")
-	require.NoError(t, b.Switch(ctx, otherID+":"+window.ID+"."+paneID))
+	target := backend.Target{SessionID: otherID, WindowID: window.ID, PaneID: paneID}
+	require.NoError(t, b.Switch(ctx, target))
+	_, err = b.client.Run(ctx, "unlink-window", "-t", otherID+":9")
+	require.NoError(t, err)
+	require.Error(t, b.Switch(ctx, target), "removed occurrence must not follow the surviving link")
 	logged, err := os.ReadFile(navLog)
 	require.NoError(t, err)
 	require.Equal(t, fmt.Sprintf("attach-session -t %s:9.%d\n", otherID, window.Panes[0].Index), string(logged))

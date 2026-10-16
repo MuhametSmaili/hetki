@@ -3,7 +3,8 @@ package tui
 import (
 	"fmt"
 
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type liveItemKind uint8
@@ -15,25 +16,37 @@ const (
 )
 
 type liveItem struct {
-	ID             list.ItemID
-	ParentID       list.ItemID
-	SessionID      list.ItemID
-	WindowID       list.ItemID
-	Kind           liveItemKind
-	Label          string
-	Name           string
-	SessionName    string
-	WindowName     string
-	Target         string
-	MutationTarget string
-	SessionTarget  string
-	RawPath        string
-	WindowIndex    int
-	WindowActive   bool
-	PaneActive     bool
-	PaneID         string
-	PaneIndex      int
-	Last           bool
+	ID           list.ItemID
+	Kind         liveItemKind
+	Label        string
+	Name         string
+	SessionName  string
+	WindowName   string
+	Target       backend.Target
+	RawPath      string
+	WindowIndex  int
+	WindowActive bool
+	PaneActive   bool
+	PaneIndex    int
+	Last         bool
+}
+
+func (item liveItem) sessionRowID() list.ItemID {
+	return sessionItemID(item.Target.SessionID)
+}
+
+func (item liveItem) windowRowID() list.ItemID {
+	if item.Target.WindowID == "" {
+		return list.ItemID{}
+	}
+	return windowItemID(item.Target.SessionID, item.Target.WindowID)
+}
+
+func (item liveItem) parentRowID() list.ItemID {
+	if item.Kind != liveWindow {
+		return list.ItemID{}
+	}
+	return item.sessionRowID()
 }
 
 type itemIndex map[list.ItemID]liveItem

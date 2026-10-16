@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/MSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 	"github.com/fatih/color"
 )
 

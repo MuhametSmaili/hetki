@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type inputState struct {
@@ -81,7 +81,7 @@ func (m model) updateMenuMode(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if requiresMenuEntry(action) {
 			return m.actionUnavailable(action)
 		}
-		return m.dispatchAction(action, "")
+		return m.dispatchAction(action, list.ItemID{})
 	}
 	for i, entry := range m.menu.Entries {
 		if m.keys.Matches(m.keys.menuMode(entry.Action), entry.Action, msg) {
@@ -142,7 +142,7 @@ func handleConfirm(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case modeFilter:
 		m.mode = modeBrowse
-		return m.dispatchAction(ActionOpen, "")
+		return m.dispatchAction(ActionOpen, list.ItemID{})
 	case modeInput:
 		value := strings.TrimSpace(m.input.Value)
 		if value == "" {

@@ -275,9 +275,9 @@ func TestGoUpdaterBuildsToTemporaryGOBINAndReplaces(t *testing.T) {
 			goPath := filepath.Join(bin, "go")
 			script := fmt.Sprintf(`#!/bin/sh
 [ "$GOPROXY" = direct ] && [ "$GOSUMDB" = sum.golang.org ] && [ -n "$GOMODCACHE" ] && [ "$GOCACHE" = "${GOMODCACHE%%/modcache}/gocache" ] && [ "$GOTMPDIR" = "${GOMODCACHE%%/modcache}/tmp" ] && [ -z "$GONOSUMDB" ] && [ -z "$GOPRIVATE" ] && [ -z "$GONOPROXY" ] || exit 7
-case "$*" in *github.com/MSmaili/hetki@%s) ;; *) exit 8 ;; esac
+case "$*" in *github.com/MuhametSmaili/hetki@%s) ;; *) exit 8 ;; esac
 if [ "$1 $2" = "mod download" ]; then
-  printf '{"Path":"github.com/MSmaili/hetki","Version":"%s","Query":"%s","Sum":"h1:test","Origin":{"URL":"https://github.com/MSmaili/hetki","Hash":"%s","Ref":"%s"}}\n'
+  printf '{"Path":"github.com/MuhametSmaili/hetki","Version":"%s","Query":"%s","Sum":"h1:test","Origin":{"URL":"https://github.com/MuhametSmaili/hetki","Hash":"%s","Ref":"%s"}}\n'
   exit 0
 fi
 case "$*" in *GitCommit=%s*) ;; *) exit 9 ;; esac
@@ -307,7 +307,7 @@ func TestGoUpdaterBoundsInheritedOutputDescendant(t *testing.T) {
 	goPath := filepath.Join(bin, "go")
 	script := fmt.Sprintf(`#!/bin/sh
 if [ "$1 $2" = "mod download" ]; then
-  printf '{"Path":"github.com/MSmaili/hetki","Version":"v1.2.3","Sum":"h1:test","Origin":{"URL":"https://github.com/MSmaili/hetki","Hash":"%s","Ref":"refs/tags/v1.2.3"}}\n'
+  printf '{"Path":"github.com/MuhametSmaili/hetki","Version":"v1.2.3","Sum":"h1:test","Origin":{"URL":"https://github.com/MuhametSmaili/hetki","Hash":"%s","Ref":"refs/tags/v1.2.3"}}\n'
   exit 0
 fi
 mkdir -p "$GOBIN"
@@ -415,12 +415,12 @@ func TestDetermineUpdaterReleaseAndHead(t *testing.T) {
 }
 
 func TestGoUpdaterRejectsUnverifiedSource(t *testing.T) {
-	metadata := fmt.Sprintf(`{"Path":"github.com/MSmaili/hetki","Version":"v1.2.3","Query":"%s","Sum":"h1:test","Origin":{"URL":"https://github.com/MSmaili/hetki","Hash":"%s","Ref":"refs/tags/v1.2.3"}}`, testCommit, testCommit)
+	metadata := fmt.Sprintf(`{"Path":"github.com/MuhametSmaili/hetki","Version":"v1.2.3","Query":"%s","Sum":"h1:test","Origin":{"URL":"https://github.com/MuhametSmaili/hetki","Hash":"%s","Ref":"refs/tags/v1.2.3"}}`, testCommit, testCommit)
 	for _, test := range []struct {
 		name, tag, from, to string
 	}{
-		{name: "wrong module", from: `"Path":"github.com/MSmaili/hetki"`, to: `"Path":"other"`},
-		{name: "wrong repository", from: `"URL":"https://github.com/MSmaili/hetki"`, to: `"URL":"other"`},
+		{name: "wrong module", from: `"Path":"github.com/MuhametSmaili/hetki"`, to: `"Path":"other"`},
+		{name: "wrong repository", from: `"URL":"https://github.com/MuhametSmaili/hetki"`, to: `"URL":"other"`},
 		{name: "wrong commit", from: `"Hash":"` + testCommit + `"`, to: `"Hash":"` + strings.Repeat("b", 40) + `"`},
 		{name: "missing sum", from: `"Sum":"h1:test"`, to: `"Sum":""`},
 		{name: "mutable query", from: `"Query":"` + testCommit + `"`, to: `"Query":"main"`},

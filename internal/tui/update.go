@@ -1,17 +1,37 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"time"
 
-func (m model) Init() tea.Cmd { return nil }
+	tea "charm.land/bubbletea/v2"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
+)
+
+func (m model) Init() tea.Cmd {
+	if m.paneStatus.options.Read != nil {
+		return statusPoll(0)
+	}
+	return nil
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(msg)
 	next, previewCmd := updated.(model).syncPreview()
-	return next, tea.Batch(cmd, previewCmd)
+	next, frameCmd := next.syncStatusFrame(time.Now())
+	return next, tea.Batch(cmd, previewCmd, frameCmd)
 }
 
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case statusPollMsg:
+		return m.readPaneStatus()
+	case statusResultMsg:
+		return m.handleStatusResult(msg)
+	case statusFrameMsg:
+		if msg.generation == m.paneStatus.frameGeneration {
+			m.paneStatus.frameDue = time.Time{}
+		}
+		return m, nil
 	case previewResultMsg:
 		return m.handlePreviewResult(msg)
 	case tea.WindowSizeMsg:
@@ -43,7 +63,7 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	}
 	switch m.mode {
 	case modeFilter:
-		m.items.SetQuery(m.items.Query() + singleLinePaste(msg.Content))
+		m.setQuery(m.items.Query() + singleLinePaste(msg.Content))
 		return m.reflow(), nil
 	case modeInput:
 		m.input.Value += singleLinePaste(msg.Content)
@@ -54,7 +74,7 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 
 func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+c" {
-		return handleQuit(m, "")
+		return handleQuit(m, list.ItemID{})
 	}
 	if m.busy {
 		return m, nil
@@ -64,7 +84,7 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateMenuMode(msg)
 	}
 	if action, ok := m.keys.Action(keyModeFor(m.mode), msg); ok {
-		return m.dispatchAction(action, "")
+		return m.dispatchAction(action, list.ItemID{})
 	}
 	return m.updateUnboundKey(msg)
 }
@@ -75,7 +95,7 @@ func (m model) updateUnboundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.updateJumpInput(msg)
 	case modeFilter:
 		if msg.Text != "" {
-			m.items.SetQuery(m.items.Query() + msg.Text)
+			m.setQuery(m.items.Query() + msg.Text)
 		}
 		return m.reflow(), nil
 	case modeInput:

@@ -5,60 +5,50 @@ import (
 	"os"
 	"strings"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
 )
 
-type WorkspaceLoader struct {
-	Resolve  func(string) (string, error)
-	LoadFile func(string) (*manifest.Workspace, error)
-}
-
-func NewWorkspaceLoader() WorkspaceLoader {
-	resolver := manifest.NewResolver()
-	return WorkspaceLoader{
-		Resolve: resolver.Resolve,
-		LoadFile: func(path string) (*manifest.Workspace, error) {
-			return manifest.NewFileLoader(path).Load()
-		},
+// ResolveWorkspaceTarget requires exactly one selector. A nil pointer means
+// omitted; a pointer to an empty string is an explicitly empty selector.
+func ResolveWorkspaceTarget(name, path *string) (string, error) {
+	if name == nil && path == nil {
+		return "", fmt.Errorf("choose exactly one workspace target: --name or --path")
 	}
-}
+	if name != nil && path != nil {
+		return "", fmt.Errorf("cannot use both --name and --path")
+	}
 
-func (l WorkspaceLoader) LoadWorkspace(nameOrPath string) (*manifest.Workspace, string, error) {
-	if l.Resolve == nil || l.LoadFile == nil {
-		defaults := NewWorkspaceLoader()
-		if l.Resolve == nil {
-			l.Resolve = defaults.Resolve
+	if name != nil {
+		if *name == "" {
+			return "", fmt.Errorf("--name must not be empty")
 		}
-		if l.LoadFile == nil {
-			l.LoadFile = defaults.LoadFile
-		}
+		return manifest.NewResolver().NamedPath(*name)
 	}
-
-	workspacePath, err := l.Resolve(nameOrPath)
-	if err != nil {
-		return nil, "", err
+	if *path == "" {
+		return "", fmt.Errorf("--path must not be empty")
 	}
-
-	workspace, err := l.LoadFile(workspacePath)
-	if err != nil {
-		return nil, "", fmt.Errorf("loading workspace: %w", err)
-	}
-
-	return workspace, workspacePath, nil
+	return manifest.FilePath(*path)
 }
 
-func WorkspaceFromSessions(sessions []backend.Session) *manifest.Workspace {
+// WorkspaceFromSessions projects observations using the backend's pure preset
+// conversion. Single-pane layouts remain omitted.
+func WorkspaceFromSessions(sessions []backend.Session, layoutPreset func(string) (string, error)) (*manifest.Workspace, error) {
 	ws := &manifest.Workspace{Sessions: make([]manifest.Session, len(sessions))}
 
 	for i, sess := range sessions {
+		windows, err := windowsFromBackend(sess.Windows, layoutPreset)
+		if err != nil {
+			return nil, fmt.Errorf("session %q: %w", sess.Name, err)
+		}
+
 		ws.Sessions[i] = manifest.Session{
 			Name:    sess.Name,
-			Windows: windowsFromBackend(sess.Windows),
+			Windows: windows,
 		}
 	}
 
-	return ws
+	return ws, nil
 }
 
 func MergeWorkspaces(existing, incoming *manifest.Workspace) *manifest.Workspace {
@@ -77,7 +67,7 @@ func MergeWorkspaces(existing, incoming *manifest.Workspace) *manifest.Workspace
 	return existing
 }
 
-func windowsFromBackend(windows []backend.Window) []manifest.Window {
+func windowsFromBackend(windows []backend.Window, layoutPreset func(string) (string, error)) ([]manifest.Window, error) {
 	result := make([]manifest.Window, len(windows))
 	for i, w := range windows {
 		result[i] = manifest.Window{
@@ -85,16 +75,22 @@ func windowsFromBackend(windows []backend.Window) []manifest.Window {
 			Path: contractHomePath(w.Path),
 		}
 		if len(w.Panes) > 1 {
+			layout, err := layoutPreset(w.Layout)
+			if err != nil {
+				return nil, fmt.Errorf("window %q: %w", w.Name, err)
+			}
+
+			result[i].Layout = layout
 			result[i].Panes = panesFromBackend(w.Panes)
 		}
 	}
-	return result
+	return result, nil
 }
 
 func panesFromBackend(panes []backend.Pane) []manifest.Pane {
 	result := make([]manifest.Pane, len(panes))
 	for i, p := range panes {
-		result[i] = manifest.Pane{Path: contractHomePath(p.Path)}
+		result[i] = manifest.Pane{Path: contractHomePath(p.Path), Zoom: p.Zoom}
 	}
 	return result
 }

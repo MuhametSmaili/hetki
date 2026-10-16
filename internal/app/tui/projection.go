@@ -5,13 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/frecency"
-	ui "github.com/MSmaili/hetki/internal/tui"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/frecency"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type projectionKind uint8
@@ -26,37 +28,114 @@ func (a *LiveAdapter) Load(ctx context.Context) (list.Snapshot, error) {
 }
 
 func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
-	result, err := a.queryState(ctx)
+	a.mu.RLock()
+	projection := a.projection
+	a.mu.RUnlock()
+
+	prepared, err := a.loadProjection(ctx, projection)
 	if err != nil {
 		return list.Snapshot{}, err
 	}
-	scores, notice, err := a.loadFrecency(ctx)
-	if err != nil {
+
+	if err := a.publishSnapshot(ctx, prepared); err != nil {
 		return list.Snapshot{}, err
 	}
-	snapshot, index, err := projectState(result, a.projection, scores, notice)
-	if err != nil {
-		return list.Snapshot{}, err
-	}
-	a.mu.Lock()
-	a.index = index
-	a.mu.Unlock()
-	return snapshot, nil
+	return prepared.snapshot, nil
 }
 
-func (a *LiveAdapter) queryState(ctx context.Context) (backend.StateResult, error) {
+type projectionInput struct {
+	state  liveStateResult
+	scores frecency.Scores
+	notice string
+}
+
+func newProjectionInput(state liveStateResult, scores frecency.Scores, notice string) *projectionInput {
+	state.Sessions = slices.Clone(state.Sessions)
+	for i := range state.Sessions {
+		session := &state.Sessions[i]
+		session.Windows = slices.Clone(session.Windows)
+		for j := range session.Windows {
+			window := &session.Windows[j]
+			window.Panes = slices.Clone(window.Panes)
+		}
+	}
+	return &projectionInput{state: state, scores: scores, notice: notice}
+}
+
+func (input *projectionInput) project(projection projectionKind) (preparedSnapshot, error) {
+	snapshot, index, err := projectState(input.state.StateResult, projection, input.scores, input.notice)
+	if err != nil {
+		return preparedSnapshot{}, err
+	}
+	return preparedSnapshot{snapshot: snapshot, index: index, projection: projection, input: input}, nil
+}
+
+type preparedSnapshot struct {
+	snapshot   list.Snapshot
+	index      itemIndex
+	projection projectionKind
+	input      *projectionInput
+}
+
+func (a *LiveAdapter) loadProjection(ctx context.Context, projection projectionKind) (preparedSnapshot, error) {
+	result, err := a.queryState(ctx)
+	if err != nil {
+		return preparedSnapshot{}, err
+	}
+
+	scores, notice, err := a.loadFrecency(ctx)
+	if err != nil {
+		return preparedSnapshot{}, err
+	}
+
+	input := newProjectionInput(result, scores, notice)
+	return input.project(projection)
+}
+
+func (a *LiveAdapter) publishSnapshot(ctx context.Context, prepared preparedSnapshot) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
 	if err := ctx.Err(); err != nil {
-		return backend.StateResult{}, err
+		return err
+	}
+
+	a.projection = prepared.projection
+	a.index = prepared.index
+	a.input = prepared.input
+	a.statusServer, a.statusErr = prepared.input.state.server, prepared.input.state.statusErr
+	return nil
+}
+
+type liveStateResult struct {
+	backend.StateResult
+	server    observe.Server
+	statusErr error
+}
+
+func (a *LiveAdapter) queryState(ctx context.Context) (liveStateResult, error) {
+	if err := ctx.Err(); err != nil {
+		return liveStateResult{}, err
 	}
 	b, err := a.detectBackend()
 	if err != nil {
-		return backend.StateResult{}, fmt.Errorf("failed to detect backend: %w", err)
+		return liveStateResult{}, fmt.Errorf("failed to detect backend: %w", err)
+	}
+	if provider, ok := b.(interface {
+		QueryStatusState(context.Context) (backend.StateResult, observe.Server, error)
+	}); ok {
+		state, server, statusErr := provider.QueryStatusState(ctx)
+		if statusErr == nil {
+			return liveStateResult{StateResult: state, server: server}, nil
+		}
+		result, err := b.QueryState(ctx)
+		return liveStateResult{StateResult: result, statusErr: statusErr}, err
 	}
 	result, err := b.QueryState(ctx)
 	if err != nil {
-		return backend.StateResult{}, fmt.Errorf("failed to query sessions: %w", err)
+		return liveStateResult{}, fmt.Errorf("failed to query sessions: %w", err)
 	}
-	return result, nil
+	return liveStateResult{StateResult: result}, nil
 }
 
 func (a *LiveAdapter) loadFrecency(ctx context.Context) (frecency.Scores, string, error) {
@@ -95,36 +174,37 @@ func projectState(result backend.StateResult, projection projectionKind, scores 
 
 func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.ItemID) (ui.ActionResult, error) {
 	var selected liveItem
-	if selectedID != "" {
+	if !selectedID.IsZero() {
 		var err error
 		selected, err = a.resolveItem(selectedID)
 		if err != nil {
 			return ui.ActionResult{}, err
 		}
 	}
+	a.mu.RLock()
+	current, input := a.projection, a.input
+	a.mu.RUnlock()
+	if input == nil {
+		return ui.ActionResult{}, fmt.Errorf("live state is not loaded")
+	}
+
 	next := projectionFlat
 	message := "showing panes"
-	if a.projection == projectionFlat {
+	if current == projectionFlat {
 		next = projectionTree
 		message = "showing session tree"
 	}
-	state, err := a.queryState(ctx)
+
+	prepared, err := input.project(next)
 	if err != nil {
 		return ui.ActionResult{}, err
 	}
-	scores, notice, err := a.loadFrecency(ctx)
-	if err != nil {
+	preferred := preferredProjectionItem(selected, next, prepared.snapshot, prepared.index)
+
+	if err := a.publishSnapshot(ctx, prepared); err != nil {
 		return ui.ActionResult{}, err
 	}
-	snapshot, index, err := projectState(state, next, scores, notice)
-	if err != nil {
-		return ui.ActionResult{}, err
-	}
-	preferred := preferredProjectionItem(selected, next, snapshot, index)
-	a.projection = next
-	a.mu.Lock()
-	a.index = index
-	a.mu.Unlock()
+	snapshot := prepared.snapshot
 	return ui.ActionResult{Message: message, Snapshot: &snapshot, SelectItemID: preferred}, nil
 }
 
@@ -141,36 +221,36 @@ func preferredProjectionItem(
 }
 
 func preferredTreeItem(selected liveItem, snapshot list.Snapshot, index itemIndex) list.ItemID {
-	_, windowExists := index[selected.WindowID]
-	if selected.WindowID != "" && windowExists {
-		return selected.WindowID
+	_, windowExists := index[selected.windowRowID()]
+	if !selected.windowRowID().IsZero() && windowExists {
+		return selected.windowRowID()
 	}
-	_, sessionExists := index[selected.SessionID]
-	if selected.SessionID != "" && sessionExists {
-		return selected.SessionID
+	_, sessionExists := index[selected.sessionRowID()]
+	if !selected.sessionRowID().IsZero() && sessionExists {
+		return selected.sessionRowID()
 	}
 	return projectionFallback(snapshot, index)
 }
 
 func preferredFlatItem(selected liveItem, snapshot list.Snapshot, index itemIndex) list.ItemID {
 	var preferred list.ItemID
-	if selected.WindowID != "" {
+	if !selected.windowRowID().IsZero() {
 		preferred = firstMatchingItem(snapshot, index, func(item liveItem) bool {
-			return item.WindowID == selected.WindowID && item.PaneActive
+			return item.windowRowID() == selected.windowRowID() && item.PaneActive
 		})
-	} else if selected.SessionID != "" {
+	} else if !selected.sessionRowID().IsZero() {
 		preferred = firstMatchingItem(snapshot, index, func(item liveItem) bool {
-			return item.SessionID == selected.SessionID && item.WindowActive && item.PaneActive
+			return item.sessionRowID() == selected.sessionRowID() && item.WindowActive && item.PaneActive
 		})
 	}
-	if preferred != "" {
+	if !preferred.IsZero() {
 		return preferred
 	}
 	return projectionFallback(snapshot, index)
 }
 
 func projectionFallback(snapshot list.Snapshot, index itemIndex) list.ItemID {
-	if snapshot.ActiveItemID != "" {
+	if !snapshot.ActiveItemID.IsZero() {
 		return snapshot.ActiveItemID
 	}
 	return firstMatchingItem(snapshot, index, func(liveItem) bool { return true })
@@ -183,11 +263,11 @@ func firstMatchingItem(snapshot list.Snapshot, index itemIndex, matches func(liv
 			if live, exists := index[item.ID]; exists && matches(live) {
 				return item.ID
 			}
-			if id := visit(item.Children); id != "" {
+			if id := visit(item.Children); !id.IsZero() {
 				return id
 			}
 		}
-		return ""
+		return list.ItemID{}
 	}
 	return visit(snapshot.Items)
 }

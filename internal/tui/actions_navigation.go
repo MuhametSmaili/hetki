@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 func keyModeFor(mode uiMode) KeyMode {
@@ -135,7 +135,7 @@ func handleClearFilter(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	if !m.isListMode() {
 		return m.actionUnavailable(ActionClearFilter)
 	}
-	m.items.SetQuery("")
+	m.setQuery("")
 	if m.mode == modeFilter {
 		m.mode = modeBrowse
 	}

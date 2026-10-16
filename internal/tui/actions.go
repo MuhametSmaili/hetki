@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type ActionID string
@@ -40,6 +40,7 @@ const (
 	ActionConfirm          ActionID = "confirm"
 	ActionRefresh          ActionID = "refresh"
 	ActionToggleProjection ActionID = "toggle_projection"
+	ActionToggleScope      ActionID = "toggle_scope"
 	ActionTogglePreview    ActionID = "toggle_preview"
 	ActionOpen             ActionID = "open"
 	ActionLastSession      ActionID = "last_session"
@@ -77,6 +78,7 @@ var declaredActions = [...]ActionID{
 	ActionConfirm,
 	ActionRefresh,
 	ActionToggleProjection,
+	ActionToggleScope,
 	ActionTogglePreview,
 	ActionOpen,
 	ActionLastSession,
@@ -118,6 +120,7 @@ func init() {
 		ActionConfirm:          handleConfirm,
 		ActionRefresh:          handleRefresh,
 		ActionToggleProjection: handleToggleProjection,
+		ActionToggleScope:      handleToggleScope,
 		ActionTogglePreview:    handleTogglePreview,
 		ActionOpen:             handleOpen,
 		ActionLastSession:      handleLastSession,
@@ -132,8 +135,6 @@ func (m model) dispatchAction(action ActionID, itemID list.ItemID) (tea.Model, t
 	}
 	return handler(m, itemID)
 }
-
-type BackendTarget string
 
 type ActionRequest struct {
 	ActionID  ActionID
@@ -168,9 +169,10 @@ type ItemMenu struct {
 type ActionResult struct {
 	Message      string
 	Snapshot     *list.Snapshot
+	Status       *StatusUpdate
 	SelectItemID list.ItemID
 	Input        *InputPrompt
 	Confirmation *Confirmation
 	Menu         *ItemMenu
-	Navigation   BackendTarget
+	Navigation   list.ItemID
 }

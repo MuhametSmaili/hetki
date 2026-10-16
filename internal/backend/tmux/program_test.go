@@ -34,15 +34,15 @@ func TestProgramLookupFallsBackWithoutChangingRawCommand(t *testing.T) {
 
 func TestLoadStateQueryProgramInfoIsOptionalAndStrict(t *testing.T) {
 	q := LoadStateQuery{IncludeProgramInfo: true}
-	require.Contains(t, q.Args()[len(q.Args())-1], "|#{pane_pid}|#{pane_dead}")
-	row := "0\n0\n$1|dev|@1|main|0||0|1|%1|0|1|/work|node||123|1"
+	require.Contains(t, q.Args()[len(q.Args())-1], "|#{pane_pid}|#{pane_dead}|#{q:default-shell}")
+	row := "0\n0\n$1|dev|@1|main|0||0|1|%1|0|1|/work|node||123|1|/bin/sh"
 	state, err := q.Parse(row)
 	require.NoError(t, err)
 	pane := state.Sessions[0].Windows[0].Panes[0]
 	require.Equal(t, 123, pane.PID)
 	require.True(t, pane.Dead)
 	require.Equal(t, "node", pane.Command)
-	for _, suffix := range []string{"", "|123", "|0|0", "|-1|0", "|123|2", "|bad|0"} {
+	for _, suffix := range []string{"", "|123", "|123|0", "|0|0|/bin/sh", "|-1|0|/bin/sh", "|123|2|/bin/sh", "|bad|0|/bin/sh", "|123|0|/bin/sh|extra"} {
 		_, err := q.Parse("0\n0\n$1|dev|@1|main|0||0|1|%1|0|1|/work|node|" + suffix)
 		require.Error(t, err, suffix)
 	}

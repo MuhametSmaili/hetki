@@ -1,6 +1,7 @@
 package list
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -26,6 +27,7 @@ type Model struct {
 	height    int
 	shownRoot int
 	query     string
+	included  map[ItemID]struct{}
 	expanded  map[ItemID]bool
 	active    map[ItemID]bool
 }
@@ -72,7 +74,7 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 		return err
 	}
 	selectedID := preferred
-	if selectedID == "" {
+	if selectedID.IsZero() {
 		if selected, ok := m.Selected(); ok {
 			selectedID = selected.Item.ID
 		}
@@ -92,9 +94,24 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 }
 
 func (m *Model) SetQuery(query string) {
+	m.SetFilter(query, nil)
+}
+
+// SetFilter retains ancestors of included items; nil allows all items.
+func (m *Model) SetFilter(query string, included map[ItemID]struct{}) bool {
+	if m.query == query && (m.included == nil) == (included == nil) && maps.Equal(m.included, included) {
+		return false
+	}
+	selected, hasSelection := m.Selected()
+	preserve := m.query == query
 	m.query = query
+	m.included = maps.Clone(included)
 	m.applyFilter()
+	if preserve && hasSelection {
+		m.Select(selected.Item.ID)
+	}
 	m.reflow()
+	return true
 }
 
 func (m *Model) Resize(height int) {
@@ -226,15 +243,16 @@ func (m *Model) applyFilter() {
 		selectedID = selected.Item.ID
 	}
 	query := strings.ToLower(strings.TrimSpace(m.query))
+	items := restrictItems(m.snapshot.Items, m.included)
 	if query == "" {
-		m.rows = flatten(m.snapshot.Items, m.expanded, false)
+		m.rows = flatten(items, m.expanded, false)
 		if idx := findRow(m.rows, selectedID); idx >= 0 {
 			m.cursor = idx
 		} else {
 			m.cursor = clampCursor(m.cursor, len(m.rows))
 		}
 	} else {
-		m.rows = rankedMatches(m.snapshot.Items, query)
+		m.rows = rankedMatches(items, query)
 		m.cursor = bestMatchCursor(m.rows)
 	}
 	m.shownRoot = 0
@@ -272,7 +290,7 @@ func flattenAtDepth(items []Item, ancestors []bool, expanded map[ItemID]bool, in
 		hasNext := i < len(items)-1
 		isExpanded := includeAll || expanded[item.ID]
 		*rows = append(*rows, Row{
-			Item: item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors),
+			Item: item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
 			Expanded: isExpanded, Branch: len(item.Children) > 0,
 		})
 		if len(item.Children) > 0 && isExpanded {
@@ -319,7 +337,7 @@ func flattenMatches(items []matchedItem, ancestors []bool, rows *[]Row) {
 	for i, matched := range items {
 		hasNext := i < len(items)-1
 		*rows = append(*rows, Row{
-			Item: matched.item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors),
+			Item: matched.item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
 			Expanded: true, Branch: len(matched.item.Children) > 0, Score: matched.score,
 		})
 		flattenMatches(matched.children, append(append([]bool(nil), ancestors...), hasNext), rows)
@@ -389,24 +407,28 @@ func markActivePathExpanded(items []Item, activeID ItemID, expanded map[ItemID]b
 	return false
 }
 
-func treePrefix(ancestors []bool) string {
+func treePrefix(ancestors []bool, hasNext bool) string {
 	if len(ancestors) == 0 {
 		return ""
 	}
 	var builder strings.Builder
-	for _, ancestorHasNext := range ancestors[:len(ancestors)-1] {
+	for _, ancestorHasNext := range ancestors[1:] {
 		if ancestorHasNext {
-			builder.WriteString(" │  ")
+			builder.WriteString("│  ")
 		} else {
-			builder.WriteString("    ")
+			builder.WriteString("   ")
 		}
 	}
-	builder.WriteString(" │  ")
+	if hasNext {
+		builder.WriteString("├─ ")
+	} else {
+		builder.WriteString("└─ ")
+	}
 	return builder.String()
 }
 
 func findRow(rows []Row, id ItemID) int {
-	if id == "" {
+	if id.IsZero() {
 		return -1
 	}
 	for i, row := range rows {

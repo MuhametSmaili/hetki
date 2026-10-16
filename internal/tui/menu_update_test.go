@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/MSmaili/hetki/internal/terminal"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
@@ -40,13 +40,13 @@ func TestContextMenuCancelRestoresBrowseAndFilterState(t *testing.T) {
 			m.items.SetQuery("server")
 			m.height = 5
 			m = m.reflow()
-			require.True(t, m.items.Select("window-2"))
+			require.True(t, m.items.Select(list.ItemID{ID: "window-2"}))
 			m.mode = origin
 			query, cursor, offset, selected := m.items.Query(), m.items.Cursor(), m.items.Offset(), selectedNodeID(m)
 
 			m = openTestMenu(t, m)
-			require.Equal(t, ActionRequest{ActionID: ActionContextMenu, ItemID: "window-2"}, got)
-			require.Equal(t, list.ItemID("window-2"), m.menu.ItemID)
+			require.Equal(t, ActionRequest{ActionID: ActionContextMenu, ItemID: list.ItemID{ID: "window-2"}}, got)
+			require.Equal(t, list.ItemID{ID: "window-2"}, m.menu.ItemID)
 			m, cmd := updateModel(t, m, printableKey("q"))
 			require.Nil(t, cmd, "menu must own printable keys")
 			require.Equal(t, modeMenu, m.mode)
@@ -67,7 +67,7 @@ func TestMenuLettersAndArrowEnterUseTheDirectActionRequest(t *testing.T) {
 		direct <- request
 		return ActionResult{}, nil
 	})
-	directModel = selectNode(t, browseModel(directModel), "window-2")
+	directModel = selectNode(t, browseModel(directModel), list.ItemID{ID: "window-2"})
 	_, directCmd := updateModel(t, directModel, printableKey("r"))
 	require.NotNil(t, directCmd)
 	directCmd()
@@ -94,7 +94,7 @@ func TestMenuLettersAndArrowEnterUseTheDirectActionRequest(t *testing.T) {
 				}
 				return ActionResult{}, nil
 			})
-			m = selectNode(t, browseModel(m), "window-2")
+			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
 			m = openTestMenu(t, m)
 			<-requests
 
@@ -130,7 +130,7 @@ func TestEveryMenuEntryDispatchesFromTheStableOrigin(t *testing.T) {
 		{ActionDelete, printableKey("x")},
 		{ActionDeleteSession, printableKey("X")},
 		{ActionRefresh, controlKey('r')},
-		{ActionToggleProjection, specialKey(tea.KeyTab)},
+		{ActionToggleProjection, controlKey('t')},
 	}
 	for _, test := range tests {
 		t.Run(string(test.action), func(t *testing.T) {
@@ -142,7 +142,7 @@ func TestEveryMenuEntryDispatchesFromTheStableOrigin(t *testing.T) {
 				got = request
 				return ActionResult{}, nil
 			})
-			m = selectNode(t, browseModel(m), "window-2")
+			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
 			if test.action == ActionRefresh || test.action == ActionToggleProjection {
 				m.items.SetQuery("server")
 				m.mode = modeFilter
@@ -155,7 +155,7 @@ func TestEveryMenuEntryDispatchesFromTheStableOrigin(t *testing.T) {
 			require.Equal(t, query, m.items.Query())
 			require.Equal(t, selected, selectedNodeID(m))
 			m, _ = updateModel(t, m, cmd())
-			require.Equal(t, ActionRequest{ActionID: test.action, ItemID: "window-2"}, got)
+			require.Equal(t, ActionRequest{ActionID: test.action, ItemID: list.ItemID{ID: "window-2"}}, got)
 			require.Equal(t, origin, m.mode)
 			require.Equal(t, query, m.items.Query())
 			require.Equal(t, selected, selectedNodeID(m))
@@ -174,7 +174,7 @@ func TestOldMenuRefreshAndToggleLettersDoNothing(t *testing.T) {
 					{Action: ActionToggleProjection, Label: "Toggle projection"},
 				}})}, nil
 			})
-			m = openTestMenu(t, selectNode(t, browseModel(m), "window-2"))
+			m = openTestMenu(t, selectNode(t, browseModel(m), list.ItemID{ID: "window-2"}))
 			m, cmd := updateModel(t, m, printableKey(key))
 			require.Nil(t, cmd)
 			require.Equal(t, modeMenu, m.mode)
@@ -217,12 +217,12 @@ func TestMenuInheritsInjectedNormalBindingsForDisplayAndDispatch(t *testing.T) {
 				return ActionResult{}, nil
 			}, keys)
 			require.NoError(t, err)
-			m = openTestMenu(t, selectNode(t, browseModel(m), "window-2"))
+			m = openTestMenu(t, selectNode(t, browseModel(m), list.ItemID{ID: "window-2"}))
 			require.Contains(t, terminal.Sanitize(m.View().Content), test.badge)
 			_, cmd := updateModel(t, m, test.key)
 			require.NotNil(t, cmd)
 			cmd()
-			require.Equal(t, ActionRequest{ActionID: test.action, ItemID: "window-2"}, got)
+			require.Equal(t, ActionRequest{ActionID: test.action, ItemID: list.ItemID{ID: "window-2"}}, got)
 		})
 	}
 }
@@ -248,7 +248,7 @@ func TestMenuInputAndConfirmationHandoffsRestoreFilterState(t *testing.T) {
 	m.items.SetQuery("server")
 	m.height = 5
 	m = m.reflow()
-	require.True(t, m.items.Select("window-2"))
+	require.True(t, m.items.Select(list.ItemID{ID: "window-2"}))
 	m.mode = modeFilter
 	query, cursor, offset, selected := m.items.Query(), m.items.Cursor(), m.items.Offset(), selectedNodeID(m)
 	requireState := func(t *testing.T, m model) {
@@ -288,25 +288,25 @@ func TestDeleteResultSelectsParentThenNextOrPreviousSurvivor(t *testing.T) {
 	t.Run("filtered tree window parent", func(t *testing.T) {
 		m := browseModel(newModel(interactionSnapshot(), nil))
 		m.items.SetQuery("editor")
-		m = selectNode(t, m, "window-1")
+		m = selectNode(t, m, list.ItemID{ID: "window-1"})
 		m.mode = modeFilter
 		m.busy = true
-		m.pending = cloneRequest(ActionRequest{ActionID: ActionDelete, ItemID: "window-1", Confirmed: true})
+		m.pending = cloneRequest(ActionRequest{ActionID: ActionDelete, ItemID: list.ItemID{ID: "window-1"}, Confirmed: true})
 		m.pendingRows = currentRowIDs(m)
 		next := interactionSnapshot()
 		next.Items[0].Children = next.Items[0].Children[1:]
 		next.Items[1].Children[0].Primary = "editor backup"
 		next.Items[1].Children[0].SearchFields = []list.SearchField{{Tier: list.SearchPrimary, Text: "editor backup"}}
-		next.ActiveItemID = "session-1"
-		m, _ = updateModel(t, m, actionResultMsg{result: ActionResult{Snapshot: &next, SelectItemID: "session-1"}})
-		require.Equal(t, list.ItemID("session-1"), selectedNodeID(m))
+		next.ActiveItemID = list.ItemID{ID: "session-1"}
+		m, _ = updateModel(t, m, actionResultMsg{result: ActionResult{Snapshot: &next, SelectItemID: list.ItemID{ID: "session-1"}}})
+		require.Equal(t, list.ItemID{ID: "session-1"}, selectedNodeID(m))
 		require.Empty(t, m.items.Query(), "the parent must be revealed when the preserved filter hides it")
 	})
 
-	flat := func(ids ...list.ItemID) list.Snapshot {
+	flat := func(ids ...string) list.Snapshot {
 		items := make([]list.Item, len(ids))
 		for i, id := range ids {
-			items[i] = list.Item{ID: id, Primary: string(id), SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "place"}}}
+			items[i] = list.Item{ID: list.ItemID{ID: id}, Primary: id, SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "place"}}}
 		}
 		return list.Snapshot{Items: items}
 	}
@@ -318,9 +318,9 @@ func TestDeleteResultSelectsParentThenNextOrPreviousSurvivor(t *testing.T) {
 		after    list.Snapshot
 		want     list.ItemID
 	}{
-		{name: "owning window chooses next", action: ActionDelete, before: flat("one", "two", "three"), selectID: "two", after: flat("one", "three"), want: "three"},
-		{name: "owning session skips removed destinations", action: ActionDeleteSession, before: flat("one", "sibling", "selected", "next", "last"), selectID: "selected", after: flat("one", "next", "last"), want: "next"},
-		{name: "owning session chooses previous at end", action: ActionDeleteSession, before: flat("one", "two", "three"), selectID: "three", after: flat("one", "two"), want: "two"},
+		{name: "owning window chooses next", action: ActionDelete, before: flat("one", "two", "three"), selectID: list.ItemID{ID: "two"}, after: flat("one", "three"), want: list.ItemID{ID: "three"}},
+		{name: "owning session skips removed destinations", action: ActionDeleteSession, before: flat("one", "sibling", "selected", "next", "last"), selectID: list.ItemID{ID: "selected"}, after: flat("one", "next", "last"), want: list.ItemID{ID: "next"}},
+		{name: "owning session chooses previous at end", action: ActionDeleteSession, before: flat("one", "two", "three"), selectID: list.ItemID{ID: "three"}, after: flat("one", "two"), want: list.ItemID{ID: "two"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m := browseModel(newModel(test.before, nil))
@@ -360,7 +360,7 @@ func TestContextMenuRejectsEmptyAndInvalidEntries(t *testing.T) {
 			m := newModel(interactionSnapshot(), func(ActionRequest) (ActionResult, error) {
 				return ActionResult{Menu: menuPtr(test.menu)}, nil
 			})
-			m = selectNode(t, browseModel(m), "window-2")
+			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
 			m, cmd := updateModel(t, m, controlKey('k'))
 			m, _ = updateModel(t, m, cmd())
 			require.Equal(t, modeBrowse, m.mode)
@@ -411,7 +411,7 @@ func TestContextMenuRejectsResolvedFallbackKeyCollisions(t *testing.T) {
 				return ActionResult{Menu: menuPtr(ItemMenu{Entries: test.entries})}, nil
 			}, keys)
 			require.NoError(t, err)
-			m = selectNode(t, browseModel(m), "window-2")
+			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
 			m, cmd := updateModel(t, m, controlKey('k'))
 			m, _ = updateModel(t, m, cmd())
 			require.Equal(t, modeBrowse, m.mode)

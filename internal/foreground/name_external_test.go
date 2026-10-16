@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/MSmaili/hetki/internal/foreground"
+	"github.com/MuhametSmaili/hetki/internal/foreground"
 	"github.com/stretchr/testify/require"
 )
 

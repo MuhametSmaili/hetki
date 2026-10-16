@@ -19,13 +19,13 @@ Hetki requires tmux and, on macOS, Ventura 13 or later.
 ### Using Go
 
 ```bash
-go install github.com/MSmaili/hetki@latest
+go install github.com/MuhametSmaili/hetki@latest
 ```
 
 ### Using curl
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/MSmaili/hetki/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MuhametSmaili/hetki/main/install.sh | bash
 ```
 
 ## Updating
@@ -46,7 +46,6 @@ stable release.
 hetki                 # Open the TUI
 hetki save -n work    # Save the currently attached tmux session
 hetki start work      # Start or reconcile the saved workspace
-hetki switch dev      # Switch directly to a session
 ```
 
 Run `hetki --help` or `hetki <command> --help` for the current CLI options.
@@ -62,12 +61,6 @@ argv-zero/process title; uncertain or oversized process data keeps the raw
 command. Linux uses tmux's own argv-zero-based command observation without
 additional process scanning. There is no application catalogue or package-path
 matching; ordinary Node jobs and failed lookups keep the raw command.
-
-Run `hetki report --status working` inside a tmux pane to report its current
-status; also accepts `needs-input`, `idle`, and `unknown`. Hetki resolves the
-pane context and handles bounded private storage internally—no JSON or daemon
-needed. Agent plugins, TUI status indicators, notifications and sound are not
-yet implemented. See [reporting status](docs/reporting.md) for lifecycle rules.
 
 ## Safety
 

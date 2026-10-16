@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/MSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
 	"github.com/spf13/cobra"
 )
 

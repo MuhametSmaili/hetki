@@ -5,29 +5,43 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/frecency"
-	ui "github.com/MSmaili/hetki/internal/tui"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/frecency"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
+// Backend provides the observation, mutation and navigation operations used by the picker.
+type Backend interface {
+	QueryState(context.Context) (backend.StateResult, error)
+	Apply(context.Context, []backend.Action) error
+	Switch(context.Context, backend.Target) error
+	CapturePane(context.Context, backend.Target) (string, error)
+}
+
+// LiveAdapter projects backend state and owns picker actions.
+// Callers must serialize Load, Execute and Navigate; preview and status reads may run concurrently.
 type LiveAdapter struct {
-	DetectBackend func(...string) (backend.Backend, error)
-	mu            sync.RWMutex // Protects the index and backend instance; never held during capture.
-	cached        backend.Backend
+	DetectBackend func() (Backend, error)
+	mu            sync.RWMutex // Protects published projection state and the cached backend; never held during capture.
+	cached        Backend
 	index         itemIndex
+	input         *projectionInput // Owned and immutable between successful loads.
+	statusServer  observe.Server
+	statusErr     error
 	projection    projectionKind
 	frecency      *frecency.Store
 	frecencyErr   error
 	pendingRecord *navigationRecord
 }
 
-func NewLiveAdapter(detectBackend func(...string) (backend.Backend, error)) *LiveAdapter {
+func NewLiveAdapter(detectBackend func() (Backend, error)) *LiveAdapter {
 	store, err := frecency.DefaultStore()
 	return newLiveAdapter(detectBackend, store, err)
 }
 
-func newLiveAdapter(detectBackend func(...string) (backend.Backend, error), store *frecency.Store, storeErr error) *LiveAdapter {
+func newLiveAdapter(detectBackend func() (Backend, error), store *frecency.Store, storeErr error) *LiveAdapter {
 	return &LiveAdapter{DetectBackend: detectBackend, projection: projectionFlat, frecency: store, frecencyErr: storeErr}
 }
 
@@ -39,7 +53,7 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 		return a.toggleProjection(ctx, request.ItemID)
 	}
 	var item liveItem
-	if request.ItemID != "" {
+	if !request.ItemID.IsZero() {
 		var err error
 		item, err = a.resolveItem(request.ItemID)
 		if err != nil {
@@ -48,28 +62,35 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 	}
 	switch request.ActionID {
 	case ui.ActionLastSession:
-		for _, item := range a.index {
-			if item.Last {
-				return a.openItem(ctx, item)
-			}
-		}
-		return ui.ActionResult{}, fmt.Errorf("no previous session available")
+		return a.openLastSession(ctx)
 	case ui.ActionRefresh:
 		snapshot, err := a.loadSnapshot(ctx)
 		return ui.ActionResult{Message: "refreshed", Snapshot: &snapshot}, err
 	case ui.ActionCreateSession:
 		return a.createSession(ctx, request)
-	case ui.ActionContextMenu:
-		if item.ID == "" {
-			return ui.ActionResult{}, fmt.Errorf("action requires a selected item")
-		}
-		menu, err := contextualMenu(item)
-		if err != nil {
-			return ui.ActionResult{}, err
-		}
-		return ui.ActionResult{Menu: &menu}, nil
+	default:
+		return a.executeItem(ctx, request, item)
 	}
-	if item.ID == "" {
+}
+
+func (a *LiveAdapter) openLastSession(ctx context.Context) (ui.ActionResult, error) {
+	a.mu.RLock()
+	var last liveItem
+	for _, item := range a.index {
+		if item.Last {
+			last = item
+			break
+		}
+	}
+	a.mu.RUnlock()
+	if last.ID.IsZero() {
+		return ui.ActionResult{}, fmt.Errorf("no previous session available")
+	}
+	return a.openItem(ctx, last)
+}
+
+func (a *LiveAdapter) executeItem(ctx context.Context, request ui.ActionRequest, item liveItem) (ui.ActionResult, error) {
+	if item.ID.IsZero() {
 		return ui.ActionResult{}, fmt.Errorf("action requires a selected item")
 	}
 	if (request.ActionID == ui.ActionRename || request.ActionID == ui.ActionDelete) &&
@@ -77,6 +98,12 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 		return ui.ActionResult{}, fmt.Errorf("item %q does not support a window action", item.ID)
 	}
 	switch request.ActionID {
+	case ui.ActionContextMenu:
+		menu, err := contextualMenu(item)
+		if err != nil {
+			return ui.ActionResult{}, err
+		}
+		return ui.ActionResult{Menu: &menu}, nil
 	case ui.ActionOpen:
 		return a.openItem(ctx, item)
 	case ui.ActionCreateWindow:
@@ -103,7 +130,7 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 }
 
 func (a *LiveAdapter) resolveItem(id list.ItemID) (liveItem, error) {
-	if id == "" {
+	if id.IsZero() {
 		return liveItem{}, fmt.Errorf("action requires a selected item")
 	}
 	a.mu.RLock()
@@ -115,13 +142,13 @@ func (a *LiveAdapter) resolveItem(id list.ItemID) (liveItem, error) {
 	return item, nil
 }
 
-func (a *LiveAdapter) detectBackend() (backend.Backend, error) {
+func (a *LiveAdapter) detectBackend() (Backend, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cached != nil {
 		return a.cached, nil
 	}
-	var b backend.Backend
+	var b Backend
 	var err error
 	if a.DetectBackend != nil {
 		b, err = a.DetectBackend()

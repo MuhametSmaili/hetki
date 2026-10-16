@@ -7,16 +7,16 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/MSmaili/hetki/internal/terminal"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
 func viewSnapshot() list.Snapshot {
 	return list.Snapshot{Items: []list.Item{{
-		ID: "session", Primary: "session", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "session"}},
+		ID: list.ItemID{ID: "session"}, Primary: "session", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "session"}},
 		Children: []list.Item{{
-			ID: "window", Primary: "editor", Secondary: "~/code/editor",
+			ID: list.ItemID{ID: "window"}, Primary: "editor", Secondary: "~/code/editor",
 			SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "editor"}, {Tier: list.SearchSecondary, Text: "~/code/editor"}},
 		}},
 	}}}
@@ -24,10 +24,10 @@ func viewSnapshot() list.Snapshot {
 
 func TestRunRejectsInvalidInitialProjectionBeforeStartingTea(t *testing.T) {
 	invalid := list.Snapshot{Items: []list.Item{
-		{ID: "same", Primary: "one"},
-		{ID: "same", Primary: "two"},
+		{ID: list.ItemID{ID: "same"}, Primary: "one"},
+		{ID: list.ItemID{ID: "same"}, Primary: "two"},
 	}}
-	_, err := Run(context.Background(), invalid, DefaultKeyMap(), DefaultStartMode(), nil, PreviewOptions{Width: DefaultPreviewWidth})
+	_, err := Run(context.Background(), invalid, DefaultKeyMap(), DefaultStartMode(), nil, PreviewOptions{Width: DefaultPreviewWidth}, StatusOptions{})
 	if err == nil || !strings.Contains(err.Error(), "duplicate item ID") {
 		t.Fatalf("Run error = %v, want duplicate item ID", err)
 	}
@@ -91,14 +91,14 @@ func TestViewKeepsSecondaryTextOnItsRowWithoutGlobalHelp(t *testing.T) {
 
 func TestViewPassesTrailingTextToTheRightColumn(t *testing.T) {
 	m := browseModel(newModel(list.Snapshot{Items: []list.Item{{
-		ID: "pane", Primary: "deveditor", Secondary: "~/code", Trailing: "pi",
+		ID: list.ItemID{ID: "pane"}, Primary: "deveditor", Secondary: "~/code", Trailing: "pi",
 	}}}, nil))
 	m.width, m.height = 80, 20
 	m = m.reflow()
 	line := terminal.Sanitize(m.viewList(m.layout()))
 	require.Contains(t, line, "deveditor")
 	require.Contains(t, line, "~/code")
-	require.True(t, strings.HasSuffix(line, "pi"))
+	require.True(t, strings.HasSuffix(line, "pi  "))
 	require.Equal(t, m.layout().listWidth, terminal.Width(line))
 }
 
@@ -163,7 +163,7 @@ func TestContextMenuViewportFitsAndCentersTheFullMenu(t *testing.T) {
 		}
 	}
 	plain := terminal.Sanitize(content)
-	if !strings.Contains(plain, "‹tab› Toggle proj...") || strings.Contains(plain, "Open destination") {
+	if !strings.Contains(plain, "‹ctrl+t› Toggle p...") || strings.Contains(plain, "Open destination") {
 		t.Fatalf("menu viewport did not follow the selection: %q", plain)
 	}
 
@@ -174,7 +174,7 @@ func TestContextMenuViewportFitsAndCentersTheFullMenu(t *testing.T) {
 	content = centered.View().Content
 	plain = terminal.Sanitize(content)
 	require.Contains(t, plain, "‹ctrl+r› Refresh")
-	require.Contains(t, plain, "‹tab› Toggle projection")
+	require.Contains(t, plain, "‹ctrl+t› Toggle projection")
 	overlay := renderMenu(menuProps{
 		LineWidth: 80, MaxHeight: lipgloss.Height(content), Title: centered.menu.Title,
 		Entries: entries, Keys: centered.keys, Theme: centered.theme,
@@ -192,8 +192,8 @@ func TestContextMenuViewportFitsAndCentersTheFullMenu(t *testing.T) {
 func TestViewSanitizesExternalTextAndFitsWidth(t *testing.T) {
 	unsafe := "\x1b]0;owned\a中👨‍👩‍👧é\nnext"
 	snapshot := list.Snapshot{Items: []list.Item{{
-		ID: "unsafe", Primary: unsafe, SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: unsafe}},
-	}}, ActiveItemID: "unsafe"}
+		ID: list.ItemID{ID: "unsafe"}, Primary: unsafe, SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: unsafe}},
+	}}, ActiveItemID: list.ItemID{ID: "unsafe"}}
 	for _, width := range []int{1, 2, 3, 20} {
 		m := newModel(snapshot, nil)
 		m.width, m.height = width, 8

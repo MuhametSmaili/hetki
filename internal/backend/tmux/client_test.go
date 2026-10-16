@@ -8,11 +8,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 func awaitTmuxChannel[T any](t *testing.T, ch <-chan T) T {
@@ -105,36 +108,86 @@ func TestRunQuery(t *testing.T) {
 
 func TestRunQueryPreservesExecutionErrorWhenOutputIsMalformed(t *testing.T) {
 	mock := &MockClient{RunFunc: func(context.Context, ...string) (string, error) {
-		return "malformed", context.Canceled
+		return "malformed", io.ErrUnexpectedEOF
 	}}
 
 	_, err := RunQuery(context.Background(), mock, LoadStateQuery{})
 
-	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	assert.ErrorContains(t, err, "missing base indexes")
 }
 
-func TestClientRunCancelsStartedProcess(t *testing.T) {
-	sh, err := exec.LookPath("sh")
-	require.NoError(t, err)
-	started := filepath.Join(t.TempDir(), "started")
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		_, err := (&client{bin: sh}).Run(ctx, "-c", `echo started > "$1"; exec sleep 10`, "sh", started)
-		done <- err
-	}()
-	require.Eventually(t, func() bool {
-		_, err := os.Stat(started)
-		return err == nil
-	}, time.Second, 10*time.Millisecond)
+func TestClientCancellationPreservesCauses(t *testing.T) {
+	runQuery := func(ctx context.Context, c *client) error {
+		_, err := RunQuery(ctx, c, LoadStateQuery{})
+		return err
+	}
+	for _, test := range []struct {
+		name   string
+		run    func(context.Context, *client) error
+		stderr string
+		quiet  bool
+	}{
+		{"run", func(ctx context.Context, c *client) error {
+			_, err := c.Run(ctx)
+			return err
+		}, "", true},
+		{"limited run", func(ctx context.Context, c *client) error {
+			_, err := c.RunLimited(ctx, 64)
+			return err
+		}, "", true},
+		{"execute", func(ctx context.Context, c *client) error {
+			return c.Execute(ctx, shellAction{})
+		}, "", true},
+		{"interrupted query", runQuery, "", true},
+		{"interrupted query with diagnostics", runQuery, "denied", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			fifo := filepath.Join(directory, "ready")
+			require.NoError(t, syscall.Mkfifo(fifo, 0600))
+			ready, err := os.OpenFile(fifo, os.O_RDWR|syscall.O_NONBLOCK, 0600)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, ready.Close()) })
 
-	cancel()
+			t.Setenv("HETKI_TEST_READY", fifo)
+			t.Setenv("HETKI_TEST_STDERR", test.stderr)
+			binary := filepath.Join(directory, "tmux")
+			script := "#!/bin/sh\nprintf partial\nprintf '%s' \"$HETKI_TEST_STDERR\" >&2\nprintf x > \"$HETKI_TEST_READY\"\nexec sleep 10\n"
+			require.NoError(t, os.WriteFile(binary, []byte(script), 0700))
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			done := make(chan struct{})
+			var runErr error
+			go func() {
+				runErr = test.run(ctx, &client{bin: binary})
+				close(done)
+			}()
+			t.Cleanup(func() {
+				cancel()
+				awaitTmuxChannel(t, done)
+			})
+			readiness := []unix.PollFd{{Fd: int32(ready.Fd()), Events: unix.POLLIN}}
+			count, err := unix.Poll(readiness, 5000)
+			require.NoError(t, err)
+			require.Equal(t, 1, count, "timed out waiting for child readiness")
+			var signal [1]byte
+			_, err = io.ReadFull(ready, signal[:])
+			require.NoError(t, err)
 
-	runErr := awaitTmuxChannel(t, done)
-	require.ErrorIs(t, runErr, context.Canceled)
-	var exitErr *exec.ExitError
-	require.ErrorAs(t, runErr, &exitErr)
+			cancel()
+			awaitTmuxChannel(t, done)
+
+			require.ErrorIs(t, runErr, context.Canceled)
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, runErr, &exitErr)
+			assert.Equal(t, test.quiet, backend.IsCancellationOnly(runErr))
+			var parseErr *queryParseError
+			assert.NotErrorAs(t, runErr, &parseErr)
+			if test.stderr != "" {
+				assert.ErrorContains(t, runErr, test.stderr)
+			}
+		})
+	}
 }
 
 func TestClientRunLimitedBoundsOutputAtReadTime(t *testing.T) {
@@ -152,6 +205,7 @@ func TestClientRunLimitedBoundsOutputAtReadTime(t *testing.T) {
 	output, err = c.RunLimited(ctx, 8, "-c", `while :; do printf 123456789; done`)
 	require.ErrorContains(t, err, "stdout exceeds 8 bytes")
 	assert.NotErrorIs(t, err, context.Canceled, "overflow is not caller cancellation")
+	assert.False(t, backend.IsCancellationOnly(errors.Join(context.Canceled, err)))
 	assert.LessOrEqual(t, len(output), 8)
 	assert.NoError(t, ctx.Err(), "overflow must cancel only the owned process")
 
@@ -201,18 +255,33 @@ func TestClientNoninteractiveActionsDoNotWriteToTerminal(t *testing.T) {
 	assert.Empty(t, output)
 }
 
-func TestClientPreservesExitErrorsWithStderr(t *testing.T) {
+func TestClientPreservesProcessExitCauses(t *testing.T) {
 	sh, err := exec.LookPath("sh")
 	require.NoError(t, err)
 	c := &client{bin: sh}
 
-	_, runErr := c.Run(context.Background(), "-c", "echo denied >&2; exit 7")
-	executeErr := c.Execute(context.Background(), shellAction{"-c", "echo denied >&2; exit 7"})
+	for _, test := range []struct {
+		name, script, stderr string
+		cancellationOnly     bool
+	}{
+		{"nonzero exit with diagnostics", "echo denied >&2; exit 7", "denied", false},
+		{"unowned kill", "kill -KILL $$", "", false},
+		{"interrupt before caller cancellation", "kill -INT $$", "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, runErr := c.Run(t.Context(), "-c", test.script)
+			executeErr := c.Execute(t.Context(), shellAction{"-c", test.script})
 
-	for _, err := range []error{runErr, executeErr} {
-		var exitErr *exec.ExitError
-		require.ErrorAs(t, err, &exitErr)
-		assert.ErrorContains(t, err, "denied")
+			for _, err := range []error{runErr, executeErr} {
+				var exitErr *exec.ExitError
+				require.ErrorAs(t, err, &exitErr)
+				assert.NotErrorIs(t, err, context.Canceled, "do not invent caller cancellation")
+				assert.Equal(t, test.cancellationOnly, backend.IsCancellationOnly(errors.Join(context.Canceled, err)))
+				if test.stderr != "" {
+					assert.ErrorContains(t, err, test.stderr)
+				}
+			}
+		})
 	}
 }
 

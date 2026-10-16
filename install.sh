@@ -8,9 +8,9 @@
 #   - verifies the release attestation when gh is installed and logged in;
 #     warns loudly and falls back to checksum-only otherwise
 #   - independently verified alternative without gh:
-#       go install github.com/MSmaili/hetki@<tag>
+#       go install github.com/MuhametSmaili/hetki@<tag>
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/MSmaili/hetki/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/MuhametSmaili/hetki/main/install.sh | bash
 #   HETKI_VERSION=vX.Y.Z   install a specific release tag
 #   HETKI_INSTALL_DIR=dir  destination directory (default ~/.local/bin)
 #   HETKI_FROM_SOURCE=1    build via go install at the exact resolved tag
@@ -22,8 +22,8 @@ set -euo pipefail
 # Constants
 #######################################
 
-readonly REPO="MSmaili/hetki"
-readonly GO_MODULE="github.com/MSmaili/hetki"
+readonly REPO="MuhametSmaili/hetki"
+readonly GO_MODULE="github.com/MuhametSmaili/hetki"
 readonly SIGNER_WORKFLOW="${REPO}/.github/workflows/release.yml"
 readonly DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
 readonly MAX_DOWNLOAD_BYTES=134217728 # 128 MiB, mirrors the updater bound
@@ -662,7 +662,7 @@ verify_source_origin() {
     hash="$(sed -n '/"Origin"/,/}/s/[[:space:]]*"Hash": "\([^"]*\)".*/\1/p' "$metadata")"
     ref="$(sed -n '/"Origin"/,/}/s/[[:space:]]*"Ref": "\([^"]*\)".*/\1/p' "$metadata")"
     [[ "$path" == "$GO_MODULE" && "$version" == "$tag" && -n "$sum" \
-        && "$url" == "https://github.com/MSmaili/hetki" && "$hash" == "$commit" \
+        && "$url" == "https://github.com/MuhametSmaili/hetki" && "$hash" == "$commit" \
         && "$ref" == "refs/tags/$tag" ]] \
         || error "Go module origin does not match ${tag} at ${commit}"
 }

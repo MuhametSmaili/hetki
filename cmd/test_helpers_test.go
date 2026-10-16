@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 	"github.com/fatih/color"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,11 +34,13 @@ type stubBackend struct {
 	dryRunCalls int
 	lastActions []backend.Action
 	lastAttach  string
-	lastSwitch  string
 }
 
+func (s *stubBackend) LayoutsMatch(desired, actual string) bool     { return desired == actual }
+func (s *stubBackend) LayoutPreset(observed string) (string, error) { return observed, nil }
+
 func (s *stubBackend) Name() string { return "stub" }
-func (s *stubBackend) CapturePane(context.Context, string) (string, error) {
+func (s *stubBackend) CapturePane(context.Context, backend.Target) (string, error) {
 	panic("unexpected pane capture")
 }
 
@@ -66,14 +69,17 @@ func (s *stubBackend) Attach(_ context.Context, session string) error {
 	return nil
 }
 
-func (s *stubBackend) Switch(_ context.Context, target string) error {
-	s.lastSwitch = target
-	return nil
+func (s *stubBackend) Switch(context.Context, backend.Target) error {
+	panic("unexpected backend navigation")
 }
 
 func resetCommandGlobals() {
 	saveCmd.SetContext(context.Background())
 	startCmd.SetContext(context.Background())
+	startName = ""
+	startPath = ""
+	startCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
+	saveCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
 	dryRun = false
 	force = false
 	savePath = ""

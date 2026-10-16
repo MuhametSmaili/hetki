@@ -3,27 +3,39 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/MSmaili/hetki/internal/terminal"
-	"github.com/MSmaili/hetki/internal/tui/list"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
 func previewModel(t *testing.T) model {
 	t.Helper()
 	snapshot := list.Snapshot{Items: []list.Item{
-		{ID: "a", Primary: "alpha", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "alpha"}}},
-		{ID: "b", Primary: "bravo", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "bravo"}}},
-		{ID: "c", Primary: "charlie", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "charlie"}}},
+		{ID: list.ItemID{ID: "a"}, Primary: "alpha", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "alpha"}}},
+		{ID: list.ItemID{ID: "b"}, Primary: "bravo", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "bravo"}}},
+		{ID: list.ItemID{ID: "c"}, Primary: "charlie", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "charlie"}}},
 	}}
 	m, err := newModelWithStartMode(snapshot, nil, DefaultKeyMap(), StartModeNormal)
 	require.NoError(t, err)
 	m.width, m.height = 120, 12
-	m.readPreview = func(_ context.Context, id list.ItemID) (string, error) { return "screen " + string(id), nil }
+	screens := map[list.ItemID]string{
+		{ID: "a"}: "screen a",
+		{ID: "b"}: "screen b",
+		{ID: "c"}: "screen c",
+	}
+	m.readPreview = func(_ context.Context, id list.ItemID) (string, error) {
+		screen, exists := screens[id]
+		if !exists {
+			return "", fmt.Errorf("unexpected preview item %q", id)
+		}
+		return screen, nil
+	}
 	return m.reflow()
 }
 
@@ -68,12 +80,40 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 	require.Nil(t, cmd)
 }
 
+func TestPreviewDistinguishesEqualLocalIDs(t *testing.T) {
+	first := list.ItemID{Scope: "first scope", Parent: "parent", ID: "shared"}
+	second := list.ItemID{Scope: "second scope", Parent: "parent", ID: "shared"}
+	third := list.ItemID{Scope: "second scope", Parent: "other parent", ID: "shared"}
+	m, err := newModelWithStartMode(list.Snapshot{Items: []list.Item{
+		{ID: first, Primary: "first row"},
+		{ID: second, Primary: "second row"},
+		{ID: third, Primary: "third row"},
+	}}, nil, DefaultKeyMap(), StartModeNormal)
+	require.NoError(t, err)
+	var captured []list.ItemID
+	m.readPreview = func(_ context.Context, id list.ItemID) (string, error) {
+		captured = append(captured, id)
+		return "captured screen", nil
+	}
+
+	for _, key := range []tea.KeyPressMsg{previewKey(), specialKey(tea.KeyDown), specialKey(tea.KeyDown)} {
+		var cmd tea.Cmd
+		m, cmd = updateModel(t, m, key)
+		require.NotNil(t, cmd)
+		m, _ = updateModel(t, m, cmd())
+	}
+
+	require.Equal(t, []list.ItemID{first, second, third}, captured)
+	require.Contains(t, terminal.Sanitize(m.View().Content), "captured screen")
+}
+
 func TestPreviewHasNoHiddenOrRepeatingRead(t *testing.T) {
 	m := previewModel(t)
 	calls := 0
-	m.readPreview = func(_ context.Context, id list.ItemID) (string, error) {
+	read := m.readPreview
+	m.readPreview = func(ctx context.Context, id list.ItemID) (string, error) {
 		calls++
-		return string(id), nil
+		return read(ctx, id)
 	}
 	require.Nil(t, m.Init())
 	for _, key := range []tea.KeyPressMsg{specialKey(tea.KeyDown), specialKey(tea.KeyUp)} {
@@ -97,15 +137,16 @@ func TestPreviewHasNoHiddenOrRepeatingRead(t *testing.T) {
 	m, cmd = updateModel(t, m, cmd())
 	require.Nil(t, cmd)
 	require.Equal(t, 2, calls)
-	require.Equal(t, "b", terminal.Sanitize(m.preview.lines[0]))
+	require.Equal(t, "screen b", terminal.Sanitize(m.preview.lines[0]))
 }
 
 func TestPreviewCoalescesSelectionAndRejectsStaleResults(t *testing.T) {
 	m := previewModel(t)
 	var canceled error
+	read := m.readPreview
 	m.readPreview = func(ctx context.Context, id list.ItemID) (string, error) {
 		canceled = ctx.Err()
-		return "screen " + string(id), nil // Simulate a completed read racing cancellation.
+		return read(ctx, id) // Simulate a completed read racing cancellation.
 	}
 	m, old := updateModel(t, m, previewKey())
 	m, cmd := updateModel(t, m, specialKey(tea.KeyDown))
@@ -149,7 +190,7 @@ func TestPreviewFilteringErrorsAndEmptySelection(t *testing.T) {
 	m, _ = updateModel(t, m, printableKey("/"))
 	m, cmd = updateModel(t, m, tea.PasteMsg{Content: "bravo"})
 	require.NotNil(t, cmd)
-	require.Equal(t, list.ItemID("b"), m.preview.itemID)
+	require.Equal(t, list.ItemID{ID: "b"}, m.preview.itemID)
 	result := cmd()
 	m, _ = updateModel(t, m, tea.PasteMsg{Content: "no match"})
 	m, cmd = updateModel(t, m, result)
@@ -174,7 +215,7 @@ func TestPreviewRefreshInvalidatesUnchangedItem(t *testing.T) {
 	require.NotNil(t, cmd, "same item ID can resolve to a different pane after refresh")
 	m, cmd = updateModel(t, m, cmd())
 	require.Nil(t, cmd)
-	require.Equal(t, list.ItemID("a"), m.preview.itemID)
+	require.Equal(t, list.ItemID{ID: "a"}, m.preview.itemID)
 }
 
 func TestPreviewRetainsSnapshotAcrossReadOnlyOverlays(t *testing.T) {
@@ -216,12 +257,35 @@ func TestPreviewCancellationOnHideResizeAndQuit(t *testing.T) {
 	}
 }
 
-func TestPreviewShowsContentWithoutTitle(t *testing.T) {
+func TestPreviewShowsBottomRowsWithoutTitle(t *testing.T) {
 	m := previewModel(t)
-	m.preview.itemID, m.preview.ready = "a", true
+	m.preview.itemID, m.preview.ready = list.ItemID{ID: "a"}, true
 	m.preview.lines = terminal.ScreenLines("first\nsecond\nthird\n")
-	require.Equal(t, "first \\nsecond", terminal.Sanitize(m.viewPreview(6, 2)))
-	require.Equal(t, "first ", terminal.Sanitize(m.viewPreview(6, 1)))
+	require.Equal(t, "second\\nthird ", terminal.Sanitize(m.viewPreview(6, 2)))
+	require.Equal(t, "third ", terminal.Sanitize(m.viewPreview(6, 1)))
+}
+
+func TestPreviewEndsAtLastNonblankRow(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		capture string
+		want    string
+	}{
+		{"empty footer", "first\nsecond\nthird\n\n   \n\t\n", "second\\nthird "},
+		{"styled empty footer", "first\nsecond\n\x1b[32mthird\x1b[0m\n\x1b[41m   \x1b[0m\n\n", "second\\nthird "},
+		{"internal blank row", "first\n\nthird\n\n", "      \\nthird "},
+		{"all blank", "\n   \n\x1b[41m \x1b[0m\n", "      \\n      "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := previewModel(t)
+			m.preview.itemID = list.ItemID{ID: "a"}
+
+			updated, _ := m.handlePreviewResult(previewResultMsg{generation: m.preview.generation, text: tc.capture})
+			m = updated.(model)
+
+			require.Equal(t, tc.want, terminal.Sanitize(m.viewPreview(6, 2)))
+		})
+	}
 }
 
 func TestPreviewLayoutFitsAndKeepsListHeight(t *testing.T) {

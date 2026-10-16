@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/MSmaili/hetki/internal/logger"
+	"github.com/MuhametSmaili/hetki/internal/logger"
 )
 
 const maxSourceWorkspaceBytes = 1 << 30
@@ -211,7 +211,7 @@ func verifySourceOrigin(ctx context.Context, module string, target Target, modCa
 	if target.Tag != "" {
 		matchesTarget = download.Version == target.Tag && download.Origin.Ref == "refs/tags/"+target.Tag
 	}
-	if download.Path != modulePath || download.Sum == "" || download.Origin.URL != "https://github.com/MSmaili/hetki" ||
+	if download.Path != modulePath || download.Sum == "" || download.Origin.URL != "https://github.com/MuhametSmaili/hetki" ||
 		download.Origin.Hash != target.Commit || !matchesTarget {
 		return "", fmt.Errorf("source origin does not match requested commit %s", target.Commit)
 	}

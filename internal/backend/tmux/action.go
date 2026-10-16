@@ -76,9 +76,9 @@ type SendKeys struct {
 // Args sends text literally, followed by one interpreted Enter key (D1).
 func (a SendKeys) Args() []string {
 	keys := a.Keys
-	// A standalone semicolon is tmux command-list syntax even after --.
-	if strings.TrimLeft(keys, `\`) == ";" {
-		keys = `\` + keys
+	// tmux consumes one escape before a trailing semicolon.
+	if strings.HasSuffix(keys, ";") {
+		keys = strings.TrimSuffix(keys, ";") + `\;`
 	}
 	return []string{"send-keys", "-l", "-t", a.Target, "--", keys, ";", "send-keys", "-t", a.Target, "Enter"}
 }

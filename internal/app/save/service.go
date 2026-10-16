@@ -9,37 +9,50 @@ import (
 	"os"
 	"path/filepath"
 
-	appshared "github.com/MSmaili/hetki/internal/app"
-	"github.com/MSmaili/hetki/internal/backend"
-	"github.com/MSmaili/hetki/internal/manifest"
+	appshared "github.com/MuhametSmaili/hetki/internal/app"
+	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/manifest"
 )
 
 type Options struct {
-	Path  string
-	Name  string
-	Local bool
-	All   bool
+	// Nil selectors are omitted; non-nil empty values are invalid.
+	Path *string
+	Name *string
+	All  bool
+}
+
+// Backend provides the observation and layout export operations used by saving.
+type Backend interface {
+	QueryState(context.Context) (backend.StateResult, error)
+	LayoutPreset(string) (string, error)
 }
 
 type Service struct {
-	DetectBackend func(...string) (backend.Backend, error)
+	DetectBackend  func() (Backend, error)
+	validateLayout func(string) error
 }
 
-func NewService(detectBackend func(...string) (backend.Backend, error)) Service {
-	return Service{DetectBackend: detectBackend}
+// NewService binds backend detection and a required pure authored-layout policy.
+func NewService(detectBackend func() (Backend, error), validateLayout func(string) error) Service {
+	return Service{DetectBackend: detectBackend, validateLayout: validateLayout}
 }
 
 func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	if err := validateOptions(opts); err != nil {
-		return "", err
+	outputPath, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
+	if err != nil {
+		return "", appshared.WithHint(err, "Use hetki save -n work or hetki save -p ./work.yaml.")
+	}
+
+	if s.validateLayout == nil {
+		return "", manifest.ErrLayoutValidatorRequired
 	}
 
 	b, err := s.detectBackend()
 	if err != nil {
-		return "", fmt.Errorf("failed to detect backend: %w\nHint: Make sure a supported multiplexer is running", err)
+		return "", appshared.WithHint(fmt.Errorf("failed to detect backend: %w", err), "Install tmux and make sure it is available on PATH.")
 	}
 
 	sessions, err := getTargetSessions(ctx, b, opts.All)
@@ -47,36 +60,29 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 		return "", err
 	}
 
-	outputPath, err := determineSavePath(opts)
+	workspace, err := appshared.WorkspaceFromSessions(sessions, b.LayoutPreset)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("convert observed workspace: %w", err)
 	}
 
-	return saveWorkspace(ctx, sessions, outputPath, opts.All)
+	return saveWorkspace(ctx, workspace, outputPath, opts.All, s.validateLayout)
 }
 
-func (s Service) detectBackend() (backend.Backend, error) {
+func (s Service) detectBackend() (Backend, error) {
 	if s.DetectBackend != nil {
 		return s.DetectBackend()
 	}
 	return backend.Detect()
 }
 
-func validateOptions(opts Options) error {
-	if opts.Path != "" && opts.Name != "" {
-		return fmt.Errorf("cannot use both -p and -n flags\nUse either: hetki save -p <path> OR hetki save -n <name>")
-	}
-	return nil
-}
-
-func getTargetSessions(ctx context.Context, b backend.Backend, saveAll bool) ([]backend.Session, error) {
+func getTargetSessions(ctx context.Context, b Backend, saveAll bool) ([]backend.Session, error) {
 	result, err := b.QueryState(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query sessions: %w", err)
+		return nil, appshared.WithHint(fmt.Errorf("failed to query sessions: %w", err), "Check access to the tmux server and retry.")
 	}
 
 	if len(result.Sessions) == 0 {
-		return nil, fmt.Errorf("no sessions found\nHint: Create a session first")
+		return nil, appshared.WithHint(errors.New("no sessions found"), "Create a tmux session, then save again.")
 	}
 
 	if saveAll {
@@ -88,7 +94,7 @@ func getTargetSessions(ctx context.Context, b backend.Backend, saveAll bool) ([]
 
 func findCurrentSession(result backend.StateResult) ([]backend.Session, error) {
 	if result.Active.Session == "" {
-		return nil, fmt.Errorf("not in a session\nHint: Run this command from inside a multiplexer session, or pass --all with -p, -n, or the '.' target")
+		return nil, appshared.WithHint(errors.New("not in a session"), "Run save inside tmux, or pass --all with --name or --path.")
 	}
 
 	for _, s := range result.Sessions {
@@ -98,28 +104,6 @@ func findCurrentSession(result backend.StateResult) ([]backend.Session, error) {
 	}
 
 	return nil, fmt.Errorf("session %q not found", result.Active.Session)
-}
-
-func determineSavePath(opts Options) (string, error) {
-	if opts.Path != "" {
-		return opts.Path, nil
-	}
-
-	resolver := manifest.NewResolver()
-
-	if opts.Name != "" {
-		return resolver.NamedPath(opts.Name)
-	}
-
-	if opts.Local {
-		return resolver.LocalPath()
-	}
-
-	if opts.All {
-		return "", fmt.Errorf("--all requires a destination\nUse: hetki save --all -p <path>, hetki save --all -n <name>, or hetki save --all '.'")
-	}
-
-	return "", fmt.Errorf("no save target specified\nHint: Use -p <path>, -n <name>, or . to specify where to save")
 }
 
 type destinationSnapshot struct {
@@ -141,10 +125,14 @@ var (
 	}
 )
 
-func saveWorkspace(ctx context.Context, sessions []backend.Session, outputPath string, saveAll bool) (string, error) {
+func saveWorkspace(ctx context.Context, workspace *manifest.Workspace, outputPath string, saveAll bool, validateLayout func(string) error) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
+	if validateLayout == nil {
+		return "", manifest.ErrLayoutValidatorRequired
+	}
+
 	absPath, err := filepath.Abs(outputPath)
 	if err != nil {
 		return "", fmt.Errorf("resolving absolute path: %w", err)
@@ -155,18 +143,20 @@ func saveWorkspace(ctx context.Context, sessions []backend.Session, outputPath s
 		return "", err
 	}
 
-	workspace := appshared.WorkspaceFromSessions(sessions)
 	if observed.exists {
-		existing, err := manifest.Parse(observed.data, absPath)
+		existing, err := manifest.Parse(observed.data, absPath, validateLayout)
 		if err != nil {
-			return "", fmt.Errorf("existing destination is invalid: %w", err)
+			return "", appshared.WithHint(fmt.Errorf("existing destination is invalid: %w", err), "Fix the existing YAML or use a new destination file.")
+		}
+		if err := preserveCommands(existing, workspace, validateLayout); err != nil {
+			return "", err
 		}
 		if !saveAll {
 			workspace = appshared.MergeWorkspaces(existing, workspace)
 		}
 	}
 
-	data, err := manifest.Marshal(workspace, absPath)
+	data, err := manifest.Marshal(workspace, absPath, validateLayout)
 	if err != nil {
 		return "", err
 	}
