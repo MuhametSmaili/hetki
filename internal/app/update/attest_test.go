@@ -32,15 +32,20 @@ func TestFetchAttestationBundlesReturnsAllBundles(t *testing.T) {
 }
 
 func TestFetchAttestationBundlesResolvesSnappyBundleURL(t *testing.T) {
+	t.Setenv("GH_TOKEN", "api-token")
+	t.Setenv("GITHUB_TOKEN", "")
 	want := []byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}`)
 	bundleServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("Authorization"), "external bundles must stay anonymous")
 		w.Write(snappy.Encode(nil, want))
 	}))
 	defer bundleServer.Close()
 	previousClient := externalBundleClient
 	externalBundleClient = bundleServer.Client
 	t.Cleanup(func() { externalBundleClient = previousClient })
-	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+	stubUpdateHTTP(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "api.github.com", r.URL.Host)
+		assert.Equal(t, "Bearer api-token", r.Header.Get("Authorization"))
 		fmt.Fprintf(w, `{"attestations":[{"bundle":null,"bundle_url":%q}]}`, bundleServer.URL)
 	})
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -48,6 +49,16 @@ func githubHTTPClient(timeout time.Duration) *http.Client {
 			if !allowedRedirectHosts[req.URL.Host] {
 				return fmt.Errorf("redirect to disallowed host %q", req.URL.Host)
 			}
+
+			// net/http can forward credentials to subdomains. Carry only the last
+			// API request's authorization, never restoring it after an origin change.
+			req.Header.Del("Authorization")
+			previous := via[len(via)-1]
+			if isGitHubAPIRequest(req) && isGitHubAPIRequest(previous) {
+				if authorization := previous.Header.Get("Authorization"); authorization != "" {
+					req.Header.Set("Authorization", authorization)
+				}
+			}
 			return nil
 		},
 	}
@@ -64,13 +75,35 @@ func decodeBoundedJSON(r io.Reader, maxBytes int64, dest any) error {
 	return json.Unmarshal(data, dest)
 }
 
+func isGitHubAPIRequest(req *http.Request) bool {
+	return req.URL.Scheme == "https" && req.URL.Host == "api.github.com" && req.URL.User == nil
+}
+
+func newGitHubAPIRequest(ctx context.Context, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	if isGitHubAPIRequest(req) {
+		token := os.Getenv("GH_TOKEN")
+		if token == "" {
+			token = os.Getenv("GITHUB_TOKEN")
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	}
+	return req, nil
+}
+
 // getJSON performs a bounded GET and decodes exactly one JSON document.
 func getJSON(ctx context.Context, url string, timeout time.Duration, dest any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := newGitHubAPIRequest(ctx, url)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
 
 	resp, err := githubHTTPClient(timeout).Do(req)
 	if err != nil {

@@ -22,6 +22,8 @@ Use --version to pin or downgrade to an exact stable release.
 Downloaded binaries are verified against release attestations before replacement.
 Use --head to build the latest pushed commit on main (requires Go; unreleased code).
 The commit is pinned before building; repeated --head updates compare commits.
+GitHub API requests use nonempty GH_TOKEN, then GITHUB_TOKEN, if available.
+Tokens are not sent to release downloads or external attestation bundles.
 All source builds use the Go checksum database. Emergency-only bypass:
 HETKI_UNSAFE_SKIP_VERIFY=1.`,
 	Args:              cobra.NoArgs,

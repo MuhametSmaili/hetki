@@ -48,11 +48,10 @@ func unsafeSkipVerify() bool {
 func fetchAttestationBundles(ctx context.Context, sha256Digest string) ([]json.RawMessage, error) {
 	url := apiBase + "repos/" + githubRepoPath + "attestations/sha256:" + sha256Digest
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := newGitHubAPIRequest(ctx, url)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := githubHTTPClient(15 * time.Second).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching attestation: %w", err)
