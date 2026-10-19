@@ -113,7 +113,7 @@ Optional YAML profiles live in `$XDG_CONFIG_HOME/hetki/status.d`, or `~/.config/
 
 The [Kiro 2.28 profile](integrations/pane-status/profiles/kiro-2.28.yaml) provides a screen-based example. It targets the documented English UI and does not infer completion.
 
-### Service status
+### Status service
 
 Inspect the status service without opening the picker:
 
@@ -125,7 +125,19 @@ The command uses tmux's normal server selection: `$TMUX` inside tmux, or the def
 
 A responding daemon reports its PID, instance ID, and log path. A missing or refused endpoint reports `not listening`. Startup or shutdown can still be in progress. The log path is an expected location, not proof that a log exists.
 
-Successful inspection exits with code 0, including `not listening`. Inspection failures, including an absent tmux server, exit with code 1. The current protocol does not report the daemon build or uptime. Service start, stop, and restart commands are not available yet.
+Successful inspection exits with code 0, including `not listening`. Inspection failures, including an absent tmux server, exit with code 1. The current protocol does not report the daemon build or uptime.
+
+Start the status service without opening the picker:
+
+```sh
+hetki service start
+```
+
+Start reuses a compatible daemon and its loaded profiles. If the daemon is absent, it uses the same startup path as the picker. The command waits for readiness before it reports success.
+
+A tmux server must already exist. If no server exists, the command fails without starting tmux or waiting for a future server. After you start tmux, run the command again or open the picker.
+
+After this command exits, the daemon continues to run. When its tmux server exits, the daemon stops. Service stop and restart commands are not available yet.
 
 ## Safety
 

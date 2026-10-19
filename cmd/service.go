@@ -11,13 +11,16 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newServiceCommand(statusobserver.InspectService))
+	rootCmd.AddCommand(newServiceCommand(statusobserver.InspectService, statusobserver.StartService))
 }
 
-func newServiceCommand(inspect func(context.Context) (statusobserver.ServiceStatus, error)) *cobra.Command {
+func newServiceCommand(
+	inspect func(context.Context) (statusobserver.ServiceStatus, error),
+	start func(context.Context) error,
+) *cobra.Command {
 	command := &cobra.Command{
 		Use:               "service",
-		Short:             "Inspect the status service for the selected tmux server",
+		Short:             "Manage the status service for the selected tmux server",
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -41,6 +44,24 @@ Build and uptime are not reported by the current daemon protocol.`,
 			}
 
 			return writeServiceStatus(cmd.OutOrStdout(), result)
+		},
+	})
+	command.AddCommand(&cobra.Command{
+		Use:   "start",
+		Short: "Start or reuse the status service without opening the picker",
+		Long: `Start or reuse the status service for the selected, running tmux server.
+This command never starts tmux or waits for a future tmux server.
+The daemon runs independently after this command exits and stops with its server.
+An existing compatible daemon keeps its loaded profiles.`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := start(cmd.Context()); err != nil {
+				return err
+			}
+
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), "Status service is running.")
+			return err
 		},
 	})
 	return command

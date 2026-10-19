@@ -17,18 +17,70 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func runServiceStatusCommand(t *testing.T, executable string) ([]byte, error) {
+func runServiceCommand(t *testing.T, executable, action string) ([]byte, error) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, executable, "service", "status")
+	command := exec.CommandContext(ctx, executable, "service", action)
 	command.WaitDelay = 100 * time.Millisecond
 	return command.CombinedOutput()
 }
 
-func TestNativeServiceStatus(t *testing.T) {
+func TestNativeServiceStart(t *testing.T) {
+	executable := buildDaemonExecutable(t)
+	runner, server, _, _, _ := nativeStreamsFixture(t)
+	t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
+	t.Setenv("TMUX_TMPDIR", os.Getenv("HOME"))
+	client := daemonClientFixture(t, server.Identity())
+
+	output, err := runServiceCommand(t, executable, "start")
+
+	require.NoError(t, err, "%s", output)
+	require.Equal(t, "Status service is running.\n", string(output))
+	before, err := client.Ping(t.Context())
+	require.NoError(t, err)
+	awaitDaemonSubscription(t, t.Context(), runner, before.PID)
+
+	writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
+
+	output, err = runServiceCommand(t, executable, "start")
+	after, pingErr := client.Ping(t.Context())
+
+	require.NoError(t, err, "%s", output)
+	require.Equal(t, "Status service is running.\n", string(output))
+	require.NoError(t, pingErr)
+	require.Equal(t, before, after, "start must reuse the daemon and its loaded profiles")
+
+	stopCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, runner.stop(stopCtx))
+	awaitDaemonStopped(t, client)
+}
+
+func TestNativeServiceStartReportsProfileFailure(t *testing.T) {
+	executable := buildDaemonExecutable(t)
+	_, server, _, _, _ := nativeStreamsFixture(t)
+	t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
+	t.Setenv("TMUX_TMPDIR", os.Getenv("HOME"))
+	client := daemonClientFixture(t, server.Identity())
+	writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
+
+	output, err := runServiceCommand(t, executable, "start")
+	_, pingErr := client.Ping(t.Context())
+	_, logErr := os.Lstat(client.LogPath())
+
+	var exit *exec.ExitError
+	require.ErrorAs(t, err, &exit, "%s", output)
+	require.Equal(t, 1, exit.ExitCode())
+	require.Contains(t, string(output), "bad.yaml")
+	require.NotContains(t, string(output), "Status service is running.")
+	require.ErrorIs(t, pingErr, os.ErrNotExist)
+	require.ErrorIs(t, logErr, os.ErrNotExist)
+}
+
+func TestNativeServiceCommands(t *testing.T) {
 	executable := buildDaemonExecutable(t)
 
 	t.Run("selected detached server without a daemon", func(t *testing.T) {
@@ -38,7 +90,7 @@ func TestNativeServiceStatus(t *testing.T) {
 		writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
 
 		result, err := InspectService(t.Context())
-		output, commandErr := runServiceStatusCommand(t, executable)
+		output, commandErr := runServiceCommand(t, executable, "status")
 
 		require.NoError(t, err)
 		require.Equal(t, server, result.Server)
@@ -73,7 +125,9 @@ func TestNativeServiceStatus(t *testing.T) {
 		require.Nil(t, result.Daemon.Instance)
 
 		t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
-		require.NoError(t, selected.stop(t.Context()))
+		stopCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, selected.stop(stopCtx))
 
 		_, err = InspectService(t.Context())
 
@@ -93,7 +147,7 @@ func TestNativeServiceStatus(t *testing.T) {
 		writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
 
 		result, err := InspectService(t.Context())
-		output, commandErr := runServiceStatusCommand(t, executable)
+		output, commandErr := runServiceCommand(t, executable, "status")
 		after, pingErr := client.Ping(t.Context())
 
 		require.NoError(t, err)
@@ -111,16 +165,24 @@ func TestNativeServiceStatus(t *testing.T) {
 		runner, server, _, _, _ := nativeStreamsFixture(t)
 		t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
 		t.Setenv("TMUX_TMPDIR", os.Getenv("HOME"))
-		require.NoError(t, runner.stop(t.Context()))
+		stopCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		require.NoError(t, runner.stop(stopCtx))
 
 		_, err := InspectService(t.Context())
-		output, commandErr := runServiceStatusCommand(t, executable)
 
 		require.Error(t, err)
-		var exit *exec.ExitError
-		require.ErrorAs(t, commandErr, &exit, "%s", output)
-		require.Equal(t, 1, exit.ExitCode())
-		require.NotContains(t, string(output), "Status service: running")
+		for _, action := range []string{"status", "start"} {
+			t.Run(action, func(t *testing.T) {
+				output, commandErr := runServiceCommand(t, executable, action)
+
+				var exit *exec.ExitError
+				require.ErrorAs(t, commandErr, &exit, "%s", output)
+				require.Equal(t, 1, exit.ExitCode())
+				require.NotContains(t, string(output), "Status service: running")
+				require.NotContains(t, string(output), "Status service is running.")
+			})
+		}
 		_, queryErr := runner.RunLimited(t.Context(), 4096, "list-sessions")
 		require.Error(t, queryErr, "inspection must not recreate the selected tmux server")
 		result, inspectErr := daemon.Inspect(t.Context(), server.Identity())
