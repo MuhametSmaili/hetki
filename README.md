@@ -117,11 +117,12 @@ The [Kiro 2.28 profile](integrations/pane-status/profiles/kiro-2.28.yaml) provid
 
 The picker starts the status daemon automatically. These commands let you manage it without opening the picker:
 
-| Command                | What it does                                             |
-| ---------------------- | -------------------------------------------------------- |
-| `hetki service status` | Shows the daemon's status. Does not start it.            |
-| `hetki service start`  | Starts the daemon. Reuses an already-running daemon.     |
-| `hetki service stop`   | Stops the daemon. Leaves tmux and your sessions running. |
+| Command                 | What it does                                             |
+| ----------------------- | -------------------------------------------------------- |
+| `hetki service status`  | Shows the daemon's status. Does not start it.            |
+| `hetki service start`   | Starts the daemon. Reuses an already-running daemon.     |
+| `hetki service stop`    | Stops the daemon. Leaves tmux and your sessions running. |
+| `hetki service restart` | Stops, then starts the daemon. Starts it if not running. |
 
 Inside tmux, commands affect the current server. Outside tmux, they affect the default server. That server must already exist.
 
@@ -131,7 +132,9 @@ Stop is not a permanent disable. Running `hetki service start` or opening the pi
 
 If you start during shutdown, Hetki waits briefly for the old daemon to finish. If the wait times out, the command reports an error.
 
-Older daemons can reject `stop`. Hetki does not force-kill them. `hetki service restart` is not available yet.
+Restart checks profiles before stopping, so invalid profiles leave the current daemon running. If another picker or command starts a compatible replacement, restart reuses it. A failure after stopping can leave the service stopped.
+
+Older daemons can reject `stop` and `restart`. Hetki does not force-kill them.
 
 ## Safety
 

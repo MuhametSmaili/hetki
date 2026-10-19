@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -77,6 +78,76 @@ func TestNativeServiceStartAndStop(t *testing.T) {
 	defer cancel()
 	require.NoError(t, runner.stop(stopCtx))
 	awaitDaemonStopped(t, client)
+}
+
+func TestNativeServiceRestart(t *testing.T) {
+	executable := buildDaemonExecutable(t)
+	runner, server, _, _, _ := nativeStreamsFixture(t)
+	t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
+	client := daemonClientFixture(t, server.Identity())
+
+	output, err := runServiceCommand(t, executable, "restart")
+
+	require.NoError(t, err, "%s", output)
+	require.Equal(t, "Status service is running.\n", string(output))
+	before, err := client.Ping(t.Context())
+	require.NoError(t, err)
+	awaitDaemonSubscription(t, t.Context(), runner, before.PID)
+
+	output, err = runServiceCommand(t, executable, "restart")
+
+	require.NoError(t, err, "%s", output)
+	require.Equal(t, "Status service is running.\n", string(output))
+	after, err := client.Ping(t.Context())
+	require.NoError(t, err)
+	require.NotEqual(t, before.Epoch, after.Epoch)
+	require.NoError(t, server.Validate(t.Context()), "restart must leave tmux running")
+	awaitDaemonSubscription(t, t.Context(), runner, after.PID)
+}
+
+func TestNativeRestartPreservesDaemonOnInvalidProfiles(t *testing.T) {
+	executable := buildDaemonExecutable(t)
+	_, server, _, _, _ := nativeStreamsFixture(t)
+	t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
+	client := daemonClientFixture(t, server.Identity())
+	_, err := EnsureDaemon(t.Context(), server, executable)
+	require.NoError(t, err)
+	before, err := client.Ping(t.Context())
+	require.NoError(t, err)
+	writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
+
+	output, err := runServiceCommand(t, executable, "restart")
+
+	require.Error(t, err, "%s", output)
+	require.Contains(t, string(output), "validate restart profiles")
+	require.Contains(t, string(output), "bad.yaml")
+	require.NotContains(t, string(output), "Status service is running.")
+	after, err := client.Ping(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+}
+
+func TestNativeRestartDoesNotStartAfterStopFailure(t *testing.T) {
+	executable := buildDaemonExecutable(t)
+	_, server, _, _, _ := nativeStreamsFixture(t)
+	t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
+	client := daemonClientFixture(t, server.Identity())
+	_, err := EnsureDaemon(t.Context(), server, executable)
+	require.NoError(t, err)
+	before, err := client.Ping(t.Context())
+	require.NoError(t, err)
+	lockPath := strings.TrimSuffix(client.LogPath(), ".log") + ".sock.lock"
+	t.Cleanup(func() { require.NoError(t, os.WriteFile(lockPath, []byte(before.Epoch), 0600)) })
+	require.NoError(t, os.WriteFile(lockPath, []byte("invalid"), 0600))
+
+	output, err := runServiceCommand(t, executable, "restart")
+
+	require.Error(t, err, "%s", output)
+	require.Contains(t, string(output), "stop status service for restart")
+	require.NotContains(t, string(output), "Status service is running.")
+	after, err := client.Ping(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, before, after)
 }
 
 func TestNativeServiceStartReportsProfileFailure(t *testing.T) {
@@ -174,6 +245,11 @@ func TestNativeServiceCommands(t *testing.T) {
 		require.Contains(t, string(output), "resolve service tmux server")
 		require.NotContains(t, string(output), "Stopped status service")
 		require.NotContains(t, string(output), "Status service is not listening.")
+		output, commandErr = runServiceCommand(t, executable, "restart")
+
+		require.ErrorAs(t, commandErr, &exit, "%s", output)
+		require.Contains(t, string(output), "resolve service tmux server")
+		require.NotContains(t, string(output), "Status service is running.")
 		require.NoError(t, defaultServer.Validate(t.Context()))
 	})
 
@@ -214,7 +290,7 @@ func TestNativeServiceCommands(t *testing.T) {
 		_, err := InspectService(t.Context())
 
 		require.Error(t, err)
-		for _, action := range []string{"status", "start", "stop"} {
+		for _, action := range []string{"status", "start", "stop", "restart"} {
 			t.Run(action, func(t *testing.T) {
 				output, commandErr := runServiceCommand(t, executable, action)
 

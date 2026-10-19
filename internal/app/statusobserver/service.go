@@ -64,6 +64,29 @@ func StopService(ctx context.Context) (*daemon.Info, error) {
 	return info, nil
 }
 
+// RestartService validates profiles before stopping the observed daemon, then
+// starts or reuses a ready successor for the same server incarnation. A failure
+// after stop acceptance can leave the service stopped; shutdown is not undone.
+func RestartService(ctx context.Context) error {
+	server, err := resolveServiceServer(ctx)
+	if err != nil {
+		return err
+	}
+
+	if _, err := loadProfiles(ctx); err != nil {
+		return fmt.Errorf("validate restart profiles: %w", err)
+	}
+
+	if _, err := daemon.Stop(ctx, server.Identity()); err != nil {
+		return fmt.Errorf("stop status service for restart: %w", err)
+	}
+
+	if _, err := EnsureDaemon(ctx, server, ""); err != nil {
+		return fmt.Errorf("start status service after stop: %w", err)
+	}
+	return nil
+}
+
 func resolveServiceServer(ctx context.Context) (observe.Server, error) {
 	client, err := tmux.New()
 	if err != nil {

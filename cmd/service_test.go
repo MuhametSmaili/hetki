@@ -32,7 +32,7 @@ func TestServiceStatusOutput(t *testing.T) {
 					Server: observe.Server{Socket: "/tmp/tmux.sock"},
 					Daemon: daemon.Inspection{Instance: tc.instance, LogPath: "/tmp/status.log"},
 				}, nil
-			}, nil, nil)
+			}, nil, nil, nil)
 			command.SetOut(&output)
 			command.SetArgs([]string{"status"})
 
@@ -60,7 +60,9 @@ func TestServiceHelpAndInvalidArgumentsDoNotRunActions(t *testing.T) {
 		{"extra start argument", []string{"start", "another-server"}, true},
 		{"extra stop argument", []string{"stop", "another-server"}, true},
 		{"unknown stop flag", []string{"stop", "--force"}, true},
-		{"restart is not implemented", []string{"restart"}, true},
+		{"restart help", []string{"restart", "--help"}, false},
+		{"extra restart argument", []string{"restart", "another-server"}, true},
+		{"unknown restart flag", []string{"restart", "--force"}, true},
 		{"unknown command", []string{"unknown"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,6 +75,9 @@ func TestServiceHelpAndInvalidArgumentsDoNotRunActions(t *testing.T) {
 			}, func(context.Context) (*daemon.Info, error) {
 				t.Fatal("help and invalid arguments must not stop the service")
 				return nil, nil
+			}, func(context.Context) error {
+				t.Fatal("help and invalid arguments must not restart the service")
+				return nil
 			})
 			var output bytes.Buffer
 			command.SetOut(&output)
@@ -115,7 +120,7 @@ func TestServiceStartUsesExistingStartupAction(t *testing.T) {
 			}, func(context.Context) (*daemon.Info, error) {
 				t.Fatal("start must not stop the service")
 				return nil, nil
-			})
+			}, nil)
 			var output bytes.Buffer
 			command.SetOut(&output)
 			command.SilenceErrors = true
@@ -127,6 +132,38 @@ func TestServiceStartUsesExistingStartupAction(t *testing.T) {
 			require.ErrorIs(t, err, tc.err)
 			require.Equal(t, 1, calls)
 			require.Equal(t, tc.want, output.String())
+		})
+	}
+}
+
+func TestServiceRestartUsesRestartAction(t *testing.T) {
+	for _, failure := range []error{nil, errors.New("restart failed"), context.Canceled, context.DeadlineExceeded} {
+		name := "running"
+		if failure != nil {
+			name = failure.Error()
+		}
+		t.Run(name, func(t *testing.T) {
+			calls := 0
+			command := newServiceCommand(nil, nil, nil, func(ctx context.Context) error {
+				calls++
+				require.Equal(t, t.Context(), ctx)
+				return failure
+			})
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SilenceErrors = true
+			command.SilenceUsage = true
+			command.SetArgs([]string{"restart"})
+
+			err := command.ExecuteContext(t.Context())
+
+			require.ErrorIs(t, err, failure)
+			require.Equal(t, 1, calls)
+			if failure == nil {
+				require.Equal(t, "Status service is running.\n", output.String())
+			} else {
+				require.Empty(t, output.String())
+			}
 		})
 	}
 }
@@ -159,7 +196,7 @@ func TestServiceStopUsesStopAction(t *testing.T) {
 				calls++
 				require.Equal(t, t.Context(), ctx)
 				return tc.info, tc.err
-			})
+			}, nil)
 			var output bytes.Buffer
 			command.SetOut(&output)
 			command.SilenceErrors = true
@@ -179,7 +216,7 @@ func TestServiceStatusPreservesInspectionFailure(t *testing.T) {
 	failure := errors.New("fixture inspection failed")
 	command := newServiceCommand(func(context.Context) (statusobserver.ServiceStatus, error) {
 		return statusobserver.ServiceStatus{}, failure
-	}, nil, nil)
+	}, nil, nil, nil)
 	var output bytes.Buffer
 	command.SetOut(&output)
 	command.SilenceErrors = true
@@ -200,6 +237,7 @@ func TestServiceCommandsPreserveOutputFailure(t *testing.T) {
 	}{
 		{"status", "status", nil},
 		{"start", "start", nil},
+		{"restart", "restart", nil},
 		{"stop instance", "stop", &daemon.Info{Epoch: "fixture"}},
 		{"stop not listening", "stop", nil},
 	} {
@@ -211,7 +249,7 @@ func TestServiceCommandsPreserveOutputFailure(t *testing.T) {
 				return statusobserver.ServiceStatus{}, nil
 			}, func(context.Context) error { return nil }, func(context.Context) (*daemon.Info, error) {
 				return tc.info, nil
-			})
+			}, func(context.Context) error { return nil })
 			command.SetOut(writer)
 			command.SilenceErrors = true
 			command.SilenceUsage = true
@@ -230,7 +268,7 @@ func TestServiceStatusSanitizesPaths(t *testing.T) {
 			Server: observe.Server{Socket: "/tmp/tmux\x1b[31m\n.sock"},
 			Daemon: daemon.Inspection{LogPath: "/tmp/status\t.log"},
 		}, nil
-	}, nil, nil)
+	}, nil, nil, nil)
 	var output bytes.Buffer
 	command.SetOut(&output)
 	command.SetArgs([]string{"status"})

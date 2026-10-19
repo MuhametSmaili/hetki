@@ -12,13 +12,14 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(newServiceCommand(statusobserver.InspectService, statusobserver.StartService, statusobserver.StopService))
+	rootCmd.AddCommand(newServiceCommand(statusobserver.InspectService, statusobserver.StartService, statusobserver.StopService, statusobserver.RestartService))
 }
 
 func newServiceCommand(
 	inspect func(context.Context) (statusobserver.ServiceStatus, error),
 	start func(context.Context) error,
 	stop func(context.Context) (*daemon.Info, error),
+	restart func(context.Context) error,
 ) *cobra.Command {
 	command := &cobra.Command{
 		Use:               "service",
@@ -89,6 +90,26 @@ start another instance. Older daemons without safe-stop support are refused.`,
 			} else {
 				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Stopped status service instance %s.\n", terminal.Sanitize(info.Epoch))
 			}
+			return err
+		},
+	})
+	command.AddCommand(&cobra.Command{
+		Use:   "restart",
+		Short: "Stop the observed status service and start or reuse a ready successor",
+		Long: `Validate profiles, then stop and start the status service for the selected tmux server.
+Invalid profiles leave the existing daemon running. If stopping fails, startup
+is not attempted. If no daemon is running, this command starts it.
+A compatible replacement started by another picker or command is reused.
+Stop and startup waits are bounded. Failure after stop acceptance can leave the
+service stopped; cancellation does not undo shutdown. This command never starts tmux.`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := restart(cmd.Context()); err != nil {
+				return err
+			}
+
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), "Status service is running.")
 			return err
 		},
 	})
