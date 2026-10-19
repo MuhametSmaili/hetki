@@ -5,6 +5,7 @@ package statusobserver
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,24 @@ func TestNativeExecutableProfiles(t *testing.T) {
 
 		require.ErrorContains(t, err, "bad.yaml")
 		require.Error(t, pingErr)
+	})
+	t.Run("unsafe endpoint is not masked by invalid configuration", func(t *testing.T) {
+		_, server, _, _, _ := nativeStreamsFixture(t)
+		client := daemonClientFixture(t, server.Identity())
+		writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
+		path := strings.TrimSuffix(client.LogPath(), ".log") + ".sock"
+		require.NoError(t, os.WriteFile(path, []byte("keep"), 0600))
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(path))
+		})
+
+		_, err := EnsureDaemon(t.Context(), server, executable)
+		data, readErr := os.ReadFile(path)
+
+		require.ErrorContains(t, err, "unsafe status daemon endpoint")
+		require.NotContains(t, err.Error(), "bad.yaml")
+		require.NoError(t, readErr)
+		require.Equal(t, "keep", string(data))
 	})
 	t.Run("child validates and logs configuration", func(t *testing.T) {
 		_, server, _, _, _ := nativeStreamsFixture(t)

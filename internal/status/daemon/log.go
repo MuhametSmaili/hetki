@@ -25,7 +25,11 @@ type daemonLog struct {
 
 // LogPath is available without a running daemon. One rotated file uses .1.
 func (c *Client) LogPath() string {
-	return strings.TrimSuffix(c.path, ".sock") + ".log"
+	return logPath(c.path)
+}
+
+func logPath(socket string) string {
+	return strings.TrimSuffix(socket, ".sock") + ".log"
 }
 
 func openDaemonLog(path string) (*daemonLog, error) {

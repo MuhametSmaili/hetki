@@ -10,6 +10,9 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 )
 
+// DaemonCommand names the private entry point shared by registration and launch.
+const DaemonCommand = "__status-daemon"
+
 const maxServerDescriptorBytes = 8192
 
 // EnsureDaemon starts or reuses the daemon for this exact server incarnation.
@@ -20,28 +23,25 @@ func EnsureDaemon(ctx context.Context, server observe.Server, executable string)
 		return nil, fmt.Errorf("validate status daemon server: %w", err)
 	}
 
-	existing, err := daemon.Connect(server.Identity())
-	if err != nil {
-		return nil, err
-	}
-	if _, err := existing.Ping(ctx); err == nil {
-		return existing, nil
-	}
+	identity := server.Identity()
+	return daemon.Ensure(ctx, identity, executable, func(ctx context.Context) ([]string, error) {
+		// Keep profile context in the caller's error until child startup can
+		// return an equally useful diagnostic instead of just an exit status.
+		if _, err := loadProfiles(ctx); err != nil {
+			return nil, err
+		}
 
-	if _, err := loadProfiles(ctx); err != nil {
-		return nil, err
-	}
+		descriptor, err := json.Marshal(server)
+		if err != nil {
+			return nil, fmt.Errorf("encode status daemon server: %w", err)
+		}
 
-	descriptor, err := json.Marshal(server)
-	if err != nil {
-		return nil, fmt.Errorf("encode status daemon server: %w", err)
-	}
+		if len(descriptor) > maxServerDescriptorBytes {
+			return nil, fmt.Errorf("status daemon server descriptor exceeds limit")
+		}
 
-	if len(descriptor) > maxServerDescriptorBytes {
-		return nil, fmt.Errorf("status daemon server descriptor exceeds limit")
-	}
-
-	return daemon.Ensure(ctx, server.Identity(), executable, string(descriptor))
+		return []string{DaemonCommand, identity, string(descriptor)}, nil
+	})
 }
 
 // ServeDaemon is the executable's private startup entry point. Native liveness,

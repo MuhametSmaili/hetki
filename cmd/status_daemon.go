@@ -11,7 +11,7 @@ func init() {
 
 func newStatusDaemonCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:    "__status-daemon server descriptor",
+		Use:    statusobserver.DaemonCommand + " server descriptor",
 		Hidden: true,
 		Args:   cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

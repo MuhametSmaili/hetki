@@ -27,6 +27,10 @@ func Connect(server string) (*Client, error) {
 		return nil, err
 	}
 
+	if err := prepareEndpoint(path); err != nil {
+		return nil, err
+	}
+
 	return &Client{server: server, path: path}, nil
 }
 

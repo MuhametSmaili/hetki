@@ -14,6 +14,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const staleConnectTimeout = 100 * time.Millisecond
+
+// endpoint describes the location without reading or creating filesystem entries.
 func endpoint(server string) (string, error) {
 	if !validIdentity(server) {
 		return "", fmt.Errorf("invalid status server identity")
@@ -37,20 +40,25 @@ func endpoint(server string) (string, error) {
 		return "", fmt.Errorf("status socket path exceeds native limit")
 	}
 
+	return filepath.Join(dir, name), nil
+}
+
+func prepareEndpoint(path string) error {
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", err
+		return err
 	}
 
 	info, err := os.Lstat(dir)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	if !info.IsDir() || !ownedMode(info, 0700) {
-		return "", fmt.Errorf("status directory must be user-owned and mode 0700")
+		return fmt.Errorf("status directory must be user-owned and mode 0700")
 	}
 
-	return filepath.Join(dir, name), nil
+	return nil
 }
 
 func ownedMode(info os.FileInfo, mode os.FileMode) bool {
@@ -110,7 +118,7 @@ func removeStaleEndpoint(ctx context.Context, path string) error {
 		return fmt.Errorf("unsafe status daemon endpoint")
 	}
 
-	conn, err := (&net.Dialer{Timeout: 100 * time.Millisecond}).DialContext(ctx, "unix", path)
+	conn, err := (&net.Dialer{Timeout: staleConnectTimeout}).DialContext(ctx, "unix", path)
 	if err == nil {
 		_ = conn.Close()
 		return fmt.Errorf("status endpoint is active without its lock")

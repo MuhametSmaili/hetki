@@ -144,7 +144,7 @@ func TestFailedStartupReturnsExitErrorAndLeavesDiagnostic(t *testing.T) {
 	executable, err := os.Executable()
 	require.NoError(t, err)
 
-	_, err = Ensure(context.Background(), c.server, executable)
+	_, err = Ensure(context.Background(), c.server, executable, fixtureArguments(c.server))
 	data, readErr := os.ReadFile(c.LogPath())
 	_, endpointErr := os.Lstat(c.path)
 
@@ -159,7 +159,7 @@ func TestSourcePanicLeavesDiagnosticWithoutBeingSwallowed(t *testing.T) {
 	c := fixtureClient(t, "panic-source")
 	executable, err := os.Executable()
 	require.NoError(t, err)
-	_, err = Ensure(context.Background(), c.server, executable)
+	_, err = Ensure(context.Background(), c.server, executable, fixtureArguments(c.server))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		stopProcessFixture(t, c)

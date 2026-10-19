@@ -14,6 +14,7 @@ func TestStatusDaemonCommandIsPrivateAndRequiresDescriptor(t *testing.T) {
 
 	err := command.Execute()
 
+	require.Equal(t, "__status-daemon", command.Name())
 	require.True(t, command.Hidden)
 	require.ErrorContains(t, err, "accepts 2 arg(s)")
 }

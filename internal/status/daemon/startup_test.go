@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -32,6 +34,12 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
+}
+
+func fixtureArguments(server string) func(context.Context) ([]string, error) {
+	return func(context.Context) ([]string, error) {
+		return []string{"__status-daemon", server}, nil
+	}
 }
 
 func processFixtureSource(server string) SourceFactory {
@@ -68,8 +76,13 @@ func TestConcurrentLaunchUsesSingleDaemon(t *testing.T) {
 	first, err := c.Ping(t.Context())
 	require.NoError(t, err)
 
-	client, err := Ensure(t.Context(), c.server, executable)
+	prepared := false
+	client, err := Ensure(t.Context(), c.server, executable, func(context.Context) ([]string, error) {
+		prepared = true
+		return nil, errors.New("unexpected launch preparation")
+	})
 	require.NoError(t, err)
+	require.False(t, prepared, "reuse must not prepare another launch")
 	second, err := client.Ping(t.Context())
 	data, readErr := os.ReadFile(c.LogPath())
 
@@ -78,6 +91,66 @@ func TestConcurrentLaunchUsesSingleDaemon(t *testing.T) {
 	require.NoError(t, readErr)
 	require.Contains(t, string(data), "epoch="+first.Epoch)
 	require.Equal(t, 1, strings.Count(string(data), `event="starting"`))
+}
+
+func TestEnsurePreservesPreparationFailureWithoutLaunching(t *testing.T) {
+	c := fixtureClient(t, "preparation-failure")
+	failure := errors.New("fixture preparation failed")
+	preparations := 0
+
+	_, err := Ensure(t.Context(), c.server, filepath.Join(t.TempDir(), "missing"), func(context.Context) ([]string, error) {
+		preparations++
+		return nil, failure
+	})
+	_, logErr := os.Lstat(c.LogPath())
+	_, socketErr := os.Lstat(c.path)
+
+	require.ErrorIs(t, err, failure)
+	require.Equal(t, 1, preparations)
+	require.ErrorIs(t, logErr, os.ErrNotExist)
+	require.ErrorIs(t, socketErr, os.ErrNotExist)
+}
+
+func TestEnsureLaunchUsesCompleteCompositionArguments(t *testing.T) {
+	c := fixtureClient(t, "composition-arguments")
+	executable, err := exec.LookPath("sh")
+	require.NoError(t, err)
+
+	_, err = Ensure(t.Context(), c.server, executable, func(context.Context) ([]string, error) {
+		return []string{"-c", "exit 7"}, nil
+	})
+
+	var exit *exec.ExitError
+	require.ErrorAs(t, err, &exit)
+	require.Equal(t, 7, exit.ExitCode(), "launcher must not prepend its own command or server arguments")
+}
+
+func TestEnsureCancellationPreventsLaunch(t *testing.T) {
+	for _, beforeProbe := range []bool{true, false} {
+		name := "during preparation"
+		if beforeProbe {
+			name = "before probe"
+		}
+		t.Run(name, func(t *testing.T) {
+			c := fixtureClient(t, "canceled-launch")
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			if beforeProbe {
+				cancel()
+			}
+			prepared := false
+
+			_, err := Ensure(ctx, c.server, filepath.Join(t.TempDir(), "missing"), func(prepareCtx context.Context) ([]string, error) {
+				prepared = true
+				cancel()
+				require.ErrorIs(t, prepareCtx.Err(), context.Canceled)
+				return []string{"unused"}, nil
+			})
+
+			require.ErrorIs(t, err, context.Canceled)
+			require.Equal(t, !beforeProbe, prepared)
+		})
+	}
 }
 
 // Retain each real launch's completion signal; Ensure may return another child's
@@ -100,7 +173,7 @@ func launchProcessFixtures(t *testing.T, c *Client, executable string, count int
 	})
 
 	for range count {
-		exited, err := startProcess(t.Context(), c.server, executable, nil)
+		exited, err := startProcess(t.Context(), executable, []string{"__status-daemon", c.server})
 		require.NoError(t, err)
 		waiters.Go(func() {
 			select {
@@ -121,7 +194,7 @@ func TestCrashReconnectStartsFreshDaemon(t *testing.T) {
 	t.Cleanup(func() {
 		stopProcessFixture(t, c)
 	})
-	_, err = Ensure(context.Background(), c.server, executable)
+	_, err = Ensure(context.Background(), c.server, executable, fixtureArguments(c.server))
 	require.NoError(t, err)
 	previous, err := c.Ping(context.Background())
 	require.NoError(t, err)
@@ -134,7 +207,7 @@ func TestCrashReconnectStartsFreshDaemon(t *testing.T) {
 		return isMissingEndpoint(err)
 	}, 3*time.Second, 10*time.Millisecond)
 
-	_, restartErr := Ensure(context.Background(), c.server, executable)
+	_, restartErr := Ensure(context.Background(), c.server, executable, fixtureArguments(c.server))
 	info, pingErr := c.Ping(context.Background())
 	snapshot, readErr := c.ReadStatus(context.Background())
 	data, logErr := os.ReadFile(c.LogPath())

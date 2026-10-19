@@ -9,9 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
 )
+
+const livenessTimeout = 2 * time.Second
 
 type Binding struct {
 	Server string
@@ -38,18 +41,22 @@ func Serve(ctx context.Context, binding Binding, start SourceFactory) error {
 		return fmt.Errorf("status daemon requires lifetime check and source factory")
 	}
 
-	c, err := Connect(binding.Server)
+	path, err := endpoint(binding.Server)
 	if err != nil {
 		return err
 	}
 
-	release, err := lockEndpoint(c.path)
+	if err := prepareEndpoint(path); err != nil {
+		return err
+	}
+
+	release, err := lockEndpoint(path)
 	if err != nil || release == nil {
 		return err
 	}
 	defer release()
 
-	logs, err := openDaemonLog(c.LogPath())
+	logs, err := openDaemonLog(logPath(path))
 	if err != nil {
 		return fmt.Errorf("open daemon log: %w", err)
 	}
@@ -57,7 +64,7 @@ func Serve(ctx context.Context, binding Binding, start SourceFactory) error {
 	defer logs.recordPanic()
 
 	logs.info("starting")
-	err = serveLocked(ctx, c.path, binding, start, logs)
+	err = serveLocked(ctx, path, binding, start, logs)
 	if err != nil {
 		logs.failure("serve_failed", err)
 	} else {
@@ -128,7 +135,7 @@ func serveLocked(ctx context.Context, path string, binding Binding, start Source
 }
 
 func bindingAlive(ctx context.Context, binding Binding) bool {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, livenessTimeout)
 	defer cancel()
 
 	return ctx.Err() == nil && binding.Alive(ctx) && ctx.Err() == nil

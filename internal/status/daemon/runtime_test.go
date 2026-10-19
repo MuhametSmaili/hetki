@@ -77,6 +77,50 @@ func TestFixtureContainsDaemonFiles(t *testing.T) {
 	}
 }
 
+func TestClientAndServerRejectUnsafeDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		alter func(*testing.T, string)
+	}{
+		{"public permissions", func(t *testing.T, path string) {
+			require.NoError(t, os.Chmod(path, 0755))
+		}},
+		{"symlink", func(t *testing.T, path string) {
+			require.NoError(t, os.Rename(path, path+".original"))
+			require.NoError(t, os.Symlink(path+".original", path))
+		}},
+		{"regular file", func(t *testing.T, path string) {
+			require.NoError(t, os.Remove(path))
+			require.NoError(t, os.WriteFile(path, []byte("keep"), 0600))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testenv.PrivateHome(t)
+			c, err := Connect("unsafe-directory")
+			require.NoError(t, err)
+			dir := filepath.Dir(c.path)
+			tc.alter(t, dir)
+			before, err := os.Lstat(dir)
+			require.NoError(t, err)
+			started := false
+
+			_, connectErr := Connect(c.server)
+			serveErr := Serve(t.Context(), liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
+				started = true
+				return nil, errors.New("unexpected source startup")
+			})
+			after, statErr := os.Lstat(dir)
+
+			require.Error(t, connectErr)
+			require.Error(t, serveErr)
+			require.False(t, started)
+			require.NoError(t, statErr)
+			require.True(t, os.SameFile(before, after))
+			require.Equal(t, before.Mode(), after.Mode())
+		})
+	}
+}
+
 func startFixture(t testing.TB, c *Client, binding Binding, start SourceFactory) <-chan error {
 	t.Helper()
 

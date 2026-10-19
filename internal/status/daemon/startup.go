@@ -10,10 +10,13 @@ import (
 	"time"
 )
 
-// Ensure launches the same binary's internal composition entry point if absent.
-// Server is an opaque incarnation token interpreted only by that composition.
-// Arguments are passed unchanged after the server token to that entry point.
-func Ensure(ctx context.Context, server, executable string, arguments ...string) (*Client, error) {
+const readinessTimeout = 2 * time.Second
+
+// Ensure reuses a healthy daemon or launches one only when its endpoint is absent.
+// Server is an opaque incarnation token. Composition prepares the complete child
+// arguments only when launch is needed; preparation must honor ctx. An empty
+// executable selects the current binary. A started child outlives the caller.
+func Ensure(ctx context.Context, server, executable string, prepareLaunch func(context.Context) ([]string, error)) (*Client, error) {
 	c, err := Connect(server)
 	if err != nil {
 		return nil, err
@@ -28,11 +31,20 @@ func Ensure(ctx context.Context, server, executable string, arguments ...string)
 		return nil, err
 	}
 
+	if prepareLaunch == nil {
+		return nil, fmt.Errorf("status daemon requires launch preparation")
+	}
+
+	arguments, err := prepareLaunch(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := prepareLog(c.LogPath()); err != nil {
 		return nil, fmt.Errorf("prepare daemon log %s: %w", c.LogPath(), err)
 	}
 
-	exited, err := startProcess(ctx, server, executable, arguments)
+	exited, err := startProcess(ctx, executable, arguments)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +65,7 @@ func prepareLog(path string) error {
 	return writer.file.Close()
 }
 
-func startProcess(ctx context.Context, server, executable string, arguments []string) (<-chan error, error) {
+func startProcess(ctx context.Context, executable string, arguments []string) (<-chan error, error) {
 	if executable == "" {
 		var err error
 		executable, err = os.Executable()
@@ -62,8 +74,7 @@ func startProcess(ctx context.Context, server, executable string, arguments []st
 		}
 	}
 
-	args := append([]string{"__status-daemon", server}, arguments...)
-	cmd := exec.Command(executable, args...)
+	cmd := exec.Command(executable, arguments...)
 	cmd.Dir = filepath.Dir(executable)
 
 	for _, key := range []string{"PATH", "HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR", "LANG", "TMPDIR"} {
@@ -91,7 +102,7 @@ func startProcess(ctx context.Context, server, executable string, arguments []st
 }
 
 func (c *Client) waitReady(ctx context.Context, exited <-chan error) error {
-	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	ctx, cancel := context.WithTimeout(ctx, readinessTimeout)
 	defer cancel()
 
 	ticker := time.NewTicker(20 * time.Millisecond)
