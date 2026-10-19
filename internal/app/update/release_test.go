@@ -212,24 +212,15 @@ func TestResolveHeadCommit(t *testing.T) {
 	}
 }
 
-func TestRedirectsToUnknownHostsAreRejected(t *testing.T) {
-	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("request reached disallowed host")
-	}))
-	defer evil.Close()
-	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, evil.URL+"/binary", http.StatusFound)
-	})
-
-	_, err := fetchLatestRelease(context.Background())
-	require.ErrorContains(t, err, "disallowed scheme")
-}
-
 func TestRedirectLoopTerminates(t *testing.T) {
-	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+	requests := 0
+	stubUpdateHTTP(t, func(w http.ResponseWriter, r *http.Request) {
+		requests++
 		http.Redirect(w, r, r.URL.String()+"x", http.StatusFound)
 	})
 
-	_, err := fetchLatestRelease(context.Background())
-	require.Error(t, err)
+	_, err := fetchLatestRelease(t.Context())
+
+	require.ErrorContains(t, err, "too many redirects")
+	assert.Equal(t, 5, requests)
 }

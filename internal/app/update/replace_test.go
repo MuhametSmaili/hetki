@@ -33,9 +33,9 @@ func fakeBinary(t *testing.T, path, version string) {
 
 func readScriptVersion(t *testing.T, path string) string {
 	t.Helper()
-	got, err := installedVersion(path)
+	identity, err := installedIdentity(t.Context(), path)
 	require.NoError(t, err)
-	return got
+	return identity.Tag
 }
 
 func TestReplaceExecutableSuccess(t *testing.T) {
@@ -73,6 +73,36 @@ func TestReplaceExecutableRollsBackOnVersionMismatch(t *testing.T) {
 	require.NoError(t, statErr)
 	assert.Equal(t, os.ModeSetgid|os.FileMode(0775), info.Mode()&(os.ModeSetgid|os.ModePerm))
 	assert.NoFileExists(t, exe+".hetki-backup")
+}
+
+func TestReplaceExecutableFiltersRejectedIdentityOutput(t *testing.T) {
+	for _, test := range []struct{ name, output, prefix, suffix string }{
+		{name: "malformed output", output: "identity-secret", prefix: "verifying installed binary: unexpected --version output: "},
+		{name: "mismatched identity", output: "hetki version identity-secret\ncommit: wrong", prefix: "installed binary reports ", suffix: ", expected v1.1.0 at " + testCommit + "; rolling back"},
+		{name: "oversized malformed identity", output: strings.Repeat("x", 2048), prefix: "verifying installed binary: unexpected --version output: "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			exe, candidate := filepath.Join(dir, "hetki"), filepath.Join(dir, "new")
+			fakeBinary(t, exe, "v1.0.0")
+			t.Setenv("GH_TOKEN", "identity-secret")
+			t.Setenv("HETKI_TEST_IDENTITY", test.output)
+			script := "#!/bin/sh\nprintf '%s' \"$HETKI_TEST_IDENTITY\"\n"
+			require.NoError(t, os.WriteFile(candidate, []byte(script), 0755))
+
+			err := replaceExecutable(context.Background(), candidate, exe, testTarget("v1.1.0"))
+
+			require.Error(t, err)
+			assert.True(t, strings.HasPrefix(err.Error(), test.prefix))
+			assert.True(t, strings.HasSuffix(err.Error(), test.suffix))
+			assert.NotContains(t, err.Error(), "identity-secret")
+			detail := strings.TrimSuffix(strings.TrimPrefix(err.Error(), test.prefix), test.suffix)
+			assert.LessOrEqual(t, len(detail), 512)
+			assert.Equal(t, "v1.0.0", readScriptVersion(t, exe))
+			assert.NoFileExists(t, exe+".hetki-backup")
+			assert.NoFileExists(t, exe+".hetki-update-lock")
+		})
+	}
 }
 
 func TestReplaceExecutableNewBinaryBrokenRollsBack(t *testing.T) {
@@ -188,22 +218,23 @@ func TestRejectSymlinkedInstall(t *testing.T) {
 	require.NoError(t, rejectSymlinkedInstall(real))
 }
 
-func TestInstalledVersionParsesFirstLine(t *testing.T) {
+func TestInstalledIdentityParsesVersionAndCommit(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "hetki")
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\nprintf 'hetki version v3.1.4\\ncommit: abc\\n'\n"), 0755))
 
-	version, err := installedVersion(exe)
+	identity, err := installedIdentity(t.Context(), exe)
+
 	require.NoError(t, err)
-	assert.Equal(t, "v3.1.4", version)
+	assert.Equal(t, Target{Tag: "v3.1.4", Commit: "abc"}, identity)
 }
 
-func TestInstalledVersionRejectsGarbage(t *testing.T) {
+func TestInstalledIdentityRejectsGarbage(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "hetki")
 	require.NoError(t, os.WriteFile(exe, []byte("#!/bin/sh\necho garbage\n"), 0755))
 
-	_, err := installedVersion(exe)
+	_, err := installedIdentity(t.Context(), exe)
 	require.ErrorContains(t, err, "unexpected --version output")
 }
 

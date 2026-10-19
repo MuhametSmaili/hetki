@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -166,20 +167,29 @@ func TestRegularFileSizeIgnoresVanishedCacheFile(t *testing.T) {
 }
 
 func TestCommandOutputKillsInheritedPipeDescendant(t *testing.T) {
-	dir := t.TempDir()
-	script, pidPath := filepath.Join(dir, "leak-output"), filepath.Join(dir, "child.pid")
-	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nsleep 10 &\necho $! > \"$1\"\necho done\n"), 0755))
-	started := time.Now()
+	for _, test := range []struct{ name, redirect string }{
+		{name: "stdout", redirect: "2>/dev/null"},
+		{name: "stderr", redirect: ">/dev/null"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			script, pidPath := filepath.Join(dir, "leak-output"), filepath.Join(dir, "child.pid")
+			body := "#!/bin/sh\nsleep 10 " + test.redirect + " &\necho $! > \"$1\"\necho done\n"
+			require.NoError(t, os.WriteFile(script, []byte(body), 0755))
+			started := time.Now()
 
-	_, err := commandOutput(context.Background(), time.Second, 1024, script, pidPath)
+			out, err := commandOutput(context.Background(), time.Second, 1024, script, pidPath)
 
-	require.Error(t, err)
-	assert.Less(t, time.Since(started), 4*time.Second)
-	pidBytes, readErr := os.ReadFile(pidPath)
-	require.NoError(t, readErr)
-	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-	require.NoError(t, parseErr)
-	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, time.Second, 10*time.Millisecond)
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			assert.Nil(t, out)
+			assert.Less(t, time.Since(started), 4*time.Second)
+			pidBytes, readErr := os.ReadFile(pidPath)
+			require.NoError(t, readErr)
+			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+			require.NoError(t, parseErr)
+			require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) }, time.Second, 10*time.Millisecond)
+		})
+	}
 }
 
 func TestServiceRunDryRunUsesUpdaterDryRun(t *testing.T) {
@@ -264,9 +274,40 @@ func TestServiceRunRefusesPrerelease(t *testing.T) {
 	assert.Zero(t, updater.updateCalls)
 }
 
+func TestSourceBuildOverridesPersistedChecksumExclusions(t *testing.T) {
+	root := t.TempDir()
+	config := filepath.Join(root, "goenv")
+	require.NoError(t, os.WriteFile(config, []byte("GOSUMDB=off\nGOPROXY=off\nGONOSUMDB=*\nGOPRIVATE=*\nGONOPROXY=*\n"), 0600))
+	t.Setenv("GOENV", config)
+	t.Setenv("GOTOOLCHAIN", "local")
+	for _, name := range []string{"GONOSUMDB", "GOPRIVATE", "GONOPROXY"} {
+		t.Setenv(name, "*")
+	}
+	env := sourceInstallEnv("", filepath.Join(root, "modcache"))
+
+	out, err := commandOutputEnv(t.Context(), 10*time.Second, 4<<10, env,
+		"go", "env", "-json", "GOSUMDB", "GOPROXY", "GONOSUMDB", "GOPRIVATE", "GONOPROXY")
+
+	require.NoError(t, err)
+	var settings map[string]string
+	require.NoError(t, json.Unmarshal(out, &settings))
+	require.Equal(t, map[string]string{
+		"GOSUMDB": "sum.golang.org", "GOPROXY": "direct",
+		"GONOSUMDB": "none", "GOPRIVATE": "none", "GONOPROXY": "none",
+	}, settings)
+}
+
 func TestGoUpdaterBuildsToTemporaryGOBINAndReplaces(t *testing.T) {
-	for _, tag := range []string{"v1.2.3", ""} {
-		t.Run("tag="+tag, func(t *testing.T) {
+	for _, test := range []struct {
+		name, tag string
+		mise      bool
+	}{
+		{name: "Go-bin release", tag: "v1.2.3"},
+		{name: "Go-bin head"},
+		{name: "mise main", mise: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tag := test.tag
 			version, query, originRef := tag, tag, "refs/tags/"+tag
 			if tag == "" {
 				version, query, originRef = "v1.2.4-0.20260906000000-aaaaaaaaaaaa", testCommit, ""
@@ -274,7 +315,7 @@ func TestGoUpdaterBuildsToTemporaryGOBINAndReplaces(t *testing.T) {
 			bin := t.TempDir()
 			goPath := filepath.Join(bin, "go")
 			script := fmt.Sprintf(`#!/bin/sh
-[ "$GOPROXY" = direct ] && [ "$GOSUMDB" = sum.golang.org ] && [ -n "$GOMODCACHE" ] && [ "$GOCACHE" = "${GOMODCACHE%%/modcache}/gocache" ] && [ "$GOTMPDIR" = "${GOMODCACHE%%/modcache}/tmp" ] && [ -z "$GONOSUMDB" ] && [ -z "$GOPRIVATE" ] && [ -z "$GONOPROXY" ] || exit 7
+[ "$GOPROXY" = direct ] && [ "$GOSUMDB" = sum.golang.org ] && [ -n "$GOMODCACHE" ] && [ "$GOCACHE" = "${GOMODCACHE%%/modcache}/gocache" ] && [ "$GOTMPDIR" = "${GOMODCACHE%%/modcache}/tmp" ] && [ "$GONOSUMDB" = none ] && [ "$GOPRIVATE" = none ] && [ "$GONOPROXY" = none ] || exit 7
 case "$*" in *github.com/MuhametSmaili/hetki@%s) ;; *) exit 8 ;; esac
 if [ "$1 $2" = "mod download" ]; then
   printf '{"Path":"github.com/MuhametSmaili/hetki","Version":"%s","Query":"%s","Sum":"h1:test","Origin":{"URL":"https://github.com/MuhametSmaili/hetki","Hash":"%s","Ref":"%s"}}\n'
@@ -289,12 +330,25 @@ chmod +x "$GOBIN/hetki"
 			require.NoError(t, os.WriteFile(goPath, []byte(script), 0755))
 			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 			exePath := filepath.Join(bin, "hetki")
-			fakeBinary(t, exePath, "v1.0.0")
+			if test.mise {
+				var entry map[string]any
+				exePath, entry = miseInstallation(t)
+				stubMiseInstalls(t, entry)
+			} else {
+				fakeBinary(t, exePath, "v1.0.0")
+				stubMise(t, "[]")
+			}
+			t.Setenv("GOBIN", filepath.Dir(exePath))
+			updater, err := DetermineUpdater(t.Context(), exePath, Options{Head: tag == ""})
+			require.NoError(t, err)
 
-			require.NoError(t, (&GoUpdater{exePath: exePath}).Update(context.Background(), testTarget(tag)))
-			assert.Equal(t, version, readScriptVersion(t, exePath))
+			require.NoError(t, updater.Update(t.Context(), testTarget(tag)))
+
+			identity, err := installedIdentity(t.Context(), exePath)
+			require.NoError(t, err)
+			assert.Equal(t, Target{Tag: version, Commit: testCommit}, identity)
 			assert.NoFileExists(t, exePath+".hetki-backup")
-			workspaces, err := filepath.Glob(filepath.Join(bin, ".hetki-source-*"))
+			workspaces, err := filepath.Glob(filepath.Join(filepath.Dir(exePath), ".hetki-source-*"))
 			require.NoError(t, err)
 			assert.Empty(t, workspaces)
 		})
@@ -302,6 +356,7 @@ chmod +x "$GOBIN/hetki"
 }
 
 func TestGoUpdaterBoundsInheritedOutputDescendant(t *testing.T) {
+	t.Setenv("GH_TOKEN", "partial-secret")
 	bin := t.TempDir()
 	pidPath := filepath.Join(bin, "child.pid")
 	goPath := filepath.Join(bin, "go")
@@ -313,7 +368,10 @@ fi
 mkdir -p "$GOBIN"
 printf '#!/bin/sh\nprintf '\''hetki version v1.2.3\\ncommit: %s\\n'\''\n' > "$GOBIN/hetki"
 chmod +x "$GOBIN/hetki"
-sleep 10 & echo $! > %q
+mkfifo "$GOBIN/ready"
+(printf 'partial-' >&2; printf 'ready\n' > "$GOBIN/ready"; sleep 10; printf 'secret\n' >&2) &
+echo $! > %q
+read -r ready < "$GOBIN/ready"
 `, testCommit, testCommit, pidPath)
 	require.NoError(t, os.WriteFile(goPath, []byte(script), 0755))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -324,6 +382,8 @@ sleep 10 & echo $! > %q
 	err := (&GoUpdater{exePath: exePath}).Update(context.Background(), testTarget("v1.2.3"))
 
 	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "partial-")
+	assert.Contains(t, err.Error(), "[truncated]")
 	assert.Less(t, time.Since(started), 4*time.Second)
 	pidBytes, readErr := os.ReadFile(pidPath)
 	require.NoError(t, readErr)
@@ -376,11 +436,11 @@ func TestServiceRunHead(t *testing.T) {
 			err := service.Run(context.Background(), opts)
 			if test.wantErr != "" {
 				require.ErrorContains(t, err, test.wantErr)
-				if test.resolveErr != nil {
-					require.ErrorIs(t, err, test.resolveErr)
-				}
 			} else {
 				require.NoError(t, err)
+			}
+			if test.resolveErr != nil {
+				require.ErrorIs(t, err, test.resolveErr)
 			}
 			assert.Equal(t, test.updates, updater.updateCalls)
 			assert.Equal(t, test.dryRuns, updater.dryRunCalls)
@@ -392,6 +452,7 @@ func TestServiceRunHead(t *testing.T) {
 }
 
 func TestDetermineUpdaterReleaseAndHead(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
 	home, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 	t.Setenv("HOME", home)
@@ -401,14 +462,14 @@ func TestDetermineUpdaterReleaseAndHead(t *testing.T) {
 		exe := filepath.Join(home, dir, "hetki")
 		require.NoError(t, os.MkdirAll(filepath.Dir(exe), 0700))
 		fakeBinary(t, exe, "v1.2.3")
-		updater, err := DetermineUpdater(exe, Options{})
+		updater, err := DetermineUpdater(t.Context(), exe, Options{})
 		require.NoError(t, err)
 		if dir == "go/bin" {
 			assert.IsType(t, &GoUpdater{}, updater)
 		} else {
 			assert.IsType(t, &BinaryUpdater{}, updater)
 		}
-		updater, err = DetermineUpdater(exe, Options{Head: true, Verbose: true})
+		updater, err = DetermineUpdater(t.Context(), exe, Options{Head: true, Verbose: true})
 		require.NoError(t, err)
 		assert.Equal(t, &GoUpdater{exePath: exe, Verbose: true}, updater)
 	}

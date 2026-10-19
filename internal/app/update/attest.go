@@ -1,7 +1,6 @@
 package update
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
@@ -127,7 +125,10 @@ func fetchExternalBundle(ctx context.Context, url string) (json.RawMessage, erro
 		return nil, fmt.Errorf("external attestation bundle returned HTTP %d", resp.StatusCode)
 	}
 	compressed, err := io.ReadAll(io.LimitReader(resp.Body, maxBundleBytes+1))
-	if err != nil || len(compressed) > maxBundleBytes {
+	if err != nil {
+		return nil, fmt.Errorf("reading external attestation bundle: %w", err)
+	}
+	if len(compressed) > maxBundleBytes {
 		return nil, errors.New("external attestation bundle exceeds size limit")
 	}
 	decodedLen, err := snappy.DecodedLen(compressed)
@@ -155,7 +156,7 @@ func ghExecutable(ctx context.Context) (string, error) {
 	}
 	match := ghVersionPattern.FindSubmatch(out)
 	if match == nil {
-		return "", fmt.Errorf("cannot determine gh version from %q", bytes.TrimSpace(out))
+		return "", fmt.Errorf("cannot determine gh version: %s", processDiagnostic(out, false))
 	}
 	major, _ := strconv.Atoi(string(match[1]))
 	minor, _ := strconv.Atoi(string(match[2]))
@@ -169,19 +170,7 @@ func ghExecutable(ctx context.Context) (string, error) {
 // verifyAttestation performs offline keyless verification of the downloaded
 // artifact against the fetched bundle (D4): pinned repository, pinned signer
 // workflow, no self-hosted runners, and a matching subject name.
-func verifyAttestation(ctx context.Context, artifactPath, bundlePath, binaryName, sha256Digest string, target Target) error {
-	gh, err := ghExecutable(ctx)
-	if err != nil {
-		return err
-	}
-
-	tempDir, err := os.MkdirTemp("", "hetki-attest-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tempDir)
-	stdoutPath := filepath.Join(tempDir, "result.json")
-
+func verifyAttestation(ctx context.Context, gh, artifactPath, bundlePath, binaryName, sha256Digest string, target Target) error {
 	args := []string{
 		"attestation", "verify", artifactPath,
 		"--repo", githubRepo,
@@ -196,13 +185,10 @@ func verifyAttestation(ctx context.Context, artifactPath, bundlePath, binaryName
 	if err != nil {
 		return fmt.Errorf("attestation verification failed: %w", err)
 	}
-	if err := os.WriteFile(stdoutPath, stdout, 0600); err != nil {
-		return err
-	}
-	return checkVerificationResult(stdoutPath, binaryName, sha256Digest)
+	return checkVerificationResult(stdout, binaryName, sha256Digest)
 }
 
-type verifyResultFile struct {
+type verifyResult struct {
 	VerificationResult struct {
 		Statement struct {
 			Subject []struct {
@@ -215,12 +201,8 @@ type verifyResultFile struct {
 
 // checkVerificationResult requires at least one verified attestation whose
 // subject name and digest match the downloaded artifact.
-func checkVerificationResult(resultPath, binaryName, sha256Digest string) error {
-	data, err := os.ReadFile(resultPath)
-	if err != nil {
-		return err
-	}
-	var results []verifyResultFile
+func checkVerificationResult(data []byte, binaryName, sha256Digest string) error {
+	var results []verifyResult
 	if err := json.Unmarshal(data, &results); err != nil {
 		return fmt.Errorf("parsing gh attestation output: %w", err)
 	}
@@ -248,6 +230,11 @@ func verifyReleaseArtifact(ctx context.Context, artifactPath, binaryName, sha256
 	if err != nil {
 		return false, err
 	}
+	gh, err := ghExecutable(ctx)
+	if err != nil {
+		return false, err
+	}
+
 	var verifyErr error
 	for _, bundle := range bundles {
 		bundleFile, err := os.CreateTemp("", "hetki-bundle-*.json")
@@ -258,7 +245,7 @@ func verifyReleaseArtifact(ctx context.Context, artifactPath, binaryName, sha256
 		_, writeErr := bundleFile.Write(bundle)
 		err = errors.Join(writeErr, bundleFile.Close())
 		if err == nil {
-			err = verifyAttestation(ctx, artifactPath, bundlePath, binaryName, sha256Digest, target)
+			err = verifyAttestation(ctx, gh, artifactPath, bundlePath, binaryName, sha256Digest, target)
 		}
 		os.Remove(bundlePath)
 		if err == nil {
@@ -268,7 +255,7 @@ func verifyReleaseArtifact(ctx context.Context, artifactPath, binaryName, sha256
 		verifyErr = errors.Join(verifyErr, err)
 	}
 	if verifyErr != nil {
-		return false, verifyErr
+		return false, fmt.Errorf("verifying release attestation: %w", summarizeFailure(verifyErr))
 	}
 	return false, errors.New("no attestation bundle verified")
 }

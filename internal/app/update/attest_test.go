@@ -6,11 +6,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/klauspost/compress/snappy"
 	"github.com/stretchr/testify/assert"
@@ -55,6 +59,31 @@ func TestFetchAttestationBundlesResolvesSnappyBundleURL(t *testing.T) {
 	assert.JSONEq(t, string(want), string(bundles[0]))
 }
 
+func TestExternalBundlePreservesReadErrors(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "cancellation", err: context.Canceled},
+		{name: "interrupted response", err: io.ErrUnexpectedEOF},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			previous := externalBundleClient
+			t.Cleanup(func() { externalBundleClient = previous })
+			externalBundleClient = func() *http.Client {
+				return &http.Client{Transport: updateRoundTripFunc(func(*http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(iotest.ErrReader(test.err))}, nil
+				})}
+			}
+
+			bundle, err := fetchExternalBundle(t.Context(), "https://example.test/bundle")
+
+			require.ErrorIs(t, err, test.err)
+			require.Nil(t, bundle)
+		})
+	}
+}
+
 func TestFetchAttestationBundleNotFoundFailsClosed(t *testing.T) {
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -93,7 +122,7 @@ func TestFetchAttestationBundleServerErrFails(t *testing.T) {
 
 // stubGh writes a gh stub into PATH. verifyJSON is the JSON the stub prints
 // for `attestation verify` (empty means: exit 1).
-func stubGh(t *testing.T, version string, verifyJSON string) {
+func stubGh(t *testing.T, version string, verifyJSON string) string {
 	t.Helper()
 	bin := t.TempDir()
 	script := "#!/bin/sh\n"
@@ -113,8 +142,10 @@ case "$args" in *" --source-ref refs/tags/v"*) ;; *) echo "missing source ref" >
 			script += fmt.Sprintf("cat <<'EOF'\n%s\nEOF\n", verifyJSON)
 		}
 	}
-	require.NoError(t, os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0755))
+	path := filepath.Join(bin, "gh")
+	require.NoError(t, os.WriteFile(path, []byte(script), 0755))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return path
 }
 
 func TestGhExecutableGatesVersion(t *testing.T) {
@@ -134,6 +165,12 @@ func TestGhExecutableGatesVersion(t *testing.T) {
 	stubGh(t, "3.1.4", "")
 	_, err = ghExecutable(context.Background())
 	require.NoError(t, err)
+
+	t.Setenv("GH_TOKEN", "version-token")
+	stubGh(t, "invalid version-token", "")
+	_, err = ghExecutable(context.Background())
+	require.ErrorContains(t, err, "cannot determine gh version")
+	assert.NotContains(t, err.Error(), "version-token")
 }
 
 func subjectJSON(name, digest string) string {
@@ -147,11 +184,11 @@ func TestVerifyAttestationEndToEndPasses(t *testing.T) {
 	require.NoError(t, os.WriteFile(artifact, content, 0644))
 	digest := sha256.Sum256(content)
 	digestHex := hex.EncodeToString(digest[:])
-	stubGh(t, "2.97.0", subjectJSON("hetki-testos-testarch", digestHex))
+	gh := stubGh(t, "2.97.0", subjectJSON("hetki-testos-testarch", digestHex))
 	bundle := filepath.Join(dir, "bundle.json")
 	require.NoError(t, os.WriteFile(bundle, []byte(`{}`), 0644))
 
-	require.NoError(t, verifyAttestation(context.Background(), artifact, bundle, "hetki-testos-testarch", digestHex, testTarget("v1.0.0")))
+	require.NoError(t, verifyAttestation(t.Context(), gh, artifact, bundle, "hetki-testos-testarch", digestHex, testTarget("v1.0.0")))
 }
 
 func TestVerifyAttestationGhFailureFailsClosed(t *testing.T) {
@@ -160,25 +197,19 @@ func TestVerifyAttestationGhFailureFailsClosed(t *testing.T) {
 	require.NoError(t, os.WriteFile(artifact, []byte("x"), 0644))
 	bundle := filepath.Join(dir, "bundle.json")
 	require.NoError(t, os.WriteFile(bundle, []byte(`{}`), 0644))
-	stubGh(t, "2.97.0", "")
+	gh := stubGh(t, "2.97.0", "")
 
-	err := verifyAttestation(context.Background(), artifact, bundle, "hetki-testos-testarch", "d", testTarget("v1.0.0"))
+	err := verifyAttestation(t.Context(), gh, artifact, bundle, "hetki-testos-testarch", "d", testTarget("v1.0.0"))
 	require.ErrorContains(t, err, "attestation verification failed")
+	assert.Contains(t, err.Error(), "no attestations")
 }
 
 func TestCheckVerificationResultMatrix(t *testing.T) {
-	dir := t.TempDir()
-	write := func(content string) string {
-		path := filepath.Join(dir, fmt.Sprintf("r%d", len(content)))
-		require.NoError(t, os.WriteFile(path, []byte(content), 0644))
-		return path
-	}
-
-	require.NoError(t, checkVerificationResult(write(subjectJSON("bin", "aaa")), "bin", "aaa"))
-	require.ErrorContains(t, checkVerificationResult(write(subjectJSON("other", "aaa")), "bin", "aaa"), "no verified attestation")
-	require.ErrorContains(t, checkVerificationResult(write(subjectJSON("bin", "bbb")), "bin", "aaa"), "no verified attestation")
-	require.ErrorContains(t, checkVerificationResult(write(`[]`), "bin", "aaa"), "no verified attestation")
-	require.ErrorContains(t, checkVerificationResult(write(`{`), "bin", "aaa"), "parsing gh attestation output")
+	require.NoError(t, checkVerificationResult([]byte(subjectJSON("bin", "aaa")), "bin", "aaa"))
+	require.ErrorContains(t, checkVerificationResult([]byte(subjectJSON("other", "aaa")), "bin", "aaa"), "no verified attestation")
+	require.ErrorContains(t, checkVerificationResult([]byte(subjectJSON("bin", "bbb")), "bin", "aaa"), "no verified attestation")
+	require.ErrorContains(t, checkVerificationResult([]byte(`[]`), "bin", "aaa"), "no verified attestation")
+	require.ErrorContains(t, checkVerificationResult([]byte(`{`), "bin", "aaa"), "parsing gh attestation output")
 }
 
 func TestVerifyReleaseArtifactBypass(t *testing.T) {
@@ -205,6 +236,46 @@ func TestVerifyReleaseArtifactFullFlow(t *testing.T) {
 	skipped, err := verifyReleaseArtifact(context.Background(), artifact, "hetki-testos-testarch", digestHex, testTarget("v1.0.0"))
 	require.NoError(t, err)
 	assert.False(t, skipped)
+}
+
+func TestVerifyReleaseArtifactBoundsFailureSummary(t *testing.T) {
+	for _, test := range []struct {
+		name, diagnostic string
+		bundles          int
+	}{
+		{name: "one long explanation", diagnostic: strings.Repeat("detail ", 100) + "no attestations", bundles: 1},
+		{name: "many explanations", diagnostic: "no attestations", bundles: maxAttestationBundles},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			artifact := filepath.Join(dir, "bin")
+			require.NoError(t, os.WriteFile(artifact, []byte("x"), 0644))
+			versionChecks := filepath.Join(dir, "version-checks")
+			t.Setenv("HETKI_TEST_VERSION_CHECKS", versionChecks)
+			script := "#!/bin/sh\nif [ \"$1\" = --version ]; then echo checked >> \"$HETKI_TEST_VERSION_CHECKS\"; echo 'gh version 2.97.0'; exit 0; fi\nprintf '%s' \"$HETKI_TEST_DIAGNOSTIC\" >&2\nexit 1\n"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0755))
+			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("HETKI_TEST_DIAGNOSTIC", test.diagnostic)
+			stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
+				bundles := strings.TrimSuffix(strings.Repeat(`{"bundle":{}},`, test.bundles), ",")
+				fmt.Fprintf(w, `{"attestations":[%s]}`, bundles)
+			})
+
+			_, err := verifyReleaseArtifact(context.Background(), artifact, "bin", "d", testTarget("v1.0.0"))
+
+			require.ErrorContains(t, err, "no attestations")
+			const prefix = "verifying release attestation: "
+			assert.True(t, strings.HasPrefix(err.Error(), prefix))
+			assert.Contains(t, err.Error(), "[truncated]")
+			assert.LessOrEqual(t, len(strings.TrimPrefix(err.Error(), prefix)), 512)
+			var exitErr *exec.ExitError
+			require.ErrorAs(t, err, &exitErr)
+			assert.Equal(t, 1, exitErr.ExitCode())
+			checks, readErr := os.ReadFile(versionChecks)
+			require.NoError(t, readErr)
+			assert.Equal(t, "checked\n", string(checks))
+		})
+	}
 }
 
 func TestVerifyReleaseArtifactNoBundleFailsClosed(t *testing.T) {

@@ -156,9 +156,10 @@ func TestReleaseDownloadsStayAnonymous(t *testing.T) {
 
 	err = downloadToFile(context.Background(), "https://github.com/binary", file, 1<<20)
 	require.NoError(t, err)
-	err = verifyBinaryChecksum(context.Background(), "https://github.com/checksums", file.Name(), "hetki")
+	verifiedDigest, err := verifyBinaryChecksum(context.Background(), "https://github.com/checksums", file.Name(), "hetki")
 
 	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf("%x", digest), verifiedDigest)
 	assert.Equal(t, []string{"", "", ""}, authorizations)
 }
 

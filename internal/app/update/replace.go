@@ -183,8 +183,9 @@ func verifyReplacement(ctx context.Context, exePath string, candidateInfo os.Fil
 		return fmt.Errorf("installed binary changed during verification: %w", err)
 	}
 	if identity != target {
-		return fmt.Errorf("installed binary reports %s at %s, expected %s at %s; rolling back",
-			identity.Tag, identity.Commit, target.Tag, target.Commit)
+		reportedIdentity := processDiagnostic([]byte(identity.Tag+" at "+identity.Commit), false)
+		return fmt.Errorf("installed binary reports %s, expected %s at %s; rolling back",
+			reportedIdentity, target.Tag, target.Commit)
 	}
 	if err := removeOwnedPath(backupPath, backupInfo); err != nil {
 		return fmt.Errorf("removing recovery backup after verification: %w", err)
@@ -242,17 +243,12 @@ func installedIdentity(ctx context.Context, exePath string) (Target, error) {
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(lines) < 2 {
-		return Target{}, fmt.Errorf("unexpected --version output %q", out)
+		return Target{}, fmt.Errorf("unexpected --version output: %s", processDiagnostic(out, false))
 	}
 	version, versionOK := strings.CutPrefix(strings.TrimSpace(lines[0]), "hetki version ")
 	commit, commitOK := strings.CutPrefix(strings.TrimSpace(lines[1]), "commit: ")
 	if !versionOK || !commitOK {
-		return Target{}, fmt.Errorf("unexpected --version output %q", out)
+		return Target{}, fmt.Errorf("unexpected --version output: %s", processDiagnostic(out, false))
 	}
 	return Target{Tag: version, Commit: commit}, nil
-}
-
-func installedVersion(exePath string) (string, error) {
-	identity, err := installedIdentity(context.Background(), exePath)
-	return identity.Tag, err
 }

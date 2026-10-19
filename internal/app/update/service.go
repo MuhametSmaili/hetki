@@ -54,6 +54,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 	if opts.Head && opts.TargetVersion != "" {
 		return errors.New("--head cannot be combined with --version")
 	}
+
 	s.setVerbose(opts.Verbose)
 
 	exePath, err := s.executable()
@@ -62,7 +63,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 	}
 	logger.Debug("Executable path: %s", exePath)
 
-	updater, err := s.determineUpdater(exePath, opts)
+	updater, err := s.determineUpdater(ctx, exePath, opts)
 	if err != nil {
 		return err
 	}
@@ -72,6 +73,10 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 		return s.runHeadUpdate(ctx, opts, updater)
 	}
 
+	return s.runReleaseUpdate(ctx, opts, updater)
+}
+
+func (s Service) runReleaseUpdate(ctx context.Context, opts Options, updater Updater) error {
 	// D4: fail closed — no release update proceeds without an exact resolved tag.
 	targetTag, err := s.resolveTarget(ctx, opts)
 	if err != nil {
@@ -153,11 +158,11 @@ func (s Service) executable() (string, error) {
 	return os.Executable()
 }
 
-func (s Service) determineUpdater(exePath string, opts Options) (Updater, error) {
+func (s Service) determineUpdater(ctx context.Context, exePath string, opts Options) (Updater, error) {
 	if s.DetermineUpdater != nil {
 		return s.DetermineUpdater(exePath)
 	}
-	return DetermineUpdater(exePath, opts)
+	return DetermineUpdater(ctx, exePath, opts)
 }
 
 func (s Service) resolveTarget(ctx context.Context, opts Options) (string, error) {

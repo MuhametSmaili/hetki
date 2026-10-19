@@ -94,12 +94,9 @@ func (b *BinaryUpdater) Update(ctx context.Context, target Target) error {
 	if info.Size() < 1<<20 {
 		return fmt.Errorf("downloaded file is too small (%d bytes), expected a Go binary (>1MB)", info.Size())
 	}
-	if err := verifyBinaryChecksum(ctx, checksumsURL, tempPath, binaryName); err != nil {
-		return fmt.Errorf("checksum verification failed: %w", err)
-	}
-	digest, err := fileDigest(tempPath)
+	digest, err := verifyBinaryChecksum(ctx, checksumsURL, tempPath, binaryName)
 	if err != nil {
-		return err
+		return fmt.Errorf("checksum verification failed: %w", err)
 	}
 	if _, err := verifyReleaseArtifact(ctx, tempPath, binaryName, digest, target); err != nil {
 		return err
@@ -108,19 +105,6 @@ func (b *BinaryUpdater) Update(ctx context.Context, target Target) error {
 		return err
 	}
 	return replaceExecutable(ctx, tempPath, b.exePath, target)
-}
-
-func fileDigest(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func downloadToFile(ctx context.Context, url string, f *os.File, maxBytes int64) (err error) {
@@ -147,26 +131,26 @@ func downloadToFile(ctx context.Context, url string, f *os.File, maxBytes int64)
 	return nil
 }
 
-func verifyBinaryChecksum(ctx context.Context, checksumsURL, filePath, binaryName string) error {
+func verifyBinaryChecksum(ctx context.Context, checksumsURL, filePath, binaryName string) (string, error) {
 	logger.Info("Verifying checksum...")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, checksumsURL, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	resp, err := githubHTTPClient(15 * time.Second).Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to download checksums: %w", err)
+		return "", fmt.Errorf("failed to download checksums: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download checksums: HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("failed to download checksums: HTTP %d", resp.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumsBytes+1))
 	if err != nil {
-		return fmt.Errorf("failed to read checksums: %w", err)
+		return "", fmt.Errorf("failed to read checksums: %w", err)
 	}
 	if len(data) > maxChecksumsBytes {
-		return fmt.Errorf("checksums.txt exceeds %d bytes", maxChecksumsBytes)
+		return "", fmt.Errorf("checksums.txt exceeds %d bytes", maxChecksumsBytes)
 	}
 
 	var expectedHash string
@@ -179,27 +163,27 @@ func verifyBinaryChecksum(ctx context.Context, checksumsURL, filePath, binaryNam
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read checksums: %w", err)
+		return "", fmt.Errorf("failed to read checksums: %w", err)
 	}
 	if expectedHash == "" {
-		return fmt.Errorf("binary %s not found in checksums.txt", binaryName)
+		return "", fmt.Errorf("binary %s not found in checksums.txt", binaryName)
 	}
 
 	f, err := os.Open(filePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer f.Close()
 	h := sha256.New()
 	if _, err := io.Copy(h, contextReader{ctx: ctx, reader: f}); err != nil {
-		return fmt.Errorf("failed to compute hash: %w", err)
+		return "", fmt.Errorf("failed to compute hash: %w", err)
 	}
 	actualHash := hex.EncodeToString(h.Sum(nil))
 	if actualHash != expectedHash {
-		return fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, actualHash)
+		return "", fmt.Errorf("hash mismatch: expected %s, got %s", expectedHash, actualHash)
 	}
 	logger.Info("Checksum verified: %s", actualHash)
-	return nil
+	return actualHash, nil
 }
 
 type contextReader struct {

@@ -48,7 +48,6 @@ func ParseVersion(tag string) (Version, error) {
 	return v, nil
 }
 
-// checkNumeric rejects empty strings and leading zeros; ParseUint rejects signs.
 func checkNumeric(p string) error {
 	if p == "" {
 		return fmt.Errorf("empty numeric component")
@@ -65,26 +64,18 @@ func checkNumeric(p string) error {
 }
 
 func validateIdentifiers(s string, build bool) error {
-	if s == "" {
-		return fmt.Errorf("empty identifier")
-	}
 	for _, id := range strings.Split(s, ".") {
 		if id == "" {
 			return fmt.Errorf("empty identifier")
 		}
-		numeric := true
 		for _, r := range id {
-			if r >= '0' && r <= '9' {
-				continue
-			}
-			numeric = false
 			if !isSemverIdentRune(r) {
 				return fmt.Errorf("identifier %q contains invalid characters", id)
 			}
 		}
 		// Numeric prerelease identifiers must not be zero-padded; build
 		// metadata identifiers may be.
-		if numeric && !build && len(id) > 1 && id[0] == '0' {
+		if !build && len(id) > 1 && id[0] == '0' && numericIdentifier(id) {
 			return fmt.Errorf("numeric identifier %q has a leading zero", id)
 		}
 	}

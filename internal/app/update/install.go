@@ -1,7 +1,9 @@
 package update
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +11,20 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/logger"
 )
 
-func DetermineUpdater(exePath string, opts Options) (Updater, error) {
+// DetermineUpdater checks installation ownership without modifying the executable.
+func DetermineUpdater(ctx context.Context, exePath string, opts Options) (Updater, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// A managed installation can also fall under GOBIN; check ownership first.
+	updater, err := miseUpdater(ctx, exePath, opts)
+	if err != nil {
+		return nil, fmt.Errorf("checking mise installation: %w", summarizeFailure(err))
+	}
+	if updater != nil {
+		return updater, nil
+	}
+
 	if installedViaGo(exePath) {
 		return &GoUpdater{exePath: exePath, Verbose: opts.Verbose}, nil
 	}
@@ -20,7 +35,7 @@ func DetermineUpdater(exePath string, opts Options) (Updater, error) {
 		return &BinaryUpdater{exePath: exePath}, nil
 	}
 	return nil, errors.New(
-		"hetki was not installed via `go install` or to ~/.local/bin or ~/bin; manual update required",
+		"unsupported installation: run the installed hetki, not `go run`; supported locations are Go-bin, ~/.local/bin, ~/bin, or mise's active Go-backend main installation with --head",
 	)
 }
 

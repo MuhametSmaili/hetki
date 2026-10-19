@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/logger"
@@ -31,6 +30,7 @@ func (g *GoUpdater) DryRun(target Target) {
 		ref = target.Commit
 	}
 	logger.Info("Would run: go install %s@%s and verify commit %s", modulePath, ref, target.Commit)
+	logger.Info("Would replace the existing binary at %s with rollback on verification failure", g.exePath)
 }
 
 func (g *GoUpdater) Update(ctx context.Context, target Target) error {
@@ -77,15 +77,7 @@ func (g *GoUpdater) Update(ctx context.Context, target Target) error {
 	cmdArgs := append([]string{"-c", `ulimit -f 131072; exec "$@"`, "_", "go"}, args...)
 	cmd := exec.CommandContext(sourceCtx, "sh", cmdArgs...)
 	cmd.Env = sourceInstallEnv(tempDir, modCache)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		if errors.Is(err, syscall.ESRCH) {
-			return os.ErrProcessDone
-		}
-		return err
-	}
-	cmd.WaitDelay = 2 * time.Second
+	configureCommandLifecycle(cmd)
 	stdout, stderr := &boundedBuffer{max: maxProcessOutputBytes}, &boundedBuffer{max: maxProcessOutputBytes}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	defer killCommandGroup(cmd)
@@ -93,7 +85,7 @@ func (g *GoUpdater) Update(ctx context.Context, target Target) error {
 		if cause := context.Cause(sourceCtx); cause != nil {
 			return errors.Join(cause, err)
 		}
-		return err
+		return fmt.Errorf("building source: %w", commandFailure(err, stderr))
 	}
 	if cause := context.Cause(sourceCtx); cause != nil {
 		return cause
@@ -198,7 +190,11 @@ func removeSourceDir(path string) {
 func verifySourceOrigin(ctx context.Context, module string, target Target, modCache string) (string, error) {
 	out, err := commandOutputEnv(ctx, 60*time.Second, 1<<20, sourceInstallEnv("", modCache), "go", "mod", "download", "-json", module)
 	if err != nil {
-		return "", fmt.Errorf("verifying source origin: %w", err)
+		var failure struct{ Error string }
+		if json.Unmarshal(out, &failure) == nil && failure.Error != "" {
+			err = fmt.Errorf("%w: %s", err, processDiagnostic([]byte(failure.Error), false))
+		}
+		return "", fmt.Errorf("verifying source origin: %w", summarizeFailure(err))
 	}
 	var download struct {
 		Path, Version, Query, Sum string
@@ -216,7 +212,7 @@ func verifySourceOrigin(ctx context.Context, module string, target Target, modCa
 		return "", fmt.Errorf("source origin does not match requested commit %s", target.Commit)
 	}
 	if _, err := ParseVersion(download.Version); err != nil {
-		return "", fmt.Errorf("source version rejected: %w", err)
+		return "", fmt.Errorf("source version rejected: %w", summarizeFailure(err))
 	}
 	return download.Version, nil
 }
@@ -232,6 +228,7 @@ func sourceInstallEnv(gobin, modCache string) []string {
 		}
 	}
 	root := filepath.Dir(modCache)
+	// Empty exclusions fall back to persisted GOENV settings instead of clearing them.
 	return append(env, "GOBIN="+gobin, "GOMODCACHE="+modCache, "GOCACHE="+filepath.Join(root, "gocache"),
-		"GOTMPDIR="+filepath.Join(root, "tmp"), "GOPROXY=direct", "GOSUMDB=sum.golang.org", "GONOSUMDB=", "GOPRIVATE=", "GONOPROXY=")
+		"GOTMPDIR="+filepath.Join(root, "tmp"), "GOPROXY=direct", "GOSUMDB=sum.golang.org", "GONOSUMDB=none", "GOPRIVATE=none", "GONOPROXY=none")
 }

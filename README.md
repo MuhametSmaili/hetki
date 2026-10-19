@@ -45,7 +45,11 @@ hetki update --head   # Latest pushed commit on main (requires Go; unreleased co
 
 Release updates exclude prereleases. Use `hetki update --version v0.4.0` to select that exact stable release, including a downgrade or reinstall.
 
-The built-in updater supports Go-bin installations and binaries in `~/.local/bin` or `~/bin`. Mise-managed installations still require updates through mise.
+The built-in updater supports Go-bin installations and binaries in `~/.local/bin` or `~/bin`.
+
+For mise, `--head` also supports an active, non-linked `go:github.com/MuhametSmaili/hetki@main` installation. It updates that binary in place and leaves mise configuration unchanged. The previous binary remains available for rollback until the new binary passes verification. Mise discovery requires `mise` on `PATH`.
+
+Other mise selections require an explicit switch to `main` through mise first. Use mise for release updates and linked installations.
 
 ## Quick start
 
