@@ -108,7 +108,7 @@ func (d *statusDelivery) projectionStatus() *ui.StatusUpdate {
 	defer d.mu.Unlock()
 
 	update := d.statusUpdateLocked()
-	update.Bindings = d.adapter.bindStatusView(d.view)
+	d.adapter.bindStatusUpdate(d.view, &update)
 	return &update
 }
 
@@ -126,7 +126,7 @@ func (d *statusDelivery) statusUpdateLocked() ui.StatusUpdate {
 func (d *statusDelivery) readStatusUpdateLocked() ui.StatusUpdate {
 	update := d.statusUpdateLocked()
 	if d.err == nil {
-		update.Bindings = d.adapter.bindStatusView(d.view)
+		d.adapter.bindStatusUpdate(d.view, &update)
 	}
 	return update
 }

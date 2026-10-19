@@ -37,6 +37,18 @@ func TestCachedLocationsRebindLinkedRowsAndRespawns(t *testing.T) {
 	require.Equal(t, ui.StatusBindings{
 		windowItemID("$1", "@1"): {ref}, windowItemID("$2", "@1"): {ref},
 	}, bindings)
+	var update ui.StatusUpdate
+	adapter.bindStatusUpdate(view, &update)
+	require.Equal(t, ref, update.Windows[windowItemID("$1", "@1")][0].Ref)
+	require.Equal(t, ref, update.Windows[windowItemID("$2", "@1")][0].Ref)
+	unlinked := view
+	unlinked.Locations = view.Locations[:1]
+
+	adapter.bindStatusUpdate(unlinked, &update)
+
+	require.Equal(t, ref, update.Windows[windowItemID("$1", "@1")][0].Ref)
+	require.Empty(t, update.Windows[windowItemID("$2", "@1")][0].Ref, "pane identity alone must not bind a removed window link")
+
 	bindings[windowItemID("$1", "@1")][0] = status.PaneRef{}
 	delete(bindings, windowItemID("$2", "@1"))
 	require.Equal(t, ref, adapter.bindStatusView(view)[windowItemID("$1", "@1")][0])

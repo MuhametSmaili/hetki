@@ -25,12 +25,15 @@ type StatusOptions struct {
 	ReadTimeout time.Duration
 }
 
-// StatusUpdate replaces cached values and, when non-nil, their row bindings.
-// Failed reads invalidate values while retaining the previous bindings.
+// StatusUpdate replaces cached values and, when non-nil, their row bindings and
+// presentation candidates. Failed reads invalidate values while retaining both.
 type StatusUpdate struct {
 	Values   status.Snapshot
 	Bindings StatusBindings
 	Err      error
+
+	// Windows replaces tree-pane presentation candidates when non-nil.
+	Windows map[list.ItemID][]WindowPane
 
 	// Watching means the next read waits for change rather than polling immediately.
 	Watching bool
@@ -44,7 +47,7 @@ func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time
 	return b.ValueAt(id, values, now).State
 }
 
-// ValueAt returns a row's displayed activity and outcome, resolving freshness
+// ValueAt returns the highest-priority bound activity and outcome, resolving freshness
 // and the brief success indication before aggregation.
 // Attention and ongoing work take precedence over completed results in other panes.
 func (b StatusBindings) ValueAt(id list.ItemID, values status.Snapshot, now time.Time) status.Value {
@@ -89,6 +92,9 @@ type paneStatusState struct {
 	frameGeneration   uint64
 	bindingGeneration uint64
 	readErr           error
+	windows           map[list.ItemID][]WindowPane
+	representatives   map[list.ItemID]status.PaneRef
+	windowChangeDue   time.Time
 }
 
 type statusPollMsg struct{}
@@ -134,7 +140,7 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 		return m, statusPoll(0)
 	}
 	m.applyStatusUpdate(msg.update)
-	m.applyScope(m.items.Query(), time.Now())
+	m.applyStatusPresentation(time.Now())
 	if msg.update.Watching && msg.update.Err == nil {
 		return m, statusPoll(0)
 	}
@@ -147,6 +153,9 @@ func (m *model) applyStatusUpdate(update StatusUpdate) {
 	m.paneStatus.readErr = update.Err
 	if update.Bindings != nil {
 		m.paneStatus.options.Bindings = update.Bindings
+	}
+	if update.Windows != nil {
+		m.paneStatus.windows = update.Windows
 	}
 	if update.Accept != nil {
 		update.Accept()
@@ -176,12 +185,16 @@ func (m model) syncStatusFrame(now time.Time) (model, tea.Cmd) {
 }
 
 func (m model) nextStatusFrame(now time.Time) time.Time {
-	var due time.Time
 	p := m.paneStatus
+	// Hidden window details still affect search when their status expires.
+	due := p.windowChangeDue
 	for _, row := range m.items.VisibleRows() {
-		switch p.options.Bindings.StateAt(row.Item.ID, p.values, now) {
+		switch p.rowValue(row.Item.ID, now).State {
 		case status.Working:
 			due = earlierStatusTime(due, now.Truncate(statusSpinnerPeriod).Add(statusSpinnerPeriod))
+		}
+		if _, ok := p.windows[row.Item.ID]; ok {
+			continue
 		}
 		for _, pane := range p.options.Bindings[row.Item.ID] {
 			value := p.values.Lookup(pane)

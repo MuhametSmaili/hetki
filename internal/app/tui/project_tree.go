@@ -79,21 +79,8 @@ func appendTreeWindow(
 	if window.Name != "" {
 		label += " " + window.Name
 	}
-	path := displayPath(window.Path, homeDir)
-	fields := []list.SearchField{
-		{Tier: list.SearchPrimary, Text: label},
-		{Tier: list.SearchPrimary, Text: session.Name},
-	}
-	program := ""
-	if pane, found := activePane(window.Panes); found {
-		program = paneProgramLabel(pane, session.DefaultShell)
-	}
-	if program != "" {
-		fields = append(fields, list.SearchField{Tier: list.SearchPrimary, Text: program})
-	}
-	if path != "" {
-		fields = append(fields, list.SearchField{Tier: list.SearchSecondary, Text: path})
-	}
+	pane, _ := activePane(window.Panes)
+	details := treePaneDetails(session, label, pane, homeDir)
 
 	last := session.Last && window.Active
 	primary := label
@@ -103,9 +90,9 @@ func appendTreeWindow(
 	sessionItem.Children = append(sessionItem.Children, list.Item{
 		ID:           windowID,
 		Primary:      primary,
-		Secondary:    path,
-		Trailing:     program,
-		SearchFields: fields,
+		Secondary:    details.Secondary,
+		Trailing:     details.Trailing,
+		SearchFields: details.SearchFields,
 	})
 	index[windowID] = liveItem{
 		ID:           windowID,
@@ -120,6 +107,25 @@ func appendTreeWindow(
 		Last:         last,
 	}
 	return nil
+}
+
+func treePaneDetails(session backend.Session, label string, pane backend.Pane, homeDir string) list.Details {
+	path := displayPath(pane.Path, homeDir)
+	program := paneProgramLabel(pane, session.DefaultShell)
+	if pane.ID == "" {
+		program = ""
+	}
+	fields := []list.SearchField{
+		{Tier: list.SearchPrimary, Text: label},
+		{Tier: list.SearchPrimary, Text: session.Name},
+	}
+	if program != "" {
+		fields = append(fields, list.SearchField{Tier: list.SearchPrimary, Text: program})
+	}
+	if path != "" {
+		fields = append(fields, list.SearchField{Tier: list.SearchSecondary, Text: path})
+	}
+	return list.Details{Secondary: path, Trailing: program, SearchFields: fields}
 }
 
 func windowIsActive(window backend.Window, active backend.ActiveContext) bool {

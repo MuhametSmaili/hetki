@@ -30,6 +30,10 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case statusFrameMsg:
 		if msg.generation == m.paneStatus.frameGeneration {
 			m.paneStatus.frameDue = time.Time{}
+			now := time.Now()
+			if due := m.paneStatus.windowChangeDue; !due.IsZero() && !now.Before(due) {
+				m.applyStatusPresentation(now)
+			}
 		}
 		return m, nil
 	case previewResultMsg:

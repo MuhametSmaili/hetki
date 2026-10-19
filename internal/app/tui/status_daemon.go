@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/app/statusobserver"
@@ -9,6 +10,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 // OpenStatus prepares status delivery for this picker. Daemon startup or reuse
@@ -136,28 +138,75 @@ func (r *daemonReader) failed(err error) {
 func (a *LiveAdapter) bindStatusView(view daemon.View) ui.StatusBindings {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	bindings := make(ui.StatusBindings)
+
+	bindings, _ := a.bindStatusViewLocked(view)
+	return bindings
+}
+
+func (a *LiveAdapter) bindStatusViewLocked(view daemon.View) (ui.StatusBindings, map[list.ItemID]status.PaneRef) {
 	if a.statusErr != nil || a.statusServer.PID == 0 {
-		return bindings
+		return ui.StatusBindings{}, nil
 	}
+
 	server := a.statusServer.Identity()
 	refs := make(map[string]status.PaneRef, view.Values.Len())
 	for ref := range view.Values.All() {
 		if ref.Server != server {
-			return bindings
+			return ui.StatusBindings{}, nil
 		}
 		refs[ref.ID] = ref
 	}
+
+	bindings := make(ui.StatusBindings, min(len(a.index), len(view.Locations)))
+	var occurrences map[list.ItemID]status.PaneRef
 	for _, location := range view.Locations {
 		ref := refs[location.Pane]
 		window := windowItemID(location.Session, location.Window)
+		pane := destinationItemID(location.Session, location.Window, location.Pane)
+
 		if item, ok := a.index[window]; ok && item.Kind == liveWindow {
 			bindings[window] = append(bindings[window], ref)
+			if occurrences == nil {
+				occurrences = make(map[list.ItemID]status.PaneRef, len(view.Locations))
+			}
+			occurrences[pane] = ref
 		}
-		pane := destinationItemID(location.Session, location.Window, location.Pane)
+
 		if item, ok := a.index[pane]; ok && item.Kind == liveDestination {
 			bindings[pane] = append(bindings[pane], ref)
 		}
 	}
-	return bindings
+
+	return bindings, occurrences
+}
+
+func (a *LiveAdapter) bindStatusUpdate(view daemon.View, update *ui.StatusUpdate) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	bindings, occurrences := a.bindStatusViewLocked(view)
+	update.Bindings = bindings
+	if a.projection != projectionTree || a.input == nil {
+		update.Windows = make(map[list.ItemID][]ui.WindowPane)
+		return
+	}
+
+	update.Windows = make(map[list.ItemID][]ui.WindowPane, len(a.index))
+	home, _ := os.UserHomeDir()
+	for _, session := range a.input.state.Sessions {
+		for _, window := range session.Windows {
+			id := windowItemID(session.ID, window.ID)
+			panes := make([]ui.WindowPane, 0, len(window.Panes))
+
+			for _, pane := range window.Panes {
+				paneID := destinationItemID(session.ID, window.ID, pane.ID)
+				panes = append(panes, ui.WindowPane{
+					Ref: occurrences[paneID], Active: pane.Active,
+					Details: treePaneDetails(session, a.index[id].Label, pane, home),
+				})
+			}
+
+			update.Windows[id] = panes
+		}
+	}
 }

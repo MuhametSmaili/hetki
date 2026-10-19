@@ -57,7 +57,7 @@ func (m model) viewList(layout layoutMetrics) string {
 			Context: row.Item.Context, Primary: row.Item.Primary, Annotation: row.Item.Annotation,
 			Secondary:  row.Item.Secondary,
 			Trailing:   row.Item.Trailing,
-			Status:     m.paneStatus.options.Bindings.ValueAt(row.Item.ID, m.paneStatus.values, now),
+			Status:     m.paneStatus.rowValue(row.Item.ID, now),
 			StatusTime: now,
 			JumpLabel:  m.jumpLabel(row.Item.ID),
 			Depth:      row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,

@@ -13,17 +13,22 @@ func (m *Model) RestoreExpansion(expanded map[ItemID]bool) {
 	m.reflow()
 }
 
-func restrictItems(items []Item, included map[ItemID]struct{}) []Item {
-	if included == nil {
+func projectItems(items []Item, included map[ItemID]struct{}, details map[ItemID]Details) []Item {
+	if included == nil && len(details) == 0 {
 		return items
 	}
 	var result []Item
 	for _, item := range items {
-		children := restrictItems(item.Children, included)
-		if _, ok := included[item.ID]; !ok && len(children) == 0 {
+		children := projectItems(item.Children, included, details)
+		if _, ok := included[item.ID]; included != nil && !ok && len(children) == 0 {
 			continue
 		}
 		item.Children = children
+		if detail, ok := details[item.ID]; ok {
+			item.Secondary = detail.Secondary
+			item.Trailing = detail.Trailing
+			item.SearchFields = detail.SearchFields
+		}
 		result = append(result, item)
 	}
 	return result

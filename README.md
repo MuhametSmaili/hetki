@@ -97,7 +97,7 @@ The picker starts in filter mode. Press `Esc` for normal mode.
 | `R` / `r` in normal mode | Rename a session/window                  |
 | `X` / `x` in normal mode | Delete a session/window                  |
 
-Flat rows show individual panes, including panes that share a directory. Tree rows group windows by session and show each window's active-pane command. Redundant default-shell labels are hidden.
+Flat rows show individual panes, including panes that share a directory. Tree rows group windows by session and show the command, path, and status from the same pane: the highest-priority status wins, ties keep the previous pane, and idle windows use the active pane. Redundant default-shell labels are hidden.
 
 Command names are snapshots, updated on refresh. Previews capture the visible screen, without scrollback. They are separate from pane status.
 

@@ -28,6 +28,7 @@ type Model struct {
 	shownRoot int
 	query     string
 	included  map[ItemID]struct{}
+	details   map[ItemID]Details
 	expanded  map[ItemID]bool
 	active    map[ItemID]bool
 }
@@ -81,6 +82,7 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 	}
 	candidate := *m
 	candidate.snapshot = snapshot
+	candidate.details = nil
 	candidate.expanded = cloneExpanded(m.expanded, IDs(snapshot.Items))
 	candidate.active = activePath(snapshot.Items, snapshot.ActiveItemID)
 	markActivePathExpanded(snapshot.Items, snapshot.ActiveItemID, candidate.expanded)
@@ -243,7 +245,7 @@ func (m *Model) applyFilter() {
 		selectedID = selected.Item.ID
 	}
 	query := strings.ToLower(strings.TrimSpace(m.query))
-	items := restrictItems(m.snapshot.Items, m.included)
+	items := projectItems(m.snapshot.Items, m.included, m.details)
 	if query == "" {
 		m.rows = flatten(items, m.expanded, false)
 		if idx := findRow(m.rows, selectedID); idx >= 0 {
