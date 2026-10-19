@@ -113,6 +113,20 @@ Optional YAML profiles live in `$XDG_CONFIG_HOME/hetki/status.d`, or `~/.config/
 
 The [Kiro 2.28 profile](integrations/pane-status/profiles/kiro-2.28.yaml) provides a screen-based example. It targets the documented English UI and does not infer completion.
 
+### Service status
+
+Inspect the status service without opening the picker:
+
+```sh
+hetki service status
+```
+
+The command uses tmux's normal server selection: `$TMUX` inside tmux, or the default socket outside tmux. Detached sessions are supported. It does not start tmux or a daemon, load profiles, or create Hetki runtime directories.
+
+A responding daemon reports its PID, instance ID, and log path. A missing or refused endpoint reports `not listening`. Startup or shutdown can still be in progress. The log path is an expected location, not proof that a log exists.
+
+Successful inspection exits with code 0, including `not listening`. Inspection failures, including an absent tmux server, exit with code 1. The current protocol does not report the daemon build or uptime. Service start, stop, and restart commands are not available yet.
+
 ## Safety
 
 Normal start adds missing resources. `--force` also replaces mismatched windows and removes extra windows inside declared sessions. It can terminate their processes. Earlier actions remain applied after a failure.

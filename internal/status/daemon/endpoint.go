@@ -49,7 +49,11 @@ func prepareEndpoint(path string) error {
 		return err
 	}
 
-	info, err := os.Lstat(dir)
+	return validateEndpointDirectory(path)
+}
+
+func validateEndpointDirectory(path string) error {
+	info, err := os.Lstat(filepath.Dir(path))
 	if err != nil {
 		return err
 	}

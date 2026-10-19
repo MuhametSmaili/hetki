@@ -105,6 +105,7 @@ func TestClientAndServerRejectUnsafeDirectory(t *testing.T) {
 			started := false
 
 			_, connectErr := Connect(c.server)
+			_, inspectErr := Inspect(t.Context(), c.server)
 			serveErr := Serve(t.Context(), liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
 				started = true
 				return nil, errors.New("unexpected source startup")
@@ -112,6 +113,7 @@ func TestClientAndServerRejectUnsafeDirectory(t *testing.T) {
 			after, statErr := os.Lstat(dir)
 
 			require.Error(t, connectErr)
+			require.Error(t, inspectErr)
 			require.Error(t, serveErr)
 			require.False(t, started)
 			require.NoError(t, statErr)
