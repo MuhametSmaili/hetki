@@ -115,29 +115,23 @@ The [Kiro 2.28 profile](integrations/pane-status/profiles/kiro-2.28.yaml) provid
 
 ### Status service
 
-Inspect the status service without opening the picker:
+The picker starts the status daemon automatically. These commands let you manage it without opening the picker:
 
-```sh
-hetki service status
-```
+| Command                | What it does                                             |
+| ---------------------- | -------------------------------------------------------- |
+| `hetki service status` | Shows the daemon's status. Does not start it.            |
+| `hetki service start`  | Starts the daemon. Reuses an already-running daemon.     |
+| `hetki service stop`   | Stops the daemon. Leaves tmux and your sessions running. |
 
-The command uses tmux's normal server selection: `$TMUX` inside tmux, or the default socket outside tmux. Detached sessions are supported. It does not start tmux or a daemon, load profiles, or create Hetki runtime directories.
+Inside tmux, commands affect the current server. Outside tmux, they affect the default server. That server must already exist.
 
-A responding daemon reports its PID, instance ID, and log path. A missing or refused endpoint reports `not listening`. Startup or shutdown can still be in progress. The log path is an expected location, not proof that a log exists.
+The daemon keeps running after the command exits. When its tmux server exits, the daemon stops.
 
-Successful inspection exits with code 0, including `not listening`. Inspection failures, including an absent tmux server, exit with code 1. The current protocol does not report the daemon build or uptime.
+Stop is not a permanent disable. Running `hetki service start` or opening the picker starts it again. An already-open picker can also restart it automatically.
 
-Start the status service without opening the picker:
+If you start during shutdown, Hetki waits briefly for the old daemon to finish. If the wait times out, the command reports an error.
 
-```sh
-hetki service start
-```
-
-Start reuses a compatible daemon and its loaded profiles. If the daemon is absent, it uses the same startup path as the picker. The command waits for readiness before it reports success.
-
-A tmux server must already exist. If no server exists, the command fails without starting tmux or waiting for a future server. After you start tmux, run the command again or open the picker.
-
-After this command exits, the daemon continues to run. When its tmux server exits, the daemon stops. Service stop and restart commands are not available yet.
+Older daemons can reject `stop`. Hetki does not force-kill them. `hetki service restart` is not available yet.
 
 ## Safety
 

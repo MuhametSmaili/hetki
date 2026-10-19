@@ -233,18 +233,19 @@ func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 	}()
 	receive(t, reading)
 
-	err := c.Stop(ctx)
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- c.Stop(ctx) }()
 
-	require.NoError(t, err)
 	require.True(t, receive(t, closed))
 	require.Error(t, receive(t, readDone))
-	_, err = os.Lstat(c.path)
+	_, err := os.Lstat(c.path)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	waitCtx, cancelWait := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancelWait()
 	require.ErrorIs(t, testenv.WaitUnlocked(waitCtx, c.path+".lock"), context.DeadlineExceeded)
 
 	releaseClose()
+	require.NoError(t, receive(t, stopDone))
 	require.NoError(t, receive(t, done))
 	require.NoError(t, testenv.WaitUnlocked(ctx, c.path+".lock"))
 }
@@ -455,10 +456,10 @@ func TestStartupFailureReleasesEndpointAndClosesSource(t *testing.T) {
 
 	require.ErrorContains(t, err, "changed during startup")
 	require.True(t, closed)
-	release, err := lockEndpoint(c.path)
+	lock, err := lockEndpoint(c.path)
 	require.NoError(t, err)
-	require.NotNil(t, release)
-	release()
+	require.NotNil(t, lock)
+	require.NoError(t, lock.Close())
 }
 
 func TestSourceFailureDoesNotBecomeEmptySuccess(t *testing.T) {

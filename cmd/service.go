@@ -6,17 +6,19 @@ import (
 	"io"
 
 	"github.com/MuhametSmaili/hetki/internal/app/statusobserver"
+	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 	"github.com/spf13/cobra"
 )
 
 func init() {
-	rootCmd.AddCommand(newServiceCommand(statusobserver.InspectService, statusobserver.StartService))
+	rootCmd.AddCommand(newServiceCommand(statusobserver.InspectService, statusobserver.StartService, statusobserver.StopService))
 }
 
 func newServiceCommand(
 	inspect func(context.Context) (statusobserver.ServiceStatus, error),
 	start func(context.Context) error,
+	stop func(context.Context) (*daemon.Info, error),
 ) *cobra.Command {
 	command := &cobra.Command{
 		Use:               "service",
@@ -61,6 +63,32 @@ An existing compatible daemon keeps its loaded profiles.`,
 			}
 
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), "Status service is running.")
+			return err
+		},
+	})
+	command.AddCommand(&cobra.Command{
+		Use:   "stop",
+		Short: "Stop the observed status service instance without stopping tmux",
+		Long: `Stop the observed status service instance for the selected, running tmux server.
+This command does not load profiles, create runtime directories, or start tmux.
+Success waits for that instance's workers, source and logs to close and its lock
+to be released, not for OS process exit. The shutdown wait is bounded to five seconds.
+Cancellation or timeout after acceptance does not undo shutdown.
+Stop is not disable: a picker, including one already open, or service start can
+start another instance. Older daemons without safe-stop support are refused.`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			info, err := stop(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			if info == nil {
+				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Status service is not listening.")
+			} else {
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Stopped status service instance %s.\n", terminal.Sanitize(info.Epoch))
+			}
 			return err
 		},
 	})

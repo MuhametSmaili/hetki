@@ -28,7 +28,7 @@ func runServiceCommand(t *testing.T, executable, action string) ([]byte, error) 
 	return command.CombinedOutput()
 }
 
-func TestNativeServiceStart(t *testing.T) {
+func TestNativeServiceStartAndStop(t *testing.T) {
 	executable := buildDaemonExecutable(t)
 	runner, server, _, _, _ := nativeStreamsFixture(t)
 	t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
@@ -43,7 +43,7 @@ func TestNativeServiceStart(t *testing.T) {
 	require.NoError(t, err)
 	awaitDaemonSubscription(t, t.Context(), runner, before.PID)
 
-	writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
+	invalidProfile := writeConfiguredProfile(t, "bad.yaml", "version: invalid\n")
 
 	output, err = runServiceCommand(t, executable, "start")
 	after, pingErr := client.Ping(t.Context())
@@ -52,6 +52,26 @@ func TestNativeServiceStart(t *testing.T) {
 	require.Equal(t, "Status service is running.\n", string(output))
 	require.NoError(t, pingErr)
 	require.Equal(t, before, after, "start must reuse the daemon and its loaded profiles")
+
+	output, err = runServiceCommand(t, executable, "stop")
+
+	require.NoError(t, err, "%s", output)
+	require.Equal(t, fmt.Sprintf("Stopped status service instance %s.\n", before.Epoch), string(output))
+	require.NoError(t, server.Validate(t.Context()), "service stop must leave tmux running")
+
+	output, err = runServiceCommand(t, executable, "stop")
+
+	require.NoError(t, err, "%s", output)
+	require.Equal(t, "Status service is not listening.\n", string(output))
+	require.NoError(t, os.Remove(invalidProfile))
+
+	output, err = runServiceCommand(t, executable, "start")
+	after, pingErr = client.Ping(t.Context())
+
+	require.NoError(t, err, "%s", output)
+	require.Equal(t, "Status service is running.\n", string(output))
+	require.NoError(t, pingErr)
+	require.NotEqual(t, before.Epoch, after.Epoch, "stop must permit a later start with a new instance")
 
 	stopCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -97,8 +117,14 @@ func TestNativeServiceCommands(t *testing.T) {
 		require.Nil(t, result.Daemon.Instance)
 		require.NoError(t, commandErr, "%s", output)
 		require.Equal(t, fmt.Sprintf("Status service: not listening\nTmux socket: %s\nLog: %s\n", server.Socket, result.Daemon.LogPath), string(output))
+
+		output, commandErr = runServiceCommand(t, executable, "stop")
+
+		require.NoError(t, commandErr, "%s", output)
+		require.Equal(t, "Status service is not listening.\n", string(output))
+		require.NoError(t, server.Validate(t.Context()))
 		_, err = os.Lstat(filepath.Dir(result.Daemon.LogPath))
-		require.ErrorIs(t, err, os.ErrNotExist, "inspection must not prepare daemon storage")
+		require.ErrorIs(t, err, os.ErrNotExist, "status and stop must not prepare daemon storage")
 	})
 
 	t.Run("default selection and no fallback from a missing selected server", func(t *testing.T) {
@@ -124,6 +150,13 @@ func TestNativeServiceCommands(t *testing.T) {
 		require.Equal(t, defaultServer, result.Server)
 		require.Nil(t, result.Daemon.Instance)
 
+		output, commandErr := runServiceCommand(t, executable, "stop")
+
+		require.NoError(t, commandErr, "%s", output)
+		require.Equal(t, "Status service is not listening.\n", string(output))
+		_, err = os.Lstat(filepath.Dir(result.Daemon.LogPath))
+		require.ErrorIs(t, err, os.ErrNotExist, "stop must not prepare daemon storage")
+
 		t.Setenv("TMUX", fmt.Sprintf("%s,%d,0", server.Socket, server.PID))
 		stopCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
@@ -132,6 +165,15 @@ func TestNativeServiceCommands(t *testing.T) {
 		_, err = InspectService(t.Context())
 
 		require.Error(t, err, "a missing selected server must not silently select the live default server")
+
+		output, commandErr = runServiceCommand(t, executable, "stop")
+
+		var exit *exec.ExitError
+		require.ErrorAs(t, commandErr, &exit, "%s", output)
+		require.Equal(t, 1, exit.ExitCode())
+		require.Contains(t, string(output), "resolve service tmux server")
+		require.NotContains(t, string(output), "Stopped status service")
+		require.NotContains(t, string(output), "Status service is not listening.")
 		require.NoError(t, defaultServer.Validate(t.Context()))
 	})
 
@@ -172,7 +214,7 @@ func TestNativeServiceCommands(t *testing.T) {
 		_, err := InspectService(t.Context())
 
 		require.Error(t, err)
-		for _, action := range []string{"status", "start"} {
+		for _, action := range []string{"status", "start", "stop"} {
 			t.Run(action, func(t *testing.T) {
 				output, commandErr := runServiceCommand(t, executable, action)
 
@@ -181,10 +223,25 @@ func TestNativeServiceCommands(t *testing.T) {
 				require.Equal(t, 1, exit.ExitCode())
 				require.NotContains(t, string(output), "Status service: running")
 				require.NotContains(t, string(output), "Status service is running.")
+				require.NotContains(t, string(output), "Stopped status service")
+				require.NotContains(t, string(output), "Status service is not listening.")
 			})
 		}
+		t.Run("no default server", func(t *testing.T) {
+			t.Setenv("TMUX", "")
+
+			output, commandErr := runServiceCommand(t, executable, "stop")
+
+			var exit *exec.ExitError
+			require.ErrorAs(t, commandErr, &exit, "%s", output)
+			require.Equal(t, 1, exit.ExitCode())
+			require.Contains(t, string(output), "resolve service tmux server")
+			require.NotContains(t, string(output), "Stopped status service")
+			require.NotContains(t, string(output), "Status service is not listening.")
+		})
+
 		_, queryErr := runner.RunLimited(t.Context(), 4096, "list-sessions")
-		require.Error(t, queryErr, "inspection must not recreate the selected tmux server")
+		require.Error(t, queryErr, "service commands must not recreate the selected tmux server")
 		result, inspectErr := daemon.Inspect(t.Context(), server.Identity())
 		require.NoError(t, inspectErr)
 		_, statErr := os.Lstat(filepath.Dir(result.LogPath))

@@ -2,7 +2,7 @@ package daemon
 
 import (
 	"context"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,6 +10,9 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/status"
 )
+
+// Binding precedes chmod. Startup can wait for this state, but must not dial it.
+var errEndpointPermissions = errors.New("unsafe status daemon endpoint permissions")
 
 type Client struct {
 	server string
@@ -51,8 +54,11 @@ func (c *Client) callRequest(ctx context.Context, req request, timeout time.Dura
 		return reply{}, err
 	}
 
-	if info.Mode()&os.ModeSocket == 0 || !ownedMode(info, 0600) {
+	if info.Mode()&os.ModeSocket == 0 || !ownedByCurrentUser(info) {
 		return reply{}, fmt.Errorf("unsafe status daemon endpoint")
+	}
+	if info.Mode().Perm() != 0600 {
+		return reply{}, errEndpointPermissions
 	}
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", c.path)
@@ -94,12 +100,15 @@ func (c *Client) exchangeRequest(conn net.Conn, req request) (reply, error) {
 		return reply{}, ErrProtocol
 	}
 
-	epoch, err := hex.DecodeString(result.Epoch)
-	if result.Server != c.server || result.PID <= 0 || err != nil || len(epoch) != 16 {
+	if result.Server != c.server || result.PID <= 0 || !validEpoch(result.Epoch) {
 		return reply{}, ErrIdentity
 	}
 
-	if result.Error != "" {
+	switch result.Error {
+	case "instance_changed":
+		return reply{}, ErrIdentity
+	case "":
+	default:
 		return reply{}, ErrUnavailable
 	}
 
@@ -118,9 +127,4 @@ func (c *Client) ReadStatus(ctx context.Context) (status.Snapshot, error) {
 	}
 
 	return result.snapshot()
-}
-
-func (c *Client) Stop(ctx context.Context) error {
-	_, err := c.call(ctx, "stop")
-	return err
 }

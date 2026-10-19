@@ -47,6 +47,23 @@ func StartService(ctx context.Context) error {
 	return err
 }
 
+// StopService stops the observed instance for the selected tmux server without
+// loading profiles or creating storage. A nil result on success means neither a
+// listener nor a locked owner was observed, not that a concurrent start is excluded.
+func StopService(ctx context.Context) (*daemon.Info, error) {
+	server, err := resolveServiceServer(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := daemon.Stop(ctx, server.Identity())
+	if err != nil {
+		return nil, fmt.Errorf("stop status service: %w", err)
+	}
+
+	return info, nil
+}
+
 func resolveServiceServer(ctx context.Context) (observe.Server, error) {
 	client, err := tmux.New()
 	if err != nil {

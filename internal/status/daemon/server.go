@@ -16,6 +16,8 @@ type daemon struct {
 	info     Info
 	logs     *daemonLog
 	watchers chan struct{}
+
+	lifecycle sync.Mutex
 }
 
 func (d *daemon) run(ctx context.Context, listener *net.UnixListener) error {

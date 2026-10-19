@@ -64,17 +64,36 @@ func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 		return
 	}
 
-	if err := writeFrame(conn, maxReplyBytes, row); err != nil {
+	if err := d.publish(ctx, conn, req, row); err != nil {
 		if ctx.Err() == nil {
 			d.logs.repeatedFailure("reply_write_failed", err)
 		}
 		return
 	}
 
-	if req.Action == "stop" {
-		d.logs.info("stop_requested")
-		d.cancel()
+}
+
+// Serialize readiness publication with stop acceptance, not with source reads.
+// A successful Ping may precede a stop, but cannot be published after acceptance.
+// Accepted shutdown survives a lost acknowledgment.
+func (d *daemon) publish(ctx context.Context, conn *net.UnixConn, req request, row reply) error {
+	if req.Action == "ping" || req.Action == "stop" {
+		d.lifecycle.Lock()
+		defer d.lifecycle.Unlock()
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if req.Action == "stop" {
+			if req.ExpectedEpoch != d.info.Epoch {
+				row.Error = "instance_changed"
+			} else {
+				d.logs.info("stop_requested")
+				defer d.cancel()
+			}
+		}
 	}
+	return writeFrame(conn, maxReplyBytes, row)
 }
 
 func (d *daemon) readRequest(ctx context.Context, conn *net.UnixConn) (request, bool) {
@@ -94,6 +113,12 @@ func (d *daemon) readRequest(ctx context.Context, conn *net.UnixConn) (request, 
 
 	if req.After != nil && (req.Action != "watch" || len(req.After.Epoch) > maxIdentityBytes) {
 		d.logs.repeatedFailure("request_rejected", fmt.Errorf("invalid watch cursor"))
+		return request{}, false
+	}
+
+	if (req.Action == "stop" && !validEpoch(req.ExpectedEpoch)) ||
+		(req.Action != "stop" && req.ExpectedEpoch != "") {
+		d.logs.repeatedFailure("request_rejected", fmt.Errorf("invalid expected instance"))
 		return request{}, false
 	}
 

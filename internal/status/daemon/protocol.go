@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,13 +27,16 @@ var (
 	ErrProtocol    = errors.New("status daemon protocol mismatch")
 	ErrIdentity    = errors.New("status daemon identity mismatch")
 	ErrUnavailable = errors.New("status source unavailable")
+	ErrLifecycle   = errors.New("status daemon does not support instance-safe lifecycle control")
+	ErrTransition  = errors.New("status daemon owns its lock but is not listening; startup or shutdown is in progress")
 )
 
 type request struct {
-	Version int     `json:"version"`
-	Server  string  `json:"server"`
-	Action  string  `json:"action"`
-	After   *Cursor `json:"after,omitempty"`
+	Version       int     `json:"version"`
+	Server        string  `json:"server"`
+	Action        string  `json:"action"`
+	After         *Cursor `json:"after,omitempty"`
+	ExpectedEpoch string  `json:"expected_epoch,omitempty"`
 }
 
 type reply struct {
@@ -150,6 +154,14 @@ func (r reply) snapshot() (status.Snapshot, error) {
 	}
 
 	return status.NewSnapshot(values)
+}
+
+func validEpoch(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	epoch, err := hex.DecodeString(value)
+	return err == nil && len(epoch) == 16
 }
 
 func validIdentity(value string) bool {

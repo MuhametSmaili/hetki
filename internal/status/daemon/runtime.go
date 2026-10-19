@@ -36,7 +36,7 @@ type Source interface {
 // The source must join every caller of report before Close returns.
 type SourceFactory func(ctx context.Context, report func(error)) (Source, error)
 
-func Serve(ctx context.Context, binding Binding, start SourceFactory) error {
+func Serve(ctx context.Context, binding Binding, start SourceFactory) (err error) {
 	if binding.Alive == nil || start == nil {
 		return fmt.Errorf("status daemon requires lifetime check and source factory")
 	}
@@ -50,11 +50,20 @@ func Serve(ctx context.Context, binding Binding, start SourceFactory) error {
 		return err
 	}
 
-	release, err := lockEndpoint(path)
-	if err != nil || release == nil {
+	lock, err := lockEndpoint(path)
+	if err != nil || lock == nil {
 		return err
 	}
-	defer release()
+	defer func() { err = errors.Join(err, lock.Close()) }()
+
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return err
+	}
+	epoch := hex.EncodeToString(random[:])
+	if err := lock.setOwner(epoch); err != nil {
+		return fmt.Errorf("record daemon lock owner: %w", err)
+	}
 
 	logs, err := openDaemonLog(logPath(path))
 	if err != nil {
@@ -64,7 +73,7 @@ func Serve(ctx context.Context, binding Binding, start SourceFactory) error {
 	defer logs.recordPanic()
 
 	logs.info("starting")
-	err = serveLocked(ctx, path, binding, start, logs)
+	err = serveLocked(ctx, path, epoch, binding, start, logs)
 	if err != nil {
 		logs.failure("serve_failed", err)
 	} else {
@@ -74,7 +83,7 @@ func Serve(ctx context.Context, binding Binding, start SourceFactory) error {
 	return err
 }
 
-func serveLocked(ctx context.Context, path string, binding Binding, start SourceFactory, logs *daemonLog) (err error) {
+func serveLocked(ctx context.Context, path, epoch string, binding Binding, start SourceFactory, logs *daemonLog) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -113,11 +122,6 @@ func serveLocked(ctx context.Context, path string, binding Binding, start Source
 	}
 	defer cleanup()
 
-	var epoch [16]byte
-	if _, err := rand.Read(epoch[:]); err != nil {
-		return err
-	}
-
 	d := daemon{
 		binding:  binding,
 		source:   source,
@@ -126,7 +130,7 @@ func serveLocked(ctx context.Context, path string, binding Binding, start Source
 		watchers: make(chan struct{}, maxWatchers),
 		info: Info{
 			PID:   os.Getpid(),
-			Epoch: hex.EncodeToString(epoch[:]),
+			Epoch: epoch,
 		},
 	}
 	logs.ready(d.info.Epoch)

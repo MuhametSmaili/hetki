@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 const staleConnectTimeout = 100 * time.Millisecond
@@ -66,46 +64,12 @@ func validateEndpointDirectory(path string) error {
 }
 
 func ownedMode(info os.FileInfo, mode os.FileMode) bool {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	return ok && int(stat.Uid) == os.Getuid() && info.Mode().Perm() == mode
+	return ownedByCurrentUser(info) && info.Mode().Perm() == mode
 }
 
-// A nil release means another process owns the endpoint. Keep the lock file
-// after release so competing starters always lock the same inode.
-func lockEndpoint(path string) (release func(), err error) {
-	fd, err := unix.Open(path+".lock", unix.O_CREAT|unix.O_RDWR|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0600)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if release == nil {
-			_ = unix.Close(fd)
-		}
-	}()
-
-	var stat unix.Stat_t
-	if err := unix.Fstat(fd, &stat); err != nil {
-		return nil, err
-	}
-
-	if int(stat.Uid) != os.Getuid() ||
-		stat.Mode&unix.S_IFMT != unix.S_IFREG ||
-		stat.Mode&0777 != 0600 ||
-		stat.Nlink != 1 {
-		return nil, fmt.Errorf("unsafe status daemon lock")
-	}
-
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		if errors.Is(err, unix.EWOULDBLOCK) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return func() {
-		_ = unix.Close(fd)
-	}, nil
+func ownedByCurrentUser(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int(stat.Uid) == os.Getuid()
 }
 
 func removeStaleEndpoint(ctx context.Context, path string) error {

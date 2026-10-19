@@ -93,6 +93,65 @@ func TestConcurrentLaunchUsesSingleDaemon(t *testing.T) {
 	require.Equal(t, 1, strings.Count(string(data), `event="starting"`))
 }
 
+func TestEnsureRetriesSettledLaunchWithoutRepeatingPreparation(t *testing.T) {
+	client := fixtureClient(t, "settled-launch")
+	t.Cleanup(func() { stopProcessFixture(t, client) })
+	executable, err := exec.LookPath("sh")
+	require.NoError(t, err)
+	fixture, err := os.Executable()
+	require.NoError(t, err)
+	marker := filepath.Join(t.TempDir(), "first-attempt")
+	prepared := 0
+
+	_, err = Ensure(t.Context(), client.server, executable, func(context.Context) ([]string, error) {
+		prepared++
+		return []string{"-c", `if [ ! -f "$1" ]; then : > "$1"; exit 0; fi; exec "$2" __status-daemon "$3"`, "fixture", marker, fixture, client.server}, nil
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, prepared)
+	_, err = client.Ping(t.Context())
+	require.NoError(t, err)
+}
+
+func TestStartupWaitsForPrivateSocketPermissions(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(context.Context, *Client) error
+	}{
+		{"ensure", func(ctx context.Context, client *Client) error {
+			_, err := Ensure(ctx, client.server, "", func(context.Context) ([]string, error) {
+				return nil, errors.New("unexpected launch preparation")
+			})
+			return err
+		}},
+		{"readiness", func(ctx context.Context, client *Client) error {
+			return client.waitReady(ctx, nil)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := fixtureClient(t, "socket-permissions")
+			startFixture(t, client, liveBinding(client.server), staticSource(status.Snapshot{}))
+			before, err := client.Ping(t.Context())
+			require.NoError(t, err)
+			require.NoError(t, os.Chmod(client.path, 0700))
+			t.Cleanup(func() { require.NoError(t, os.Chmod(client.path, 0600)) })
+			ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+			defer cancel()
+
+			err = tc.run(ctx, client)
+
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.ErrorIs(t, err, errEndpointPermissions)
+			require.NoError(t, os.Chmod(client.path, 0600))
+			require.NoError(t, tc.run(t.Context(), client))
+			after, err := client.Ping(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, before, after)
+		})
+	}
+}
+
 func TestEnsurePreservesPreparationFailureWithoutLaunching(t *testing.T) {
 	c := fixtureClient(t, "preparation-failure")
 	failure := errors.New("fixture preparation failed")
