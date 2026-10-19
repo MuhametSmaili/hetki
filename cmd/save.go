@@ -15,7 +15,7 @@ Names select files in Hetki's configured workspace directory, never local files.
 Paths identify YAML files, not directories, and can create new files.
 Without --all, save updates the current session and retains other saved sessions.
 With --all, save replaces the file's session set with all live sessions.`,
-	Example:           "  hetki save -n work\n  hetki save -p ./.hetki.yaml --all",
+	Example:           "  # Replace the example name or path with your own.\n  hetki save -n your_workspace\n  hetki save -p ./path/to/your_workspace.yaml --all",
 	Args:              workspaceArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE:              runSave,

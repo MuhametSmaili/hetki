@@ -43,7 +43,7 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 	}
 	outputPath, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
 	if err != nil {
-		return "", appshared.WithHint(err, "Use hetki save -n work or hetki save -p ./work.yaml.")
+		return "", appshared.WithHint(err, "Use hetki save -n your_workspace or hetki save -p ./path/to/your_workspace.yaml. Replace the example name or path with your own.")
 	}
 
 	if s.validateLayout == nil {

@@ -53,10 +53,12 @@ Other mise selections require an explicit switch to `main` through mise first. U
 
 ## Quick start
 
+Replace `your_workspace` and `./path/to/your_workspace.yaml` with your workspace name and YAML file path.
+
 ```bash
-hetki                 # Open the picker
-hetki save -n work    # Save the current session from inside tmux
-hetki start -n work   # Start or reconcile the saved workspace
+hetki                            # Open the picker
+hetki save -n your_workspace     # Save the current session from inside tmux
+hetki start -n your_workspace    # Start or reconcile the saved workspace
 ```
 
 Both `start` and `save` require exactly one selector:
@@ -65,9 +67,9 @@ Both `start` and `save` require exactly one selector:
 - `--path` (`-p`) selects an explicit `.yaml` or `.yml` file, not a directory.
 
 ```bash
-hetki save -p ./work.yaml --all
-hetki start -p ./work.yaml --dry-run
-hetki start -p ./work.yaml
+hetki save -p ./path/to/your_workspace.yaml --all
+hetki start -p ./path/to/your_workspace.yaml --dry-run
+hetki start -p ./path/to/your_workspace.yaml
 ```
 
 A workspace name selects a file, not session ownership. Session names come from YAML. Hetki does not automatically discover a local workspace.
@@ -127,8 +129,10 @@ Upstream tmux 3.4 can crash when deleting zoomed windows. Use a patched tmux ver
 
 ### Upgrading from v0.3.0
 
-- Replace `hetki start work` with `hetki start -n work`.
-- Replace local discovery and `hetki save .` with an explicit file selector, such as `-p ./.hetki.yaml`.
+Replace the example workspace name and YAML file path with your own.
+
+- Replace `hetki start your_workspace` with `hetki start -n your_workspace`.
+- Replace local discovery and `hetki save .` with an explicit file selector, such as `-p ./path/to/your_workspace.yaml`.
 - Use the picker instead of the removed `hetki switch` command.
 - Remove `update --source` and `--pre`. `--head` selects unreleased main code, not a stable source release.
 - Use the Go module path `github.com/MuhametSmaili/hetki`.

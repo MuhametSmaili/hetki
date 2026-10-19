@@ -32,7 +32,7 @@ var rootCmd = &cobra.Command{
 Run hetki in a terminal to open the interactive picker.
 Use start or save with exactly one workspace selector: --name or --path.
 Workspaces use strict YAML. A workspace name selects a file, not session ownership.`,
-	Example: "  hetki\n  hetki start -n work\n  hetki save -p ./work.yaml",
+	Example: "  # Replace the example name or path with your own.\n  hetki\n  hetki start -n your_workspace\n  hetki save -p ./path/to/your_workspace.yaml",
 	Version: Version,
 }
 

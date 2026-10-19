@@ -80,5 +80,8 @@ func TestRootHelpDescribesSupportedFeatures(t *testing.T) {
 	require.Contains(t, output.String(), "tmux")
 	require.Contains(t, output.String(), "interactive picker")
 	require.Contains(t, output.String(), "--name or --path")
+	require.Contains(t, output.String(), "hetki start -n your_workspace")
+	require.Contains(t, output.String(), "hetki save -p ./path/to/your_workspace.yaml")
+	require.Contains(t, output.String(), "Replace the example name or path with your own.")
 	require.NotContains(t, output.String(), "Templates")
 }

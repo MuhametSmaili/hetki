@@ -12,7 +12,7 @@ func workspaceArgs(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	return appshared.WithHint(fmt.Errorf("%s does not accept positional arguments", cmd.Name()),
-		fmt.Sprintf("Use hetki %s -n work or hetki %s -p ./work.yaml.", cmd.Name(), cmd.Name()))
+		fmt.Sprintf("Use hetki %s -n your_workspace or hetki %s -p ./path/to/your_workspace.yaml. Replace the example name or path with your own.", cmd.Name(), cmd.Name()))
 }
 
 func selectedWorkspaceFlag(cmd *cobra.Command, name, value string) *string {

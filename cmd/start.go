@@ -21,7 +21,7 @@ Names select files in Hetki's configured workspace directory, never local files.
 Session names come from YAML. Normal start adds missing resources.
 Force also replaces mismatched windows and removes extra windows inside declared
 sessions. It can terminate their processes, but preserves unrelated sessions.`,
-	Example:           "  hetki start -n work\n  hetki start -p ./work.yaml --dry-run",
+	Example:           "  # Replace the example name or path with your own.\n  hetki start -n your_workspace\n  hetki start -p ./path/to/your_workspace.yaml --dry-run",
 	Args:              workspaceArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE:              runStart,

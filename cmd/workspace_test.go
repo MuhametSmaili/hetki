@@ -3,10 +3,12 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	appshared "github.com/MuhametSmaili/hetki/internal/app"
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/stretchr/testify/require"
 )
@@ -36,6 +38,7 @@ func TestWorkspaceCommandsRejectInvalidSelectorsBeforeDetection(t *testing.T) {
 				err := executeWorkspaceCommand(t, append([]string{command}, test.args...)...)
 
 				require.ErrorContains(t, err, test.want)
+				require.Equal(t, fmt.Sprintf("Use hetki %s -n your_workspace or hetki %s -p ./path/to/your_workspace.yaml. Replace the example name or path with your own.", command, command), appshared.ErrorHint(err))
 			})
 		}
 	}

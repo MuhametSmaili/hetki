@@ -53,7 +53,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 
 	path, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
 	if err != nil {
-		return appshared.WithHint(err, "Use hetki start -n work or hetki start -p ./work.yaml.")
+		return appshared.WithHint(err, "Use hetki start -n your_workspace or hetki start -p ./path/to/your_workspace.yaml. Replace the example name or path with your own.")
 	}
 
 	workspace, workspacePath, err := s.loadWorkspace(path)
