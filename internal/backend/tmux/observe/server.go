@@ -58,8 +58,8 @@ type Runner interface {
 	RunLimited(context.Context, int, ...string) (string, error)
 }
 
-// ResolveServer checks the selected server's metadata and native birth before
-// and after discovery. The runner must honor cancellation and its output limit.
+// ResolveServer queries tmux once, then reads the server's start time from the OS.
+// The runner must stop on cancellation and obey its output limit.
 func ResolveServer(ctx context.Context, runner Runner) (Server, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -67,36 +67,26 @@ func ResolveServer(ctx context.Context, runner Runner) (Server, error) {
 	return resolveServer(ctx, runner, readProcessBirth)
 }
 
+// The OS read occurs a few milliseconds after the tmux query. If the server
+// stops and the OS gives its PID to a new process in that time, the result
+// identifies the wrong process. Later tmux exchanges check the PID and start
+// time again and reject it. Status is then unavailable, but never wrong.
 func resolveServer(ctx context.Context, runner Runner, birth func(context.Context, int) (string, error)) (Server, error) {
-	before, err := queryServer(ctx, runner)
+	server, err := queryServer(ctx, runner)
 	if err != nil {
 		return Server{}, err
 	}
 
-	before.Birth, err = birth(ctx, before.PID)
+	server.Birth, err = birth(ctx, server.PID)
 	if err != nil {
 		return Server{}, fmt.Errorf("read tmux server birth: %w", err)
 	}
 
-	after, err := queryServer(ctx, runner)
-	if err != nil {
+	if err := server.validateDescriptor(); err != nil {
 		return Server{}, err
 	}
 
-	after.Birth, err = birth(ctx, after.PID)
-	if err != nil {
-		return Server{}, fmt.Errorf("recheck tmux server birth: %w", err)
-	}
-
-	if before != after {
-		return Server{}, ErrServerChanged
-	}
-
-	if err := after.validateDescriptor(); err != nil {
-		return Server{}, err
-	}
-
-	return after, ctx.Err()
+	return server, ctx.Err()
 }
 
 func queryServer(ctx context.Context, runner Runner) (Server, error) {

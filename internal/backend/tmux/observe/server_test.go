@@ -16,56 +16,24 @@ func (run queryRunner) RunLimited(ctx context.Context, limit int, args ...string
 	return run(ctx, limit, args...)
 }
 
-func TestServerDiscoveryRejectsIncarnationChanges(t *testing.T) {
-	cases := []struct {
-		name   string
-		rows   [2]string
-		births [2]string
-		want   error
-	}{
-		{
-			name:   "stable escaped socket",
-			rows:   [2]string{"/tmp/a\\|b\\ c.sock|42|123|3.8\n", "/tmp/a\\|b\\ c.sock|42|123|3.8\n"},
-			births: [2]string{"birth", "birth"},
-		},
-		{
-			name:   "reused PID",
-			rows:   [2]string{"/tmp/sock|42|123|3.8\n", "/tmp/sock|42|123|3.8\n"},
-			births: [2]string{"before", "after"},
-			want:   ErrServerChanged,
-		},
-		{
-			name:   "replaced socket server",
-			rows:   [2]string{"/tmp/sock|42|123|3.8\n", "/tmp/sock|43|124|3.8\n"},
-			births: [2]string{"birth", "birth"},
-			want:   ErrServerChanged,
-		},
+func TestServerDiscoveryQueriesOnceThenReadsBirth(t *testing.T) {
+	queries, reads := 0, 0
+	runner := queryRunner(func(context.Context, int, ...string) (string, error) {
+		queries++
+		return "/tmp/a\\|b\\ c.sock|42|123|3.8\n", nil
+	})
+	birth := func(_ context.Context, pid int) (string, error) {
+		reads++
+		require.Equal(t, 42, pid)
+		return "birth", nil
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			queries, reads := 0, 0
-			runner := queryRunner(func(context.Context, int, ...string) (string, error) {
-				row := tc.rows[queries]
-				queries++
-				return row, nil
-			})
-			birth := func(context.Context, int) (string, error) {
-				value := tc.births[reads]
-				reads++
-				return value, nil
-			}
 
-			server, err := resolveServer(t.Context(), runner, birth)
+	server, err := resolveServer(t.Context(), runner, birth)
 
-			require.ErrorIs(t, err, tc.want)
-			require.Equal(t, 2, queries)
-			require.Equal(t, 2, reads)
-			if tc.want == nil {
-				require.Equal(t, "/tmp/a|b c.sock", server.Socket)
-				require.Equal(t, "birth", server.Birth)
-			}
-		})
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, queries)
+	require.Equal(t, 1, reads)
+	require.Equal(t, Server{Socket: "/tmp/a|b c.sock", PID: 42, Started: 123, Birth: "birth", Version: "3.8"}, server)
 }
 
 func TestServerIdentityIgnoresSocketAliases(t *testing.T) {

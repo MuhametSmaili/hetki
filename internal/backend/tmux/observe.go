@@ -6,7 +6,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 )
 
-// StatusServer resolves the selected backend server with before/after checks.
+// StatusServer finds the selected tmux server and its OS start time.
 func (b *TmuxBackend) StatusServer(ctx context.Context) (observe.Server, error) {
 	return observe.ResolveServer(ctx, b.client)
 }

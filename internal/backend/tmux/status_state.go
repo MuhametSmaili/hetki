@@ -10,9 +10,8 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 )
 
-// QueryStatusState collects rows inside native server identity validation. The
-// second metadata query also carries the row query, avoiding a separate discovery
-// pass on each side of loading the picker.
+// QueryStatusState gets the picker rows and the server details in one tmux
+// request. Thus both describe the same server.
 func (b *TmuxBackend) QueryStatusState(ctx context.Context) (backend.StateResult, observe.Server, error) {
 	query := LoadStateQuery{IncludeClients: isInsideTmux(), IncludeProgramInfo: true}
 	runner := stateQueryRunner{client: b.client, query: query}
@@ -28,22 +27,16 @@ func (b *TmuxBackend) QueryStatusState(ctx context.Context) (backend.StateResult
 	return state, server, err
 }
 
-// ResolveServer samples metadata, reads native birth, then repeats both checks.
-// Place row collection in its second request so native birth brackets the rows.
-// The runner belongs to one synchronous ResolveServer call and retains no rows
-// after QueryStatusState returns.
+// stateQueryRunner adds the picker row query to the request from ResolveServer.
+// It keeps the rows and gives only the server details back to ResolveServer.
+// Use it for one ResolveServer call only.
 type stateQueryRunner struct {
 	client Client
 	query  LoadStateQuery
-	primed bool
 	rows   string
 }
 
 func (r *stateQueryRunner) RunLimited(ctx context.Context, limit int, args ...string) (string, error) {
-	if !r.primed {
-		r.primed = true
-		return r.client.RunLimited(ctx, limit, args...)
-	}
 	combined := append(slices.Clone(args), ";")
 	combined = append(combined, r.query.Args()...)
 	// Large picker inventories remain independent of the daemon's pane ceiling.
