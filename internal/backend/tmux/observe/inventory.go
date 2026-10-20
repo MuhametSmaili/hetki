@@ -101,14 +101,13 @@ func NewSampler(server Server, runner Runner) (*Sampler, error) {
 	return &Sampler{server: server, runner: runner, process: readProcess}, nil
 }
 
-// Inventory samples all pane occurrences once, bracketed by native server checks.
-// Unreadable native facts remain explicit per-pane problems; malformed or
-// incomplete queries fail the whole acquisition. No previously sampled facts are
-// reused.
+// Inventory reads all panes once. An OS check of the server occurs before and
+// after the read. If the OS cannot read a pane process, that pane gets a problem.
+// If the tmux reply is bad or incomplete, the full inventory fails.
 //
-// tmux facts and native process facts are read moments apart, so a handoff in
-// that gap can pair them inconsistently for one acquisition. The next inventory
-// corrects it, and Capture rechecks facts before attributing any screen text.
+// The tmux read and the OS reads occur a few milliseconds apart. If a program
+// starts or stops in that time, one pane can have mixed facts. The next
+// inventory corrects them. Capture checks the facts again before it uses screen text.
 func (s *Sampler) Inventory(ctx context.Context, revision uint64) (Inventory, error) {
 	if revision == 0 {
 		return Inventory{}, fmt.Errorf("inventory requires a nonzero revision")
