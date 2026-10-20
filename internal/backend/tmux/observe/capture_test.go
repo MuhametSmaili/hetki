@@ -58,7 +58,7 @@ func TestCaptureBatchesMixedTargetsAndRetainsRevision(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, results, 2)
-	require.Equal(t, 1, queries)
+	require.Zero(t, queries, "the capture request also reads the facts")
 	require.Equal(t, 1, captures)
 	require.Equal(t, "%1 content\n%1 content\n", results[0].Text)
 	require.Equal(t, "%2 content\n", results[1].Text)
@@ -69,7 +69,7 @@ func TestCaptureBatchesMixedTargetsAndRetainsRevision(t *testing.T) {
 	}
 }
 
-func TestCaptureRejectsChangesBeforeAndAfterAcquisition(t *testing.T) {
+func TestCaptureRejectsChangedPaneFacts(t *testing.T) {
 	cases := []struct {
 		name string
 		old  string
@@ -82,49 +82,31 @@ func TestCaptureRejectsChangesBeforeAndAfterAcquisition(t *testing.T) {
 		{"alternate screen", "|30|0\n", "|30|1\n"},
 	}
 	for _, tc := range cases {
-		for _, stage := range []string{"before", "after"} {
-			t.Run(tc.name+"/"+stage, func(t *testing.T) {
-				testCaptureFactChange(t, tc.old, tc.new, stage)
+		t.Run(tc.name, func(t *testing.T) {
+			changed := false
+			s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+				row := testPaneRow
+				if changed {
+					row = strings.Replace(row, tc.old, tc.new, 1)
+				}
+				if slices.Contains(args, "capture-pane") {
+					return captureFixtureReply(t, args, row), nil
+				}
+				return testInventoryOutput(row), nil
 			})
-		}
-	}
-}
+			inventory, err := s.Inventory(t.Context(), 1)
+			require.NoError(t, err)
+			target, err := inventory.Target("%1", Region{})
+			require.NoError(t, err)
+			changed = true
 
-func testCaptureFactChange(t *testing.T, old, replacement, stage string) {
-	t.Helper()
-	captures := 0
-	change := false
-	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
-		if slices.Contains(args, "capture-pane") {
-			captures++
-			row := testPaneRow
-			if change && stage == "after" {
-				row = strings.Replace(row, old, replacement, 1)
-			}
-			return captureFixtureReply(t, args, row), nil
-		}
-		row := testPaneRow
-		if change && stage == "before" {
-			row = strings.Replace(row, old, replacement, 1)
-		}
-		return testInventoryOutput(row), nil
-	})
-	inventory, err := s.Inventory(t.Context(), 1)
-	require.NoError(t, err)
-	target, err := inventory.Target("%1", Region{})
-	require.NoError(t, err)
-	change = true
+			results, err := s.Capture(t.Context(), []CaptureTarget{target})
 
-	results, err := s.Capture(t.Context(), []CaptureTarget{target})
-
-	require.NoError(t, err)
-	require.Len(t, results, 1)
-	require.ErrorIs(t, results[0].Err, ErrChanged)
-	require.Empty(t, results[0].Text)
-	if stage == "before" {
-		require.Zero(t, captures)
-	} else {
-		require.Equal(t, 1, captures)
+			require.NoError(t, err)
+			require.Len(t, results, 1)
+			require.ErrorIs(t, results[0].Err, ErrChanged)
+			require.Empty(t, results[0].Text)
+		})
 	}
 }
 
@@ -161,17 +143,16 @@ func TestCapturePreservesOtherPaneWhenNativeOwnerChanges(t *testing.T) {
 	require.Equal(t, "%2 content\n", results[1].Text)
 }
 
-func TestCaptureOmitsRejectedPaneFromCombinedBatch(t *testing.T) {
+func TestCaptureKeepsOtherPanesWhenOneCommandChanges(t *testing.T) {
 	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
 	changed := false
 	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
-		if slices.Contains(args, "capture-pane") {
-			require.NotContains(t, args, "%1")
-			return captureFixtureReply(t, args, peer), nil
-		}
 		first := testPaneRow
 		if changed {
 			first = strings.Replace(first, "|cat|", "|replacement|", 1)
+		}
+		if slices.Contains(args, "capture-pane") {
+			return captureFixtureReply(t, args, first+peer), nil
 		}
 		return testInventoryOutput(first + peer), nil
 	})

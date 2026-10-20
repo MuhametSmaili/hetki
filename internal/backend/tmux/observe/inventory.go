@@ -117,7 +117,7 @@ func (s *Sampler) Inventory(ctx context.Context, revision uint64) (Inventory, er
 	defer cancel()
 
 	started := time.Now()
-	inventory, err := s.sample(ctx, nil)
+	inventory, err := s.sample(ctx)
 	if err != nil {
 		return Inventory{}, err
 	}
@@ -127,13 +127,13 @@ func (s *Sampler) Inventory(ctx context.Context, revision uint64) (Inventory, er
 	return inventory, ctx.Err()
 }
 
-func (s *Sampler) sample(ctx context.Context, ids []string) (Inventory, error) {
+func (s *Sampler) sample(ctx context.Context) (Inventory, error) {
 	processes := processSample{read: s.process, cache: make(map[int]processResult)}
 	if err := s.validateProcess(ctx, &processes); err != nil {
 		return Inventory{}, err
 	}
 
-	inventory, err := s.queryInventory(ctx, ids)
+	inventory, err := s.queryInventory(ctx)
 	if err != nil {
 		return Inventory{}, err
 	}

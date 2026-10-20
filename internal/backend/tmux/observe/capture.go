@@ -106,11 +106,11 @@ type Screen struct {
 	Err       error
 }
 
-// Capture batches mixed-application targets using at most two CLI requests:
-// facts before, then screens and facts after together. Native process checks
-// still bracket capture. It retains no text after returning. Failures
-// of the batch framing/query discard the entire batch rather than return partial
-// text. Per-pane scope changes are returned in Screen.Err.
+// Capture reads the screens of mixed-application targets in one tmux request.
+// The same request reads the pane facts after the capture, and OS process
+// checks follow it. A screen is kept only when those facts still match the
+// target's inventory. It retains no text after it returns. A failure of the
+// whole request discards every screen. Per-pane changes are in Screen.Err.
 func (s *Sampler) Capture(ctx context.Context, targets []CaptureTarget) ([]Screen, error) {
 	ids, err := s.captureIDs(targets)
 	if err != nil {
@@ -122,20 +122,16 @@ func (s *Sampler) Capture(ctx context.Context, targets []CaptureTarget) ([]Scree
 
 	ctx, cancel := context.WithTimeout(ctx, acquisitionBudget)
 	defer cancel()
-	before, err := s.sample(ctx, ids)
-	if err != nil {
-		return nil, err
-	}
-
-	results, eligible := prepareCaptures(targets, before)
-	if len(eligible) == 0 {
-		return results, ctx.Err()
-	}
 
 	started := time.Now()
-	texts, after, err := s.captureBatch(ctx, eligible)
+	texts, after, err := s.captureBatch(ctx, targets)
 	if err != nil {
 		return nil, err
+	}
+
+	results := make([]Screen, len(targets))
+	for n, target := range targets {
+		results[n] = Screen{Target: target}
 	}
 	finishCaptures(results, texts, after, started)
 	return results, ctx.Err()
@@ -161,18 +157,6 @@ func (s *Sampler) captureIDs(targets []CaptureTarget) ([]string, error) {
 	return ids, nil
 }
 
-func prepareCaptures(targets []CaptureTarget, before Inventory) ([]Screen, []CaptureTarget) {
-	results := make([]Screen, len(targets))
-	eligible := make([]CaptureTarget, 0, len(targets))
-	for n, target := range targets {
-		results[n] = Screen{Target: target, Err: target.check(before)}
-		if results[n].Err == nil {
-			eligible = append(eligible, target)
-		}
-	}
-	return results, eligible
-}
-
 func (t CaptureTarget) check(i Inventory) error {
 	if i.problems[t.pane.ID] != nil || i.panes[t.pane.ID] != t.pane {
 		return errors.Join(ErrChanged, i.problems[t.pane.ID])
@@ -183,9 +167,6 @@ func (t CaptureTarget) check(i Inventory) error {
 func finishCaptures(results []Screen, texts map[string]string, after Inventory, started time.Time) {
 	for n := range results {
 		result := &results[n]
-		if result.Err != nil {
-			continue
-		}
 		result.Err = result.Target.check(after)
 		if result.Err == nil {
 			result.Text = texts[result.Target.pane.ID]

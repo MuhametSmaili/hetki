@@ -11,20 +11,14 @@ import (
 
 const inventoryFormat = "#{session_id}|#{window_id}|#{pane_id}|#{pane_pid}|#{pane_dead}|#{q:pane_tty}|#{q:pane_current_command}|#{pane_width}|#{pane_height}|#{alternate_on}"
 
-func (s *Sampler) queryInventory(ctx context.Context, ids []string) (Inventory, error) {
+func (s *Sampler) queryInventory(ctx context.Context) (Inventory, error) {
 	args := []string{"display-message", "-p", "#{pid}|#{start_time}|#{version}"}
-	if ids == nil {
-		args = appendCommand(args, "list-panes", "-a", "-F", inventoryFormat)
-	} else {
-		for _, id := range ids {
-			args = appendCommand(args, "display-message", "-p", "-t", id, inventoryFormat)
-		}
-	}
+	args = appendCommand(args, "list-panes", "-a", "-F", inventoryFormat)
 	out, err := s.run(ctx, maxInventoryBytes, args...)
 	if err != nil {
 		return Inventory{}, fmt.Errorf("query tmux inventory: %w", err)
 	}
-	return s.parseInventory(out, ids)
+	return s.parseInventory(out, nil)
 }
 
 func (s *Sampler) parseInventory(out string, ids []string) (Inventory, error) {
