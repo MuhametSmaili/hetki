@@ -67,8 +67,8 @@ func TestInventorySharesNativeReadsAndLinkedPaneFacts(t *testing.T) {
 	require.Len(t, locations, 2)
 	require.Equal(t, 100, pane.Root.PID)
 	require.Equal(t, 200, pane.Foreground.PID)
-	require.Equal(t, 2, queries)
-	require.Equal(t, map[int]int{42: 4, 100: 2, 200: 2}, reads)
+	require.Equal(t, 1, queries)
+	require.Equal(t, map[int]int{42: 2, 100: 1, 200: 1}, reads)
 	locations[0].Session = "$99"
 	pane.Command = "mutated"
 	stored, _ := inventory.Lookup("%1")
@@ -105,46 +105,24 @@ func TestInventoryPreservesUnavailableVersusDead(t *testing.T) {
 	require.Error(t, deadErr)
 }
 
-func TestInventoryRejectsNativeLifetimeChanges(t *testing.T) {
-	cases := []struct {
-		name string
-		pid  int
-		want error
-	}{
-		{"server PID reuse", 42, ErrServerChanged},
-		{"root PID reuse", 100, ErrChanged},
-		{"foreground PID reuse", 200, ErrChanged},
+func TestInventoryRejectsServerReplacedDuringSample(t *testing.T) {
+	queried := false
+	s := testSampler(t, func(context.Context, int, ...string) (string, error) {
+		queried = true
+		return testInventoryOutput(testPaneRow), nil
+	})
+	s.process = func(ctx context.Context, pid int) (processInfo, error) {
+		info, err := fixtureProcess(ctx, pid)
+		if queried && pid == 42 {
+			info.Birth = "replacement"
+		}
+		return info, err
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			queries := 0
-			s := testSampler(t, func(context.Context, int, ...string) (string, error) {
-				queries++
-				return testInventoryOutput(testPaneRow), nil
-			})
-			s.process = func(ctx context.Context, pid int) (processInfo, error) {
-				info, err := fixtureProcess(ctx, pid)
-				if pid == 100 {
-					info.foreground = 200
-				}
-				if queries >= 2 && pid == tc.pid {
-					info.Birth = "replacement"
-				}
-				return info, err
-			}
 
-			inventory, err := s.Inventory(t.Context(), 1)
+	inventory, err := s.Inventory(t.Context(), 1)
 
-			if tc.pid == 42 {
-				require.ErrorIs(t, err, tc.want)
-			} else {
-				require.NoError(t, err)
-				require.ErrorIs(t, inventory.Problem("%1"), tc.want)
-				pane, _ := inventory.Lookup("%1")
-				require.Empty(t, pane.Foreground.Identity())
-			}
-		})
-	}
+	require.ErrorIs(t, err, ErrServerChanged)
+	require.Zero(t, inventory.Revision())
 }
 
 func TestInventoryRejectsMalformedOrIncompleteQueries(t *testing.T) {

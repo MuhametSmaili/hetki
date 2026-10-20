@@ -101,9 +101,14 @@ func NewSampler(server Server, runner Runner) (*Sampler, error) {
 	return &Sampler{server: server, runner: runner, process: readProcess}, nil
 }
 
-// Inventory samples all pane occurrences twice. Unstable or unreadable native
-// facts remain explicit per-pane problems; malformed or incomplete queries fail
-// the whole acquisition. No previously sampled facts are reused.
+// Inventory samples all pane occurrences once, bracketed by native server checks.
+// Unreadable native facts remain explicit per-pane problems; malformed or
+// incomplete queries fail the whole acquisition. No previously sampled facts are
+// reused.
+//
+// tmux facts and native process facts are read moments apart, so a handoff in
+// that gap can pair them inconsistently for one acquisition. The next inventory
+// corrects it, and Capture rechecks facts before attributing any screen text.
 func (s *Sampler) Inventory(ctx context.Context, revision uint64) (Inventory, error) {
 	if revision == 0 {
 		return Inventory{}, fmt.Errorf("inventory requires a nonzero revision")
@@ -111,31 +116,16 @@ func (s *Sampler) Inventory(ctx context.Context, revision uint64) (Inventory, er
 
 	ctx, cancel := context.WithTimeout(ctx, acquisitionBudget)
 	defer cancel()
+
 	started := time.Now()
-	before, err := s.sample(ctx, nil)
+	inventory, err := s.sample(ctx, nil)
 	if err != nil {
 		return Inventory{}, err
 	}
 
-	after, err := s.sample(ctx, nil)
-	if err != nil {
-		return Inventory{}, err
-	}
-
-	for id, pane := range after.panes {
-		previous, found := before.panes[id]
-		if !found || previous != pane || before.problems[id] != nil {
-			after.problems[id] = errors.Join(ErrChanged, before.problems[id], after.problems[id])
-			if previous.Root != pane.Root {
-				pane.Root = Process{}
-			}
-			pane.Foreground = Process{}
-			after.panes[id] = pane
-		}
-	}
-	after.revision = revision
-	after.started = started
-	return after, ctx.Err()
+	inventory.revision = revision
+	inventory.started = started
+	return inventory, ctx.Err()
 }
 
 func (s *Sampler) sample(ctx context.Context, ids []string) (Inventory, error) {
