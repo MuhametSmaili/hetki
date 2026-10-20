@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 const livenessTimeout = 2 * time.Second
@@ -24,10 +22,14 @@ type Binding struct {
 	Alive func(context.Context) bool
 }
 
-// Source reads complete cached snapshots. Close joins its workers after the
-// daemon cancels the context passed to start; concurrent reads must honor cancellation.
+// Source supplies the cached view that the daemon pushes to subscribers.
+// Changes returns a channel that closes at the next change after the call. Get
+// the channel before ReadView, so that no change is lost. ReadView must stop on
+// cancellation and must not do I/O. Close joins the source workers after the
+// daemon cancels the context passed to start.
 type Source interface {
-	ReadStatus(context.Context) (status.Snapshot, error)
+	Changes() <-chan struct{}
+	ReadView(context.Context) (View, error)
 	Close() error
 }
 
@@ -123,11 +125,11 @@ func serveLocked(ctx context.Context, path, epoch string, binding Binding, start
 	defer cleanup()
 
 	d := daemon{
-		binding:  binding,
-		source:   source,
-		cancel:   cancel,
-		logs:     logs,
-		watchers: make(chan struct{}, maxWatchers),
+		binding:     binding,
+		source:      source,
+		cancel:      cancel,
+		logs:        logs,
+		subscribers: make(chan struct{}, maxSubscribers),
 		info: Info{
 			PID:   os.Getpid(),
 			Epoch: epoch,

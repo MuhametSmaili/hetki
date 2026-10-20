@@ -23,74 +23,48 @@ func (d *daemon) handle(parent context.Context, conn *net.UnixConn) {
 		return
 	}
 
-	timeout := requestTimeout
-	if req.Action == "watch" {
-		timeout = WatchTimeout
+	switch req.Action {
+	case "subscribe":
+		d.subscribe(parent, conn)
+	case "ping", "stop":
+		d.control(parent, conn, req)
+	default:
+		d.logs.repeatedFailure("request_rejected", fmt.Errorf("unknown action"))
 	}
+}
 
-	ctx, cancel := context.WithTimeout(parent, timeout)
+func (d *daemon) control(parent context.Context, conn *net.UnixConn, req request) {
+	ctx, cancel := context.WithTimeout(parent, requestTimeout)
 	defer cancel()
 
 	deadline, _ := ctx.Deadline()
 	_ = conn.SetDeadline(deadline)
-	stop := context.AfterFunc(ctx, func() {
-		_ = conn.Close()
-	})
-	defer stop()
-
-	disconnected := make(chan struct{})
-	go func() {
-		defer close(disconnected)
-
-		var extra [1]byte
-		_, _ = conn.Read(extra[:])
-		cancel()
-	}()
-	defer func() {
-		_ = conn.Close()
-		<-disconnected
-	}()
 
 	if !d.checkLifetime(ctx) {
 		return
 	}
 
-	row, ok := d.respond(ctx, req)
-	if !ok || ctx.Err() != nil {
-		return
+	if err := d.publish(ctx, conn, req, d.identity()); err != nil && ctx.Err() == nil {
+		d.logs.repeatedFailure("reply_write_failed", err)
 	}
-
-	if !d.checkLifetime(ctx) {
-		return
-	}
-
-	if err := d.publish(ctx, conn, req, row); err != nil {
-		if ctx.Err() == nil {
-			d.logs.repeatedFailure("reply_write_failed", err)
-		}
-		return
-	}
-
 }
 
 // Serialize readiness publication with stop acceptance, not with source reads.
 // A successful Ping may precede a stop, but cannot be published after acceptance.
 // Accepted shutdown survives a lost acknowledgment.
 func (d *daemon) publish(ctx context.Context, conn *net.UnixConn, req request, row reply) error {
-	if req.Action == "ping" || req.Action == "stop" {
-		d.lifecycle.Lock()
-		defer d.lifecycle.Unlock()
+	d.lifecycle.Lock()
+	defer d.lifecycle.Unlock()
 
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if req.Action == "stop" {
-			if req.ExpectedEpoch != d.info.Epoch {
-				row.Error = "instance_changed"
-			} else {
-				d.logs.info("stop_requested")
-				defer d.cancel()
-			}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if req.Action == "stop" {
+		if req.ExpectedEpoch != d.info.Epoch {
+			row.Error = "instance_changed"
+		} else {
+			d.logs.info("stop_requested")
+			defer d.cancel()
 		}
 	}
 	return writeFrame(conn, maxReplyBytes, row)
@@ -108,11 +82,6 @@ func (d *daemon) readRequest(ctx context.Context, conn *net.UnixConn) (request, 
 
 	if req.Version != protocolVersion || req.Server != d.binding.Server {
 		d.logs.repeatedFailure("request_rejected", fmt.Errorf("version or server identity mismatch"))
-		return request{}, false
-	}
-
-	if req.After != nil && (req.Action != "watch" || len(req.After.Epoch) > maxIdentityBytes) {
-		d.logs.repeatedFailure("request_rejected", fmt.Errorf("invalid watch cursor"))
 		return request{}, false
 	}
 
@@ -138,50 +107,11 @@ func (d *daemon) checkLifetime(ctx context.Context) bool {
 	return false
 }
 
-func (d *daemon) respond(ctx context.Context, req request) (reply, bool) {
-	row := reply{
+func (d *daemon) identity() reply {
+	return reply{
 		Version: protocolVersion,
 		Server:  d.binding.Server,
 		PID:     d.info.PID,
 		Epoch:   d.info.Epoch,
 	}
-
-	switch req.Action {
-	case "capabilities":
-		_, row.Watch = d.source.(viewWatcher)
-	case "ping", "stop":
-	case "view", "watch":
-		if err := d.requestView(ctx, req, &row); err != nil {
-			if ctx.Err() == nil {
-				d.logs.repeatedFailure("source_read_failed", err)
-			}
-			row.Entries, row.Locations, row.Error = nil, nil, "unavailable"
-		}
-	case "snapshot":
-		snapshot, err := d.source.ReadStatus(ctx)
-		if err == nil {
-			row.Entries, err = snapshotEntries(d.binding.Server, snapshot)
-		}
-
-		if err != nil {
-			if ctx.Err() == nil {
-				d.logs.repeatedFailure("source_read_failed", err)
-			}
-			row.Entries, row.Error = nil, "unavailable"
-		}
-
-	default:
-		d.logs.repeatedFailure("request_rejected", fmt.Errorf("unknown action"))
-		return reply{}, false
-	}
-
-	return row, true
-}
-
-func (d *daemon) requestView(ctx context.Context, req request, row *reply) error {
-	if req.Action == "watch" {
-		return d.readWatchedView(ctx, req.After, row)
-	}
-
-	return d.readView(ctx, row)
 }

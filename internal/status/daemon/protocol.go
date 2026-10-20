@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	protocolVersion  = 1
+	protocolVersion  = 2
 	maxRequestBytes  = 4096
 	maxReplyBytes    = 1 << 20
 	maxIdentityBytes = 256
@@ -32,11 +32,10 @@ var (
 )
 
 type request struct {
-	Version       int     `json:"version"`
-	Server        string  `json:"server"`
-	Action        string  `json:"action"`
-	After         *Cursor `json:"after,omitempty"`
-	ExpectedEpoch string  `json:"expected_epoch,omitempty"`
+	Version       int    `json:"version"`
+	Server        string `json:"server"`
+	Action        string `json:"action"`
+	ExpectedEpoch string `json:"expected_epoch,omitempty"`
 }
 
 type reply struct {
@@ -47,8 +46,6 @@ type reply struct {
 	Entries   []entry    `json:"entries,omitempty"`
 	Locations []Location `json:"locations,omitempty"`
 	Error     string     `json:"error,omitempty"`
-	Revision  uint64     `json:"revision,omitempty"`
-	Watch     bool       `json:"watch,omitempty"`
 }
 
 type entry struct {

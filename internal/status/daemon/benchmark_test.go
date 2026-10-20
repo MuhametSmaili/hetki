@@ -27,7 +27,7 @@ func BenchmarkSnapshotTransport(b *testing.B) {
 			b.ReportAllocs()
 
 			for b.Loop() {
-				if _, err := c.ReadStatus(context.Background()); err != nil {
+				if _, err := readFirst(context.Background(), c); err != nil {
 					b.Fatal(err)
 				}
 			}

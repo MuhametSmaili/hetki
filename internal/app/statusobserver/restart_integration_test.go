@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
-	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	"github.com/stretchr/testify/require"
 )
@@ -20,8 +19,10 @@ type restartSource struct {
 	close func() error
 }
 
-func (s restartSource) ReadStatus(context.Context) (status.Snapshot, error) {
-	return status.Snapshot{}, nil
+func (s restartSource) Changes() <-chan struct{} { return nil }
+
+func (s restartSource) ReadView(context.Context) (daemon.View, error) {
+	return daemon.View{}, nil
 }
 
 func (s restartSource) Close() error { return s.close() }

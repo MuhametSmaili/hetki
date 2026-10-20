@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -75,43 +74,41 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	require.Equal(t, first, second)
 }
 
-type unwatchedStatusSource struct {
-	view  daemon.View
-	reads atomic.Int32
+// pickerStatusSource serves a fixed view and signals a change on notify.
+type pickerStatusSource struct {
+	mu          sync.Mutex
+	view        daemon.View
+	unavailable bool
+	changes     chan struct{}
 }
 
-func (s *unwatchedStatusSource) ReadStatus(context.Context) (status.Snapshot, error) {
-	return s.view.Values, nil
+func newPickerStatusSource(view daemon.View) *pickerStatusSource {
+	return &pickerStatusSource{view: view, changes: make(chan struct{})}
 }
 
-func (s *unwatchedStatusSource) ReadView(context.Context) (daemon.View, error) {
-	s.reads.Add(1)
+func (s *pickerStatusSource) Changes() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.changes
+}
+
+func (s *pickerStatusSource) ReadView(context.Context) (daemon.View, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.unavailable {
+		return daemon.View{}, daemon.ErrUnavailable
+	}
 	return s.view, nil
 }
 
-func (*unwatchedStatusSource) Close() error { return nil }
+func (*pickerStatusSource) Close() error { return nil }
 
-func TestNativePickerPollsUnwatchedViews(t *testing.T) {
-	b, client, _ := pickerDaemonFixture(t)
-	_, server, err := b.QueryStatusState(t.Context())
-	require.NoError(t, err)
-	source := &unwatchedStatusSource{view: blockedPickerView(t, server.Identity())}
-	servePickerSource(t, client, server.Identity(), source)
-	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
-	service := Service{Driver: adapter}
-	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		for range 2 {
-			update := options.Read(ctx, status.Snapshot{})
-			require.NoError(t, update.Err)
-			require.False(t, update.Watching, "a daemon without watches must keep the polling cadence")
-			require.Equal(t, status.Blocked, update.Bindings.StateAt(destinationItemID("$0", "@0", "%0"), update.Values, time.Now()))
-			acceptStatusUpdate(update)
-		}
-		return list.ItemID{}, nil
-	}
-
-	require.NoError(t, service.Run(t.Context()))
-	require.EqualValues(t, 2, source.reads.Load(), "accepted polling views must be read again")
+func (s *pickerStatusSource) setUnavailable(unavailable bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unavailable = unavailable
+	close(s.changes)
+	s.changes = make(chan struct{})
 }
 
 func blockedPickerView(t *testing.T, identity string) daemon.View {

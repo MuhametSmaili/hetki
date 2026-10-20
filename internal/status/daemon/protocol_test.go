@@ -81,8 +81,8 @@ func TestDaemonRejectsWrongVersionAndServer(t *testing.T) {
 	c := fixtureClient(t, "compatible")
 	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
 	for _, req := range []request{
-		{Version: protocolVersion + 1, Server: c.server, Action: "snapshot"},
-		{Version: protocolVersion, Server: "another-server", Action: "snapshot"},
+		{Version: protocolVersion + 1, Server: c.server, Action: "subscribe"},
+		{Version: protocolVersion, Server: "another-server", Action: "subscribe"},
 	} {
 		conn, err := net.Dial("unix", c.path)
 		require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestOutcomeSurvivesSocketTransport(t *testing.T) {
 	require.NoError(t, err)
 	startFixture(t, c, liveBinding(c.server), staticSource(snapshot))
 
-	got, err := c.ReadStatus(t.Context())
+	got, err := readFirst(t.Context(), c)
 
 	require.NoError(t, err)
 	for pane, value := range values {

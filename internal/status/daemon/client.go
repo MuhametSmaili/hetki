@@ -7,8 +7,6 @@ import (
 	"net"
 	"os"
 	"time"
-
-	"github.com/MuhametSmaili/hetki/internal/status"
 )
 
 // Binding precedes chmod. Startup can wait for this state, but must not dial it.
@@ -45,23 +43,7 @@ func (c *Client) callRequest(ctx context.Context, req request, timeout time.Dura
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if err := ctx.Err(); err != nil {
-		return reply{}, err
-	}
-
-	info, err := os.Lstat(c.path)
-	if err != nil {
-		return reply{}, err
-	}
-
-	if info.Mode()&os.ModeSocket == 0 || !ownedByCurrentUser(info) {
-		return reply{}, fmt.Errorf("unsafe status daemon endpoint")
-	}
-	if info.Mode().Perm() != 0600 {
-		return reply{}, errEndpointPermissions
-	}
-
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", c.path)
+	conn, err := c.dial(ctx)
 	if err != nil {
 		return reply{}, err
 	}
@@ -82,6 +64,27 @@ func (c *Client) callRequest(ctx context.Context, req request, timeout time.Dura
 	return result, err
 }
 
+// dial checks that the endpoint is a socket owned by this user before it connects.
+func (c *Client) dial(ctx context.Context) (net.Conn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	info, err := os.Lstat(c.path)
+	if err != nil {
+		return nil, err
+	}
+
+	if info.Mode()&os.ModeSocket == 0 || !ownedByCurrentUser(info) {
+		return nil, fmt.Errorf("unsafe status daemon endpoint")
+	}
+	if info.Mode().Perm() != 0600 {
+		return nil, errEndpointPermissions
+	}
+
+	return (&net.Dialer{}).DialContext(ctx, "unix", c.path)
+}
+
 func (c *Client) exchange(conn net.Conn, action string) (reply, error) {
 	return c.exchangeRequest(conn, request{Version: protocolVersion, Server: c.server, Action: action})
 }
@@ -91,6 +94,10 @@ func (c *Client) exchangeRequest(conn net.Conn, req request) (reply, error) {
 		return reply{}, err
 	}
 
+	return c.readReply(conn)
+}
+
+func (c *Client) readReply(conn net.Conn) (reply, error) {
 	var result reply
 	if err := readFrame(conn, maxReplyBytes, &result); err != nil {
 		return reply{}, err
@@ -118,13 +125,4 @@ func (c *Client) exchangeRequest(conn net.Conn, req request) (reply, error) {
 func (c *Client) Ping(ctx context.Context) (Info, error) {
 	result, err := c.call(ctx, "ping")
 	return Info{PID: result.PID, Epoch: result.Epoch}, err
-}
-
-func (c *Client) ReadStatus(ctx context.Context) (status.Snapshot, error) {
-	result, err := c.call(ctx, "snapshot")
-	if err != nil {
-		return status.Snapshot{}, err
-	}
-
-	return result.snapshot()
 }

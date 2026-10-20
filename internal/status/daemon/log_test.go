@@ -53,7 +53,7 @@ func TestRepeatedSourceFailuresProduceOneSafeBoundedRecord(t *testing.T) {
 
 	for i := range errs {
 		workers.Go(func() {
-			_, errs[i] = c.ReadStatus(context.Background())
+			_, errs[i] = readFirst(context.Background(), c)
 		})
 	}
 	workers.Wait()
@@ -165,7 +165,7 @@ func TestSourcePanicLeavesDiagnosticWithoutBeingSwallowed(t *testing.T) {
 		stopProcessFixture(t, c)
 	})
 
-	_, err = c.ReadStatus(context.Background())
+	_, err = readFirst(context.Background(), c)
 
 	require.Error(t, err)
 	require.Eventually(t, func() bool {

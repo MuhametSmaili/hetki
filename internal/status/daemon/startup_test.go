@@ -268,7 +268,7 @@ func TestCrashReconnectStartsFreshDaemon(t *testing.T) {
 
 	_, restartErr := Ensure(context.Background(), c.server, executable, fixtureArguments(c.server))
 	info, pingErr := c.Ping(context.Background())
-	snapshot, readErr := c.ReadStatus(context.Background())
+	snapshot, readErr := readFirst(context.Background(), c)
 	data, logErr := os.ReadFile(c.LogPath())
 
 	require.NoError(t, restartErr)

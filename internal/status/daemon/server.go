@@ -7,15 +7,20 @@ import (
 	"time"
 )
 
-const maxClients = 16
+const (
+	maxClients = 16
+
+	// Subscribers use at most half of the slots, so ping and stop always get one.
+	maxSubscribers = maxClients / 2
+)
 
 type daemon struct {
-	binding  Binding
-	source   Source
-	cancel   context.CancelFunc
-	info     Info
-	logs     *daemonLog
-	watchers chan struct{}
+	binding     Binding
+	source      Source
+	cancel      context.CancelFunc
+	info        Info
+	logs        *daemonLog
+	subscribers chan struct{}
 
 	lifecycle sync.Mutex
 }

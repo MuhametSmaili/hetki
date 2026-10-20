@@ -1,20 +1,12 @@
 package daemon
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/stretchr/testify/require"
 )
-
-type viewSource struct {
-	fixtureSource
-	view View
-}
-
-func (s viewSource) ReadView(context.Context) (View, error) { return s.view, nil }
 
 func TestViewRoundTripPreservesLinkedOccurrences(t *testing.T) {
 	client := fixtureClient(t, "view")
@@ -24,18 +16,14 @@ func TestViewRoundTripPreservesLinkedOccurrences(t *testing.T) {
 	})
 	require.NoError(t, err)
 	locations := []Location{{Session: "$1", Window: "@1", Pane: "%1"}, {Session: "$2", Window: "@1", Pane: "%1"}}
-	startFixture(t, client, liveBinding(client.server), func(context.Context, func(error)) (Source, error) {
-		return viewSource{fixtureSource: fixtureSource{close: func() error { return nil }}, view: View{Values: values, Locations: locations}}, nil
-	})
+	source := newChangingSource(View{Values: values, Locations: locations}, nil)
+	startFixture(t, client, liveBinding(client.server), source.factory())
 
-	view, err := client.ReadView(t.Context())
+	view, err := subscribe(t, client).Next()
 
 	require.NoError(t, err)
 	require.Equal(t, values.Lookup(ref), view.Values.Lookup(ref))
 	require.Equal(t, locations, view.Locations)
-	watch, err := client.SupportsWatch(t.Context())
-	require.NoError(t, err)
-	require.False(t, watch, "read-only sources do not advertise change delivery")
 }
 
 func TestViewRejectsAmbiguousOrUnboundLocations(t *testing.T) {

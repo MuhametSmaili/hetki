@@ -24,12 +24,11 @@ func TestOldWireRejectsTargetedStopWithoutFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 	require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
-	// Freeze the actual v1 request shape, using its strict production decoder.
+	// Freeze the v0.4.0 request shape, using its strict production decoder.
 	var legacy struct {
-		Version int     `json:"version"`
-		Server  string  `json:"server"`
-		Action  string  `json:"action"`
-		After   *Cursor `json:"after,omitempty"`
+		Version int    `json:"version"`
+		Server  string `json:"server"`
+		Action  string `json:"action"`
 	}
 
 	decodeErr := readFrame(conn, maxRequestBytes, &legacy)
@@ -47,7 +46,38 @@ func TestOldWireRejectsTargetedStopWithoutFallback(t *testing.T) {
 	require.Error(t, acceptErr)
 }
 
-func lifecycleConnection(t *testing.T, fixture watchHandlerFixture) (*net.UnixConn, net.Conn) {
+type handlerFixture struct {
+	ctx      context.Context
+	daemon   *daemon
+	listener *net.UnixListener
+	path     string
+}
+
+func newHandlerFixture(t *testing.T) handlerFixture {
+	t.Helper()
+	client := fixtureClient(t, "handlers")
+	listener, cleanup, err := listen(client.path)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+
+	logs, err := openDaemonLog(client.LogPath())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logs.close()) })
+
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	d := &daemon{
+		binding:     liveBinding(client.server),
+		source:      newChangingSource(View{}, nil),
+		cancel:      cancel,
+		logs:        logs,
+		subscribers: make(chan struct{}, maxSubscribers),
+		info:        Info{PID: 1, Epoch: "0123456789abcdef0123456789abcdef"},
+	}
+	return handlerFixture{ctx: ctx, daemon: d, listener: listener, path: client.path}
+}
+
+func lifecycleConnection(t *testing.T, fixture handlerFixture) (*net.UnixConn, net.Conn) {
 	t.Helper()
 	require.NoError(t, fixture.listener.SetDeadline(time.Now().Add(time.Second)))
 	client, err := net.DialTimeout("unix", fixture.path, time.Second)
@@ -62,29 +92,25 @@ func lifecycleConnection(t *testing.T, fixture watchHandlerFixture) (*net.UnixCo
 }
 
 func TestAcceptedStopSurvivesAcknowledgmentFailure(t *testing.T) {
-	fixture := newWatchHandlerFixture(t)
+	fixture := newHandlerFixture(t)
 	server, client := lifecycleConnection(t, fixture)
 	require.NoError(t, client.Close())
 	req := request{Action: "stop", ExpectedEpoch: fixture.daemon.info.Epoch}
-	row, ok := fixture.daemon.respond(fixture.ctx, req)
-	require.True(t, ok)
 
-	err := fixture.daemon.publish(fixture.ctx, server, req, row)
+	err := fixture.daemon.publish(fixture.ctx, server, req, fixture.daemon.identity())
 
 	require.Error(t, err)
 	require.ErrorIs(t, fixture.ctx.Err(), context.Canceled)
 }
 
 func TestAcceptedStopBlocksReadinessUntilCancellation(t *testing.T) {
-	fixture := newWatchHandlerFixture(t)
+	fixture := newHandlerFixture(t)
 	stopConn, stopPeer := lifecycleConnection(t, fixture)
 	pingConn, pingPeer := lifecycleConnection(t, fixture)
 	ping := request{Action: "ping"}
-	ready, ok := fixture.daemon.respond(fixture.ctx, ping)
-	require.True(t, ok)
+	ready := fixture.daemon.identity()
 	stop := request{Action: "stop", ExpectedEpoch: fixture.daemon.info.Epoch}
-	ack, ok := fixture.daemon.respond(fixture.ctx, stop)
-	require.True(t, ok)
+	ack := fixture.daemon.identity()
 
 	accepted := make(chan struct{})
 	allowCancellation := make(chan struct{})

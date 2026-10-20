@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"errors"
+	"io"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -136,16 +138,15 @@ func TestOpeningStatusDefersDaemonWorkUntilRead(t *testing.T) {
 	})
 }
 
-func TestDaemonReaderAdmissionHonorsCancellation(t *testing.T) {
+func TestDaemonReaderWaitHonorsCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		reader := &daemonReader{gate: make(chan struct{}, 1)}
-		reader.gate <- struct{}{}
-		defer func() { <-reader.gate }()
+		reader := newDaemonReader(t.Context(), observe.Server{})
+		reader.start.Do(func() {}) // Keep the subscription goroutine from starting.
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		done := make(chan error, 1)
 		go func() {
-			_, err := reader.readView(ctx, daemon.Cursor{})
+			_, _, err := reader.readView(ctx, 0)
 			done <- err
 		}()
 		synctest.Wait()
@@ -166,4 +167,74 @@ func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {
 	require.NoError(t, loadErr, "browsing does not depend on status startup")
 	require.Nil(t, reader)
 	require.ErrorIs(t, statusErr, observe.ErrServerChanged)
+}
+
+type scriptedSubscription struct {
+	frames []error
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (s *scriptedSubscription) Next() (daemon.View, error) {
+	if len(s.frames) > 0 {
+		err := s.frames[0]
+		s.frames = s.frames[1:]
+		return daemon.View{}, err
+	}
+	<-s.closed
+	return daemon.View{}, io.EOF
+}
+
+func (s *scriptedSubscription) Close() error {
+	s.once.Do(func() { close(s.closed) })
+	return nil
+}
+
+func TestDaemonReaderBacksOffAndResetsAfterAFrame(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		reader := newDaemonReader(ctx, observe.Server{})
+		start := time.Now()
+		var attempts []time.Duration
+		failure := errors.New("daemon unavailable")
+		reader.open = func(context.Context) (subscription, error) {
+			attempts = append(attempts, time.Since(start))
+			if len(attempts) == 4 {
+				// One frame, then the connection breaks.
+				return &scriptedSubscription{frames: []error{nil, io.ErrUnexpectedEOF}, closed: make(chan struct{})}, nil
+			}
+			return nil, failure
+		}
+
+		_, _, err := reader.readView(ctx, 0)
+		require.ErrorIs(t, err, failure)
+		time.Sleep(20 * time.Second) // Virtual time.
+		cancel()
+		reader.wait()
+
+		require.Equal(t, []time.Duration{0, 2 * time.Second, 6 * time.Second, 11 * time.Second, 13 * time.Second, 17 * time.Second}, attempts)
+	})
+}
+
+func TestDaemonReaderKeepsSubscriptionAfterUnavailableFrame(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		reader := newDaemonReader(ctx, observe.Server{})
+		opened := 0
+		reader.open = func(context.Context) (subscription, error) {
+			opened++
+			return &scriptedSubscription{frames: []error{daemon.ErrUnavailable, nil}, closed: make(chan struct{})}, nil
+		}
+
+		_, _, _ = reader.readView(ctx, 0)
+		synctest.Wait()
+		_, sequence, err := reader.readView(ctx, 0)
+
+		require.NoError(t, err, "a valid frame follows the unavailable one")
+		require.EqualValues(t, 2, sequence, "both frames arrived on one subscription")
+		require.Equal(t, 1, opened)
+		cancel()
+		reader.wait()
+	})
 }

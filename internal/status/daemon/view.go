@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/MuhametSmaili/hetki/internal/status"
@@ -22,7 +21,6 @@ type Location struct {
 type View struct {
 	Values    status.Snapshot
 	Locations []Location
-	Cursor    Cursor
 }
 
 func (v View) validate(server string) error {
@@ -46,42 +44,16 @@ func (v View) validate(server string) error {
 	return nil
 }
 
-// ReadView reads evidence and pane locations without triggering acquisition.
-func (c *Client) ReadView(ctx context.Context) (View, error) {
-	row, err := c.call(ctx, "view")
-	if err != nil {
-		return View{}, err
-	}
-	return c.decodeView(row)
-}
-
 func (c *Client) decodeView(row reply) (View, error) {
 	values, err := row.snapshot()
 	if err != nil {
 		return View{}, err
 	}
 	view := View{Values: values, Locations: row.Locations}
-	if row.Revision != 0 {
-		view.Cursor = Cursor{Epoch: row.Epoch, Revision: row.Revision}
-	}
 	if err := view.validate(c.server); err != nil {
 		return View{}, err
 	}
 	return view, nil
-}
-
-func (d *daemon) readView(ctx context.Context, row *reply) error {
-	source, ok := d.source.(interface {
-		ReadView(context.Context) (View, error)
-	})
-	if !ok {
-		return ErrUnavailable
-	}
-	view, err := source.ReadView(ctx)
-	if err != nil {
-		return err
-	}
-	return d.encodeView(row, view)
 }
 
 func (d *daemon) encodeView(row *reply, view View) error {

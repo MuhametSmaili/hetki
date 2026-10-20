@@ -12,30 +12,41 @@ import (
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 )
 
+// statusReadTimeout is longer than the subscription idle timeout, so the reader
+// reports a broken subscription before a UI read times out.
+const statusReadTimeout = 40 * time.Second
+
 // statusDelivery owns one picker's received evidence and UI acknowledgements.
-// The adapter owns bindings. Only the retained delivery supplies the next cursor.
+// The adapter owns bindings.
 type statusDelivery struct {
 	ctx      context.Context
 	adapter  *LiveAdapter
-	readView func(context.Context, daemon.Cursor) (daemon.View, error)
+	readView func(ctx context.Context, after uint64) (daemon.View, uint64, error)
+	stop     func()
 
 	mu       sync.Mutex
 	view     daemon.View
+	sequence uint64
 	err      error
 	received uint64
 	applied  uint64
 }
 
 func (d *statusDelivery) options() ui.StatusOptions {
-	return ui.StatusOptions{Read: d.readStatus, ReadTimeout: daemon.WatchTimeout + time.Second}
+	return ui.StatusOptions{Read: d.readStatus, ReadTimeout: statusReadTimeout}
 }
 
-// clear releases retained evidence after the owner cancels and joins callbacks.
+// clear stops the reader and releases retained evidence. The owner cancels ctx
+// and joins UI callbacks first.
 func (d *statusDelivery) clear() {
+	if d.stop != nil {
+		d.stop()
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.view, d.err = daemon.View{}, nil
-	d.received, d.applied = 0, 0
+	d.sequence, d.received, d.applied = 0, 0, 0
 }
 
 func (d *statusDelivery) readStatus(ctx context.Context, previous status.Snapshot) ui.StatusUpdate {
@@ -43,18 +54,18 @@ func (d *statusDelivery) readStatus(ctx context.Context, previous status.Snapsho
 		return update
 	}
 	if err := ctx.Err(); err != nil {
-		return d.receiveStatus(ctx, daemon.View{}, previous, err)
+		return d.receiveStatus(ctx, daemon.View{}, 0, previous, err)
 	}
 
 	d.mu.Lock()
-	after := d.view.Cursor
+	after := d.sequence
 	d.mu.Unlock()
 
-	view, err := d.readView(ctx, after)
-	return d.receiveStatus(ctx, view, previous, err)
+	view, sequence, err := d.readView(ctx, after)
+	return d.receiveStatus(ctx, view, sequence, previous, err)
 }
 
-func (d *statusDelivery) receiveStatus(ctx context.Context, view daemon.View, previous status.Snapshot, err error) ui.StatusUpdate {
+func (d *statusDelivery) receiveStatus(ctx context.Context, view daemon.View, sequence uint64, previous status.Snapshot, err error) ui.StatusUpdate {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -71,9 +82,13 @@ func (d *statusDelivery) receiveStatus(ctx context.Context, view daemon.View, pr
 			view.Values = previous
 		}
 		view.Values = view.Values.Invalidate()
-		view.Cursor = daemon.Cursor{}
 	}
 	d.view = view
+	d.sequence = sequence
+	if contextErr != nil {
+		// The caller dropped this read, so the next read returns the latest view at once.
+		d.sequence = 0
+	}
 	d.err = nil
 	if err != nil && !errors.Is(contextErr, context.Canceled) {
 		d.err = fmt.Errorf("status unavailable: %w", err)
@@ -82,7 +97,7 @@ func (d *statusDelivery) receiveStatus(ctx context.Context, view daemon.View, pr
 	return d.readStatusUpdateLocked()
 }
 
-// A watch cursor records receipt, not UI acceptance. Rebind an unaccepted
+// The sequence records receipt, not UI acceptance. Rebind an unaccepted
 // delivery instead of waiting for an unrelated daemon change.
 func (d *statusDelivery) replayStatus(ctx context.Context) (ui.StatusUpdate, bool) {
 	d.mu.Lock()
@@ -113,10 +128,7 @@ func (d *statusDelivery) projectionStatus() *ui.StatusUpdate {
 }
 
 func (d *statusDelivery) statusUpdateLocked() ui.StatusUpdate {
-	update := ui.StatusUpdate{
-		Values: d.view.Values, Err: d.err,
-		Watching: d.view.Cursor.Revision != 0,
-	}
+	update := ui.StatusUpdate{Values: d.view.Values, Err: d.err, Watching: true}
 	if received := d.received; received != 0 {
 		update.Accept = func() { d.acceptStatus(received) }
 	}

@@ -41,7 +41,7 @@ func TestNativeExecutableDaemonLifecycle(t *testing.T) {
 		require.NoError(t, err)
 		second, err := client.Ping(ctx)
 		require.NoError(t, err)
-		snapshot, err := client.ReadStatus(ctx)
+		snapshot, err := readDaemonStatus(ctx, client)
 		require.NoError(t, err)
 
 		require.Equal(t, first, second)

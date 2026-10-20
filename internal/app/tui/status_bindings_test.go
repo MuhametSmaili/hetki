@@ -31,8 +31,9 @@ type statusTestDriver struct {
 }
 
 func (d statusTestDriver) OpenStatus(ctx context.Context) (*statusDelivery, error) {
-	return &statusDelivery{ctx: ctx, adapter: d.LiveAdapter, readView: func(ctx context.Context, _ daemon.Cursor) (daemon.View, error) {
-		return d.read(ctx)
+	return &statusDelivery{ctx: ctx, adapter: d.LiveAdapter, readView: func(ctx context.Context, after uint64) (daemon.View, uint64, error) {
+		view, err := d.read(ctx)
+		return view, after + 1, err
 	}}, nil
 }
 
@@ -48,7 +49,7 @@ func statusDeliveryFixture(t *testing.T) (*LiveAdapter, daemon.View) {
 		pane: {State: status.Blocked, ValidUntil: now.Add(time.Minute)},
 	})
 	require.NoError(t, err)
-	return adapter, daemon.View{Values: values, Locations: []daemon.Location{{Session: "$1", Window: "@1", Pane: "%1"}}, Cursor: daemon.Cursor{Revision: 1}}
+	return adapter, daemon.View{Values: values, Locations: []daemon.Location{{Session: "$1", Window: "@1", Pane: "%1"}}}
 }
 
 func TestServiceSuppliesBindingsOnProjectionReplacement(t *testing.T) {
@@ -201,7 +202,7 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 		close(stopped)
 		return daemon.View{}, ctx.Err()
 	}}, RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		require.Equal(t, daemon.WatchTimeout+time.Second, options.ReadTimeout)
+		require.Equal(t, statusReadTimeout, options.ReadTimeout)
 		read = options.Read
 		go func() { done <- read(context.Background(), previous).Values }()
 		awaitChannel(t, started)

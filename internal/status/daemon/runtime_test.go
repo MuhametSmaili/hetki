@@ -18,12 +18,16 @@ import (
 )
 
 type fixtureSource struct {
-	read  func(context.Context) (status.Snapshot, error)
-	close func() error
+	read    func(context.Context) (status.Snapshot, error)
+	close   func() error
+	changes <-chan struct{}
 }
 
-func (s fixtureSource) ReadStatus(ctx context.Context) (status.Snapshot, error) {
-	return s.read(ctx)
+func (s fixtureSource) Changes() <-chan struct{} { return s.changes }
+
+func (s fixtureSource) ReadView(ctx context.Context) (View, error) {
+	values, err := s.read(ctx)
+	return View{Values: values}, err
 }
 
 func (s fixtureSource) Close() error {
@@ -184,7 +188,7 @@ func TestSnapshotRoundTripPreservesIdentityFreshnessAndAbsence(t *testing.T) {
 	require.NoError(t, err)
 	startFixture(t, c, liveBinding(c.server), staticSource(snapshot))
 
-	got, err := c.ReadStatus(context.Background())
+	got, err := readFirst(context.Background(), c)
 
 	require.NoError(t, err)
 	for pane, value := range values {
@@ -228,7 +232,7 @@ func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 
 	readDone := make(chan error, 1)
 	go func() {
-		_, err := c.ReadStatus(context.Background())
+		_, err := readFirst(context.Background(), c)
 		readDone <- err
 	}()
 	receive(t, reading)
@@ -248,43 +252,6 @@ func TestShutdownCancelsReadsBeforeClosingSource(t *testing.T) {
 	require.NoError(t, receive(t, stopDone))
 	require.NoError(t, receive(t, done))
 	require.NoError(t, testenv.WaitUnlocked(ctx, c.path+".lock"))
-}
-
-func TestClientCancellationReachesSource(t *testing.T) {
-	c := fixtureClient(t, "cancel")
-	reading, canceled := make(chan struct{}), make(chan struct{})
-	startFixture(t, c, liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
-		return fixtureSource{
-			read: func(ctx context.Context) (status.Snapshot, error) {
-				close(reading)
-				<-ctx.Done()
-				close(canceled)
-				return status.Snapshot{}, ctx.Err()
-			},
-			close: func() error { return nil },
-		}, nil
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	result := make(chan error, 1)
-	go func() {
-		_, err := c.ReadStatus(ctx)
-		result <- err
-	}()
-	receive(t, reading)
-
-	cancel()
-
-	require.ErrorIs(t, receive(t, result), context.Canceled)
-	select {
-	case <-canceled:
-	case <-time.After(time.Second):
-		t.Fatal("client disconnect did not cancel source read")
-	}
-
-	_, err := c.Ping(context.Background())
-	require.NoError(t, err)
 }
 
 func TestServerReplacementDuringReadRejectsSnapshot(t *testing.T) {
@@ -313,7 +280,7 @@ func TestServerReplacementDuringReadRejectsSnapshot(t *testing.T) {
 
 	result := make(chan error, 1)
 	go func() {
-		_, err := c.ReadStatus(context.Background())
+		_, err := readFirst(context.Background(), c)
 		result <- err
 	}()
 	receive(t, reading)
@@ -364,17 +331,7 @@ func TestCanceledLifetimeCheckDoesNotStopDaemon(t *testing.T) {
 
 func TestConcurrentRequestsAreBoundedAndSlotsRecover(t *testing.T) {
 	c := fixtureClient(t, "bounded")
-	reading := make(chan struct{}, maxClients)
-	startFixture(t, c, liveBinding(c.server), func(context.Context, func(error)) (Source, error) {
-		return fixtureSource{
-			read: func(ctx context.Context) (status.Snapshot, error) {
-				reading <- struct{}{}
-				<-ctx.Done()
-				return status.Snapshot{}, ctx.Err()
-			},
-			close: func() error { return nil },
-		}, nil
-	})
+	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
 	var connections []net.Conn
 	for range maxClients {
 		conn, err := net.Dial("unix", c.path)
@@ -383,16 +340,16 @@ func TestConcurrentRequestsAreBoundedAndSlotsRecover(t *testing.T) {
 			_ = conn.Close()
 		})
 		connections = append(connections, conn)
-		require.NoError(t, writeFrame(conn, maxRequestBytes, request{Version: protocolVersion, Server: c.server, Action: "snapshot"}))
-		receive(t, reading)
 	}
+	require.Eventually(t, func() bool {
+		_, err := c.Ping(context.Background())
+		return err != nil
+	}, time.Second, time.Millisecond)
 
-	_, err := c.Ping(context.Background())
 	for _, conn := range connections {
 		_ = conn.Close()
 	}
 
-	require.Error(t, err)
 	require.Eventually(t, func() bool {
 		_, err := c.Ping(context.Background())
 		return err == nil
@@ -471,7 +428,7 @@ func TestSourceFailureDoesNotBecomeEmptySuccess(t *testing.T) {
 		}, nil
 	})
 
-	_, err := c.ReadStatus(context.Background())
+	_, err := readFirst(context.Background(), c)
 
 	require.ErrorIs(t, err, ErrUnavailable)
 }

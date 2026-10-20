@@ -109,7 +109,7 @@ func awaitDaemonPaneState(t *testing.T, client *daemon.Client, id string, want s
 	t.Helper()
 	var found status.PaneRef
 	require.Eventually(t, func() bool {
-		snapshot, err := client.ReadStatus(t.Context())
+		snapshot, err := readDaemonStatus(t.Context(), client)
 		if err != nil {
 			return false
 		}
