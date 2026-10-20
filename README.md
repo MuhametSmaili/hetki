@@ -109,6 +109,8 @@ Hetki starts a shared status daemon for each tmux server. Supported application 
 
 Indicators distinguish working, needs-input, idle, unknown, success, and failure where evidence supports them. Tracked scope shows status-tracked panes, not workspace-owned sessions.
 
+The daemon attaches one tmux control client per session, which never resizes your windows. These clients appear as `hetki-status-*` in `tmux list-clients`. tmux forwards each pane's raw output to it. Hetki scans that output only for OSC 7501 and OSC 133 sequences, and stores or logs none of it. Screen profiles read the visible screen with `capture-pane`, apply their rules, and discard the text. This gives the daemon no more access than any process running as your user already has through tmux.
+
 Optional YAML profiles live in `$XDG_CONFIG_HOME/hetki/status.d`, or `~/.config/hetki/status.d` by default. Profiles load at daemon startup and require a daemon restart after changes.
 
 The [Kiro 2.28 profile](integrations/pane-status/profiles/kiro-2.28.yaml) provides a screen-based example. It targets the documented English UI and does not infer completion.
