@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"syscall"
 	"time"
@@ -18,6 +19,10 @@ const subscriptionIdleTimeout = 30 * time.Second
 type Subscription struct {
 	client *Client
 	conn   net.Conn
+
+	// last is the latest view before the lease is applied.
+	last    View
+	hasLast bool
 }
 
 // Subscribe opens a connection that receives the current view, then a new view
@@ -49,17 +54,34 @@ func (c *Client) Subscribe(ctx context.Context) (*Subscription, error) {
 	return &Subscription{client: c, conn: conn}, nil
 }
 
-// Next waits for the next view. ErrUnavailable means that the daemon has no
-// valid view now; the subscription stays open. Other errors end it.
+// Next waits for the next view and applies the lease to it. ErrUnavailable
+// means that the daemon has no valid view now, but the subscription stays open.
+// Other errors end it.
 func (s *Subscription) Next() (View, error) {
 	_ = s.conn.SetReadDeadline(time.Now().Add(subscriptionIdleTimeout))
 
 	row, err := s.client.readReply(s.conn)
 	if err != nil {
+		s.hasLast = false
 		return View{}, err
 	}
 
-	return s.client.decodeView(row)
+	var view View
+	switch {
+	case !row.Renewal:
+		view, err = s.client.decodeView(row)
+	case s.hasLast:
+		view, err = s.client.renew(s.last, row)
+	default:
+		err = fmt.Errorf("%w: renewal without a full view", ErrProtocol)
+	}
+	if err != nil {
+		return View{}, err
+	}
+
+	s.last, s.hasLast = view, true
+	view.Values = view.Values.Leased(view.Lease)
+	return view, nil
 }
 
 func (s *Subscription) Close() error {
@@ -67,7 +89,8 @@ func (s *Subscription) Close() error {
 }
 
 // subscribe writes the current view, then the latest view after each change.
-// Changes that occur during a write are combined into the next frame.
+// Changes that occur during a write go into the next frame. If only the lease
+// or deadlines moved, it writes a renewal frame.
 func (d *daemon) subscribe(ctx context.Context, conn *net.UnixConn) {
 	select {
 	case d.subscribers <- struct{}{}:
@@ -78,20 +101,10 @@ func (d *daemon) subscribe(ctx context.Context, conn *net.UnixConn) {
 	}
 
 	_ = conn.SetDeadline(time.Time{})
+	var frames frameEncoder
 	for ctx.Err() == nil {
 		changes := d.source.Changes()
-
-		row := d.identity()
-		d.readView(ctx, &row)
-		if !d.checkLifetime(ctx) {
-			return
-		}
-
-		_ = conn.SetWriteDeadline(time.Now().Add(requestTimeout))
-		if err := writeFrame(conn, maxReplyBytes, row); err != nil {
-			if ctx.Err() == nil && !clientGone(err) {
-				d.logs.repeatedFailure("reply_write_failed", err)
-			}
+		if !d.sendFrame(ctx, conn, &frames) {
 			return
 		}
 
@@ -102,19 +115,54 @@ func (d *daemon) subscribe(ctx context.Context, conn *net.UnixConn) {
 	}
 }
 
-func (d *daemon) readView(ctx context.Context, row *reply) {
-	view, err := d.source.ReadView(ctx)
-	if err == nil {
-		err = d.encodeView(row, view)
-	}
-	if err == nil {
-		return
+// sendFrame writes one frame. It reports false when the subscription must end.
+func (d *daemon) sendFrame(ctx context.Context, conn *net.UnixConn, frames *frameEncoder) bool {
+	row := d.identity()
+	if err := frames.encode(ctx, d, &row); err != nil {
+		if ctx.Err() == nil {
+			d.logs.repeatedFailure("source_read_failed", err)
+		}
+		row.Error = "unavailable"
 	}
 
-	if ctx.Err() == nil {
-		d.logs.repeatedFailure("source_read_failed", err)
+	if !d.checkLifetime(ctx) {
+		return false
 	}
-	row.Entries, row.Locations, row.Error = nil, nil, "unavailable"
+
+	_ = conn.SetWriteDeadline(time.Now().Add(requestTimeout))
+	if err := writeFrame(conn, maxReplyBytes, row); err != nil {
+		if ctx.Err() == nil && !clientGone(err) {
+			d.logs.repeatedFailure("reply_write_failed", err)
+		}
+		return false
+	}
+	return true
+}
+
+// frameEncoder remembers the last view sent to one subscriber.
+type frameEncoder struct {
+	sent    View
+	hasSent bool
+}
+
+// encode reads the current view into row. If the subscriber already has the
+// same evidence, it writes a renewal. After an error, the next frame is full.
+func (f *frameEncoder) encode(ctx context.Context, d *daemon, row *reply) error {
+	view, err := d.source.ReadView(ctx)
+	if err == nil {
+		err = view.validate(d.binding.Server)
+	}
+
+	switch {
+	case err != nil:
+	case f.hasSent && sameEvidence(f.sent, view):
+		encodeRenewal(row, f.sent, view)
+	default:
+		err = d.encodeView(row, view)
+	}
+
+	f.sent, f.hasSent = view, err == nil
+	return err
 }
 
 func clientGone(err error) bool {

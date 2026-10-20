@@ -37,7 +37,7 @@ func (s *Source) readView(ctx context.Context) (daemon.View, error) {
 	if !time.Now().Before(s.validatedUntil) {
 		return daemon.View{}, daemon.ErrUnavailable
 	}
-	values, err := s.core.ReadStatus(ctx)
+	values, lease, err := s.core.ReadEvidence(ctx)
 	if err != nil {
 		return daemon.View{}, err
 	}
@@ -45,7 +45,7 @@ func (s *Source) readView(ctx context.Context) (daemon.View, error) {
 	for ref := range values.All() {
 		reported[ref.ID] = true
 	}
-	view := daemon.View{Values: values}
+	view := daemon.View{Values: values, Lease: lease}
 	for _, location := range s.locations {
 		if reported[location.Pane] {
 			view.Locations = append(view.Locations, daemon.Location{

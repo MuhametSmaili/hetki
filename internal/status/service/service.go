@@ -26,6 +26,7 @@ type Service struct {
 	revision   uint64
 	generation uint64
 	validUntil time.Time
+	evidence   status.Snapshot
 	snapshot   status.Snapshot
 	dirty      bool
 	closed     bool
@@ -58,53 +59,58 @@ func (s *Service) ReadStatus(ctx context.Context) (status.Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := ctx.Err(); err != nil {
+	if err := s.prepareRead(ctx); err != nil {
 		return status.Snapshot{}, err
+	}
+	return s.snapshot, nil
+}
+
+// ReadEvidence returns the values without the lease, and the lease. ReadStatus
+// applies the lease. A transport sends the lease separately, so that a renewal
+// does not change each value.
+func (s *Service) ReadEvidence(ctx context.Context) (status.Snapshot, time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.prepareRead(ctx); err != nil {
+		return status.Snapshot{}, time.Time{}, err
+	}
+	return s.evidence, s.validUntil, nil
+}
+
+// prepareRead checks that the service is open and rebuilds stale snapshots. Caller holds mu.
+func (s *Service) prepareRead(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	if s.closed {
-		return status.Snapshot{}, ErrClosed
+		return ErrClosed
 	}
 
 	if s.dirty {
-		if err := s.refreshSnapshot(); err != nil {
-			return status.Snapshot{}, err
-		}
+		return s.refreshSnapshot()
 	}
-
-	return s.snapshot, nil
+	return nil
 }
 
 func (s *Service) refreshSnapshot() error {
 	values := make(map[status.PaneRef]status.Value, len(s.panes))
 	for _, row := range s.panes {
-		if row.value.State == status.Unreported {
-			continue
+		if row.value.State != status.Unreported {
+			values[row.pane.Ref] = row.value
 		}
-
-		value := row.value
-		if value.State == status.Working || value.State == status.Blocked || value.State == status.Idle || value.Outcome != status.NoOutcome {
-			value.ValidUntil = earlierDeadline(value.ValidUntil, s.validUntil)
-		}
-		values[row.pane.Ref] = value
 	}
 
-	snapshot, err := status.NewSnapshot(values)
+	evidence, err := status.NewSnapshot(values)
 	if err != nil {
 		return err
 	}
 
-	s.snapshot = snapshot
+	s.evidence = evidence
+	s.snapshot = evidence.Leased(s.validUntil)
 	s.dirty = false
 	return nil
-}
-
-func earlierDeadline(evidence, inventory time.Time) time.Time {
-	if evidence.IsZero() || inventory.Before(evidence) {
-		return inventory
-	}
-
-	return evidence
 }
 
 func (s *Service) changed() {
@@ -115,6 +121,7 @@ func (s *Service) changed() {
 }
 
 func (s *Service) invalidateSnapshot() {
+	s.evidence = status.Snapshot{}
 	s.snapshot = status.Snapshot{}
 	s.dirty = true
 }
@@ -141,6 +148,7 @@ func (s *Service) Close() error {
 	s.version++
 	close(s.changes)
 	s.panes = nil
+	s.evidence = status.Snapshot{}
 	s.snapshot = status.Snapshot{}
 	return nil
 }

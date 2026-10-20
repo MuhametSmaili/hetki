@@ -60,3 +60,13 @@ func (s Snapshot) Invalidate() Snapshot {
 
 	return Snapshot{panes: values}
 }
+
+// Leased returns a copy with Value.Leased applied to each value.
+func (s Snapshot) Leased(lease time.Time) Snapshot {
+	values := make(map[PaneRef]Value, len(s.panes))
+	for pane, value := range s.panes {
+		values[pane] = value.Leased(lease)
+	}
+
+	return Snapshot{panes: values}
+}

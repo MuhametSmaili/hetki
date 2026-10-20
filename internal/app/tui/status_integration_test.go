@@ -120,6 +120,7 @@ func blockedPickerView(t *testing.T, identity string) daemon.View {
 	require.NoError(t, err)
 	return daemon.View{
 		Values: values, Locations: []daemon.Location{{Session: "$0", Window: "@0", Pane: "%0"}},
+		Lease: time.Now().Add(time.Minute),
 	}
 }
 

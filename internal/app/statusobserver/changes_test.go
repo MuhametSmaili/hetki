@@ -30,5 +30,5 @@ func TestChangesSignalsNewEvidenceButNotRepeatedReports(t *testing.T) {
 	default:
 		t.Fatal("new evidence did not signal a change")
 	}
-	require.Equal(t, status.Blocked, view.Values.At(row.pane.Ref, time.Now()))
+	require.Equal(t, status.Blocked, view.Values.Leased(view.Lease).At(row.pane.Ref, time.Now()))
 }

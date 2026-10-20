@@ -84,3 +84,15 @@ func (v Value) At(now time.Time) State {
 	}
 	return Unknown
 }
+
+// Leased limits activity and outcomes to the inventory lease. A zero evidence
+// deadline means that only the lease applies.
+func (v Value) Leased(lease time.Time) Value {
+	if v.State != Working && v.State != Blocked && v.State != Idle && v.Outcome == NoOutcome {
+		return v
+	}
+	if v.ValidUntil.IsZero() || lease.Before(v.ValidUntil) {
+		v.ValidUntil = lease
+	}
+	return v
+}

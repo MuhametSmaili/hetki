@@ -160,3 +160,28 @@ func BenchmarkSnapshotAt(b *testing.B) {
 		snapshot.At(pane, now)
 	}
 }
+
+func TestLeasedLimitsActivityAndOutcomesOnly(t *testing.T) {
+	lease := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	later, earlier := lease.Add(time.Minute), lease.Add(-time.Minute)
+	cases := []struct {
+		name  string
+		value status.Value
+		want  time.Time
+	}{
+		{"activity without a deadline", status.Value{State: status.Working}, lease},
+		{"activity past the lease", status.Value{State: status.Idle, ValidUntil: later}, lease},
+		{"activity before the lease", status.Value{State: status.Blocked, ValidUntil: earlier}, earlier},
+		{"outcome", status.Value{State: status.Unknown, Outcome: status.Completed, ValidUntil: later}, lease},
+		{"plain unknown", status.Value{State: status.Unknown, ValidUntil: later}, later},
+		{"withdrawn", status.Value{State: status.Withdrawn}, time.Time{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			leased := tc.value.Leased(lease)
+
+			require.True(t, tc.want.Equal(leased.ValidUntil), "got %v", leased.ValidUntil)
+			require.Equal(t, tc.value.State, leased.State)
+		})
+	}
+}

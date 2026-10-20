@@ -16,7 +16,7 @@ func TestViewRoundTripPreservesLinkedOccurrences(t *testing.T) {
 	})
 	require.NoError(t, err)
 	locations := []Location{{Session: "$1", Window: "@1", Pane: "%1"}, {Session: "$2", Window: "@1", Pane: "%1"}}
-	source := newChangingSource(View{Values: values, Locations: locations}, nil)
+	source := newChangingSource(View{Values: values, Locations: locations, Lease: time.Now().Add(time.Hour)}, nil)
 	startFixture(t, client, liveBinding(client.server), source.factory())
 
 	view, err := subscribe(t, client).Next()

@@ -46,6 +46,11 @@ type reply struct {
 	Entries   []entry    `json:"entries,omitempty"`
 	Locations []Location `json:"locations,omitempty"`
 	Error     string     `json:"error,omitempty"`
+
+	// A renewal frame changes only the lease and the deadlines in Entries.
+	// The client keeps the rest of its last full view.
+	Lease   time.Time `json:"lease,omitzero"`
+	Renewal bool      `json:"renewal,omitempty"`
 }
 
 type entry struct {

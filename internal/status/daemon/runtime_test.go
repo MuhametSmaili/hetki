@@ -27,7 +27,7 @@ func (s fixtureSource) Changes() <-chan struct{} { return s.changes }
 
 func (s fixtureSource) ReadView(ctx context.Context) (View, error) {
 	values, err := s.read(ctx)
-	return View{Values: values}, err
+	return View{Values: values, Lease: time.Now().Add(time.Hour)}, err
 }
 
 func (s fixtureSource) Close() error {
