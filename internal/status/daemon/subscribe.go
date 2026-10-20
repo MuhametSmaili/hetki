@@ -10,8 +10,8 @@ import (
 )
 
 // subscriptionIdleTimeout is the longest wait for a frame. The daemon sends a
-// frame at each change, and the inventory changes about every two seconds. A
-// longer silence means that the connection is broken.
+// frame at each change and at each inventory renewal, about every two seconds.
+// A longer silence means that the connection is broken.
 const subscriptionIdleTimeout = 30 * time.Second
 
 // Subscription receives the views that the daemon pushes. Call Next from one

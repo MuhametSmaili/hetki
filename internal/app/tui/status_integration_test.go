@@ -39,7 +39,6 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
 		require.NotNil(t, options.Read)
 		idle := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
-		require.True(t, idle.Watching, "native daemon must use change delivery")
 		require.Len(t, idle.Bindings, 2, "linked window occurrences share one pane")
 		before := firstPaneRef(t, idle.Values)
 		for _, id := range []list.ItemID{destinationItemID("$0", "@0", "%0"), windowItemID("$0", "@0")} {
@@ -48,7 +47,6 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 			require.NotNil(t, result.Status)
 			require.Len(t, result.Status.Bindings, 2)
 			require.Equal(t, status.Idle, result.Status.Bindings.StateAt(id, result.Status.Values, time.Now()), "replacement must carry status before another read")
-			acceptStatusUpdate(*result.Status)
 		}
 		run("send-keys", "-t", "%0", "-l", "--", "\x1b[2J\x1b[HAPPROVAL\n")
 		awaitPickerValue(t, ctx, options, status.Value{State: status.Blocked}, nil)
@@ -56,8 +54,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 		require.Eventually(t, func() bool {
 			readCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 			defer cancel()
-			update := options.Read(readCtx, status.Snapshot{})
-			acceptStatusUpdate(update)
+			update := options.Read(readCtx, 0)
 			for ref := range update.Values.All() {
 				if ref.ID == before.ID && ref.Generation != before.Generation && update.Values.At(ref, time.Now()) == status.Idle {
 					return update.Bindings.StateAt(windowItemID("$0", "@0"), update.Values, time.Now()) == status.Idle
@@ -213,8 +210,7 @@ func awaitPickerValue(t *testing.T, ctx context.Context, options ui.StatusOption
 			probe()
 		}
 		readCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-		update := options.Read(readCtx, status.Snapshot{})
-		acceptStatusUpdate(update)
+		update := options.Read(readCtx, 0)
 		cancel()
 		if update.Err != nil {
 			lastErr = update.Err

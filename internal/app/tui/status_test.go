@@ -49,10 +49,9 @@ func TestServiceReplacesStatusEvidence(t *testing.T) {
 				return next, nil
 			}}}
 			service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-				initial := options.Read(ctx, status.Snapshot{})
-				acceptStatusUpdate(initial)
+				initial := options.Read(ctx, 0)
 
-				result := options.Read(ctx, initial.Values)
+				result := options.Read(ctx, initial.Sequence)
 
 				require.NoError(t, result.Err)
 				require.Equal(t, tc.state, result.Values.At(pane, time.Now()))
@@ -91,10 +90,9 @@ func TestServiceDiscardsPartialStatusOnFailure(t *testing.T) {
 		return daemon.View{Values: partial, Locations: []daemon.Location{{Session: "$1", Window: "@1", Pane: "%3"}}}, wantErr
 	}}}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		initial := options.Read(ctx, status.Snapshot{})
-		acceptStatusUpdate(initial)
+		initial := options.Read(ctx, 0)
 
-		result := options.Read(ctx, initial.Values)
+		result := options.Read(ctx, initial.Sequence)
 
 		require.ErrorIs(t, result.Err, wantErr)
 		require.Nil(t, result.Bindings)
@@ -134,12 +132,10 @@ func TestServiceCancelsStatusRead(t *testing.T) {
 					cancel()
 				}
 
-				result := options.Read(readCtx, view.Values)
+				result := options.Read(readCtx, 0)
 
 				require.NoError(t, result.Err, "read cancellation stays quiet")
-				for pane := range view.Values.All() {
-					require.Equal(t, status.Unknown, result.Values.At(pane, time.Now()))
-				}
+				require.Zero(t, result.Values.Len(), "a dropped read delivers no evidence")
 				require.Equal(t, tc.wantCalls, calls)
 				return list.ItemID{}, nil
 			}

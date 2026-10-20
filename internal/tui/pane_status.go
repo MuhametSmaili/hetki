@@ -11,18 +11,16 @@ import (
 
 const (
 	statusPollInterval  = 2 * time.Second
-	statusReadTimeout   = 2 * time.Second
 	statusSpinnerPeriod = 100 * time.Millisecond
 )
 
 type StatusBindings map[list.ItemID][]status.PaneRef
 
+// StatusOptions connects the picker to a status source. Read waits for a result
+// newer than after, or for the end of ctx.
 type StatusOptions struct {
 	Bindings StatusBindings
-	Read     func(context.Context, status.Snapshot) StatusUpdate
-
-	// ReadTimeout bounds blocking change reads; zero uses the normal poll budget.
-	ReadTimeout time.Duration
+	Read     func(ctx context.Context, after uint64) StatusUpdate
 }
 
 // StatusUpdate replaces cached values and, when non-nil, their row bindings and
@@ -35,12 +33,9 @@ type StatusUpdate struct {
 	// Windows replaces tree-pane presentation candidates when non-nil.
 	Windows map[list.ItemID][]WindowPane
 
-	// Watching means the next read waits for change rather than polling immediately.
-	Watching bool
-
-	// Accept acknowledges application to the UI, not just receipt. It must be
-	// local bookkeeping only, with no I/O; discarded results must not call it.
-	Accept func()
+	// Sequence identifies this result. After the UI applies it, the next read
+	// waits for a newer result. A discarded result is read again.
+	Sequence uint64
 }
 
 func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time.Time) status.State {
@@ -92,6 +87,7 @@ type paneStatusState struct {
 	frameGeneration   uint64
 	bindingGeneration uint64
 	readErr           error
+	sequence          uint64
 	windows           map[list.ItemID][]WindowPane
 	representatives   map[list.ItemID]status.PaneRef
 	windowChangeDue   time.Time
@@ -116,18 +112,11 @@ func (m model) readPaneStatus() (tea.Model, tea.Cmd) {
 		return m, statusPoll(statusPollInterval)
 	}
 	m.paneStatus.reading = true
-	read, previous, parent := m.paneStatus.options.Read, m.paneStatus.values, m.ctx
+	read, after, ctx := m.paneStatus.options.Read, m.paneStatus.sequence, m.ctx
 	generation := m.paneStatus.bindingGeneration
-	timeout := m.paneStatus.options.ReadTimeout
-	if timeout <= 0 {
-		timeout = statusReadTimeout
-	}
 
 	return m, func() tea.Msg {
-		ctx, cancel := context.WithTimeout(parent, timeout)
-		defer cancel()
-		update := read(ctx, previous)
-		return statusResultMsg{update: update, generation: generation}
+		return statusResultMsg{update: read(ctx, after), generation: generation}
 	}
 }
 
@@ -141,7 +130,7 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.applyStatusUpdate(msg.update)
 	m.applyStatusPresentation(time.Now())
-	if msg.update.Watching && msg.update.Err == nil {
+	if msg.update.Err == nil {
 		return m, statusPoll(0)
 	}
 
@@ -157,9 +146,7 @@ func (m *model) applyStatusUpdate(update StatusUpdate) {
 	if update.Windows != nil {
 		m.paneStatus.windows = update.Windows
 	}
-	if update.Accept != nil {
-		update.Accept()
-	}
+	m.paneStatus.sequence = update.Sequence
 }
 
 func (m model) syncStatusFrame(now time.Time) (model, tea.Cmd) {

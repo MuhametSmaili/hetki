@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestNativePickerCanceledReadReturnsCurrentView(t *testing.T) {
+func TestNativePickerDroppedReadIsQuietAndKeepsSequence(t *testing.T) {
 	b, client, _ := pickerDaemonFixture(t)
 	server, err := b.StatusServer(t.Context())
 	require.NoError(t, err)
@@ -48,22 +48,16 @@ func TestNativePickerCanceledReadReturnsCurrentView(t *testing.T) {
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	service := Service{Driver: adapter}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		initial := options.Read(ctx, status.Snapshot{})
-		require.NoError(t, initial.Err)
-		acceptStatusUpdate(initial)
+		initial := options.Read(ctx, 0)
 		readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 		defer cancel()
 
-		dropped := options.Read(readCtx, initial.Values)
-		acceptStatusUpdate(dropped)
-		nextCtx, stop := context.WithTimeout(ctx, 3*time.Second)
-		defer stop()
-		next := options.Read(nextCtx, dropped.Values)
+		dropped := options.Read(readCtx, initial.Sequence)
 
-		require.Error(t, dropped.Err, "nothing changed, so the read timed out")
-		require.Equal(t, status.Unknown, dropped.Values.Lookup(ref).State)
-		require.NoError(t, next.Err, "a dropped read must not wait for a daemon change")
-		require.Equal(t, status.Blocked, next.Values.Lookup(ref).State)
+		require.NoError(t, initial.Err)
+		require.Equal(t, status.Blocked, initial.Values.Lookup(ref).State)
+		require.NoError(t, dropped.Err, "a dropped read stays quiet")
+		require.Equal(t, initial.Sequence, dropped.Sequence, "a dropped read keeps the sequence")
 		return list.ItemID{}, nil
 	}
 
@@ -96,12 +90,11 @@ func TestNativePickerDiscardedDeliveryReturnsCurrentView(t *testing.T) {
 		return view, sequence, err
 	}
 
-	discarded := delivery.options().Read(ctx, status.Snapshot{})
-	acceptStatusUpdate(discarded)
+	discarded := delivery.options().Read(ctx, 0)
 	delivery.readView = read
 	nextCtx, stop := context.WithTimeout(t.Context(), 3*time.Second)
 	defer stop()
-	next := delivery.options().Read(nextCtx, discarded.Values)
+	next := delivery.options().Read(nextCtx, discarded.Sequence)
 
 	require.NoError(t, discarded.Err)
 	require.Zero(t, discarded.Values.Len(), "cancellation during handoff must discard successful evidence")
@@ -120,15 +113,14 @@ func TestNativePickerRecoversFromUnavailableViewWithoutReconnecting(t *testing.T
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	service := Service{Driver: adapter}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		failed := options.Read(ctx, status.Snapshot{})
-		acceptStatusUpdate(failed)
+		failed := options.Read(ctx, 0)
 		before, err := client.Ping(ctx)
 		require.NoError(t, err)
 
 		source.setUnavailable(false)
 		readCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
-		recovered := options.Read(readCtx, failed.Values)
+		recovered := options.Read(readCtx, failed.Sequence)
 
 		require.ErrorIs(t, failed.Err, daemon.ErrUnavailable)
 		require.NoError(t, recovered.Err)
@@ -156,18 +148,16 @@ func TestNativePickerRecoversAfterDaemonLoss(t *testing.T) {
 		require.NoError(t, testenv.WaitUnlocked(stopCtx, strings.TrimSuffix(client.LogPath(), ".log")+".sock.lock"))
 		cancel()
 
-		failed := options.Read(ctx, initial.Values)
+		failed := options.Read(ctx, initial.Sequence)
 
 		require.Error(t, failed.Err, "loss must be delivered before attempting recovery")
 		require.Nil(t, failed.Bindings)
 		pane := firstPaneRef(t, initial.Values)
 		require.Equal(t, status.Unknown, failed.Values.Lookup(pane).State)
-		acceptStatusUpdate(failed)
 		recovered := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
 		after, err := client.Ping(ctx)
 		require.NoError(t, err)
 		require.NotEqual(t, before.Epoch, after.Epoch)
-		require.True(t, recovered.Watching)
 		require.Len(t, recovered.Bindings, 2)
 		return list.ItemID{}, nil
 	}
@@ -184,14 +174,12 @@ func TestNativePickerRecoversAfterProfileCorrection(t *testing.T) {
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	service := Service{Driver: adapter}
 	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		failed := options.Read(ctx, status.Snapshot{})
+		failed := options.Read(ctx, 0)
 		require.Error(t, failed.Err)
-		acceptStatusUpdate(failed)
 
 		require.NoError(t, os.WriteFile(path, profile, 0600))
 		recovered := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
 
-		require.True(t, recovered.Watching)
 		require.Len(t, recovered.Bindings, 2, "the same reader must recover both linked occurrences")
 		return list.ItemID{}, nil
 	}

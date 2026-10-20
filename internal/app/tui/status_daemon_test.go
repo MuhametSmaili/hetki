@@ -127,12 +127,11 @@ func TestOpeningStatusDefersDaemonWorkUntilRead(t *testing.T) {
 
 		require.NoError(t, err, "opening must not validate or launch the daemon")
 		require.NotNil(t, reader)
-		update := reader.options().Read(t.Context(), status.Snapshot{})
+		update := reader.options().Read(t.Context(), 0)
 		require.Error(t, update.Err, "the asynchronous read validates the descriptor")
-		acceptStatusUpdate(update)
 
 		time.Sleep(time.Hour) // Virtual time exceeds any retry suppression.
-		later := reader.options().Read(t.Context(), update.Values)
+		later := reader.options().Read(t.Context(), update.Sequence)
 
 		require.ErrorIs(t, later.Err, errors.Unwrap(update.Err), "uncertain native identity ends this reader")
 	})

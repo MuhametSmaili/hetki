@@ -132,9 +132,9 @@ func TestScopeToggleIsLocalAndPreservesQueryAndSelection(t *testing.T) {
 			m.applyScope("idle", now)
 			m.mode = mode
 			reads := 0
-			m.paneStatus.options.Read = func(_ context.Context, previous status.Snapshot) StatusUpdate {
+			m.paneStatus.options.Read = func(context.Context, uint64) StatusUpdate {
 				reads++
-				return StatusUpdate{Values: previous}
+				return StatusUpdate{}
 			}
 
 			next, cmd := m.updateKey(specialKey(tea.KeyTab))

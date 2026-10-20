@@ -100,7 +100,7 @@ func TestStatusFramesStayLocalAndCoalesced(t *testing.T) {
 	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 	m := paneStatusModel(t, status.Working, now.Add(time.Minute))
 	reads := 0
-	m.paneStatus.options.Read = func(context.Context, status.Snapshot) StatusUpdate {
+	m.paneStatus.options.Read = func(context.Context, uint64) StatusUpdate {
 		reads++
 		return StatusUpdate{}
 	}
@@ -129,35 +129,27 @@ func TestStatusPollingWithoutProvider(t *testing.T) {
 func TestStatusPollingIsSingleFlight(t *testing.T) {
 	m := newModel(viewSnapshot(), nil)
 	reads := 0
-	accepted := false
-	var deadline time.Time
-	var hasDeadline bool
-	m.paneStatus.options.Read = func(ctx context.Context, previous status.Snapshot) StatusUpdate {
-		deadline, hasDeadline = ctx.Deadline()
+	m.paneStatus.options.Read = func(context.Context, uint64) StatusUpdate {
 		reads++
-		return StatusUpdate{Values: previous, Accept: func() { accepted = true }}
+		return StatusUpdate{Sequence: 1}
 	}
 
 	next, cmd := m.readPaneStatus()
 	reading := next.(model)
 	_, duplicate := reading.readPaneStatus()
-	result := cmd().(statusResultMsg)
-	require.False(t, accepted, "receipt is not application")
-	finished, poll := reading.handleStatusResult(result)
+	finished, poll := reading.handleStatusResult(cmd().(statusResultMsg))
 
 	require.True(t, reading.paneStatus.reading)
 	require.Nil(t, duplicate)
 	require.Equal(t, 1, reads)
-	require.True(t, hasDeadline)
-	require.LessOrEqual(t, time.Until(deadline), statusReadTimeout)
 	require.False(t, finished.(model).paneStatus.reading)
-	require.True(t, accepted)
+	require.EqualValues(t, 1, finished.(model).paneStatus.sequence)
 	require.NotNil(t, poll)
 }
 
 func TestStatusPollingStopsOnQuit(t *testing.T) {
 	m := paneStatusModel(t, status.Working, time.Now().Add(time.Minute))
-	m.paneStatus.options.Read = func(_ context.Context, previous status.Snapshot) StatusUpdate { return StatusUpdate{Values: previous} }
+	m.paneStatus.options.Read = func(context.Context, uint64) StatusUpdate { return StatusUpdate{} }
 	m.quitting = true
 
 	_, read := m.readPaneStatus()
@@ -167,38 +159,47 @@ func TestStatusPollingStopsOnQuit(t *testing.T) {
 	require.Nil(t, poll)
 }
 
-func TestWatchReadBudgetAndRetryCadence(t *testing.T) {
+func TestStatusReadCadence(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		watching bool
-		err      error
-		delay    time.Duration
+		name  string
+		err   error
+		delay time.Duration
 	}{
-		{name: "watch rearms immediately", watching: true},
-		{name: "older daemon keeps polling", delay: statusPollInterval},
-		{name: "watch failure backs off", watching: true, err: errors.New("offline"), delay: statusPollInterval},
+		{name: "success reads the next change at once"},
+		{name: "failure waits before the next read", err: errors.New("offline"), delay: statusPollInterval},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				m := newModel(viewSnapshot(), nil)
-				m.paneStatus.options.ReadTimeout = 23 * time.Second
-				m.paneStatus.options.Read = func(ctx context.Context, previous status.Snapshot) StatusUpdate {
-					deadline, ok := ctx.Deadline()
-					require.True(t, ok)
-					require.Equal(t, 23*time.Second, time.Until(deadline))
-					return StatusUpdate{Values: previous, Watching: tc.watching, Err: tc.err}
+				var after []uint64
+				m.paneStatus.options.Read = func(_ context.Context, sequence uint64) StatusUpdate {
+					after = append(after, sequence)
+					return StatusUpdate{Err: tc.err, Sequence: 4}
 				}
 
 				next, read := m.readPaneStatus()
-				_, retry := next.(model).handleStatusResult(read().(statusResultMsg))
+				applied, retry := next.(model).handleStatusResult(read().(statusResultMsg))
 				start := time.Now()
 				message := retry()
+				_, again := applied.(model).readPaneStatus()
+				again()
 
 				require.IsType(t, statusPollMsg{}, message)
 				require.Equal(t, tc.delay, time.Since(start))
+				require.Equal(t, []uint64{0, 4}, after, "the next read waits for a newer result")
 			})
 		})
 	}
+}
+
+func TestDiscardedStatusResultIsReadAgain(t *testing.T) {
+	m := paneStatusModel(t, status.Working, time.Now().Add(time.Minute))
+	m.paneStatus.sequence = 3
+	m.busy = true
+
+	ignored, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Sequence: 4}})
+
+	require.EqualValues(t, 3, ignored.(model).paneStatus.sequence, "a discarded result keeps the old sequence")
 }
 
 func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {
@@ -213,31 +214,26 @@ func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 			m := paneStatusModel(t, status.Working, now.Add(time.Minute))
-			readAccepted, replacementAccepted := false, false
 			pending := statusResultMsg{update: StatusUpdate{
-				Values: m.paneStatus.values, Bindings: m.paneStatus.options.Bindings,
-				Accept: func() { readAccepted = true },
+				Values: m.paneStatus.values, Bindings: m.paneStatus.options.Bindings, Sequence: 1,
 			}}
 			pane := m.paneStatus.options.Bindings[list.ItemID{ID: "window"}][0]
 			pane.Generation = test.generation
 			flat := list.Snapshot{Items: []list.Item{{ID: list.ItemID{ID: "pane"}, Primary: "pane"}}}
 			replacement := actionResultMsg{result: ActionResult{
 				Snapshot: &flat, Status: &StatusUpdate{
-					Values: m.paneStatus.values, Bindings: StatusBindings{{ID: "pane"}: {pane}},
-					Accept: func() { replacementAccepted = true },
+					Values: m.paneStatus.values, Bindings: StatusBindings{{ID: "pane"}: {pane}}, Sequence: 2,
 				},
 			}}
 
 			m.busy = true
 			ignored, _ := m.handleStatusResult(pending)
-			require.False(t, readAccepted, "busy UI must not acknowledge the read")
 			rebound, cmd := ignored.(model).handleActionResult(replacement)
 			completed, _ := rebound.(model).handleStatusResult(pending)
 			current := completed.(model)
 
 			require.Nil(t, cmd)
-			require.False(t, readAccepted, "stale generation must not acknowledge the read")
-			require.True(t, replacementAccepted)
+			require.EqualValues(t, 2, current.paneStatus.sequence, "only the replacement was applied")
 			require.Equal(t, test.want, current.paneStatus.options.Bindings.StateAt(list.ItemID{ID: "pane"}, current.paneStatus.values, now))
 		})
 	}

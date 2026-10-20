@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/MuhametSmaili/hetki/internal/status"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
@@ -76,14 +75,14 @@ func (e *uiEffects) statusOptions() ui.StatusOptions {
 	return options
 }
 
-func (e *uiEffects) readStatus(ctx context.Context, previous status.Snapshot) ui.StatusUpdate {
+func (e *uiEffects) readStatus(ctx context.Context, after uint64) ui.StatusUpdate {
 	if err := e.begin(); err != nil {
-		return ui.StatusUpdate{Values: previous.Invalidate()}
+		return ui.StatusUpdate{Sequence: after}
 	}
 	defer e.active.Done()
 	readCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stop := context.AfterFunc(e.ctx, cancel)
 	defer stop()
-	return e.status.readStatus(readCtx, previous)
+	return e.status.readStatus(readCtx, after)
 }
