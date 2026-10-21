@@ -38,7 +38,13 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if err := m.items.Replace(*result.Snapshot, result.SelectItemID); err != nil {
+	preferred := result.SelectItemID
+	if preferred.IsZero() {
+		selected, _ := m.items.Selected()
+		preferred = selected.Item.ID
+	}
+
+	if err := m.items.Replace(*result.Snapshot, preferred); err != nil {
 		m.err = err
 		return m, nil
 	}
@@ -50,9 +56,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.paneStatus.bindingGeneration++
 	m.applyStatusPresentation(time.Now())
-	if !result.SelectItemID.IsZero() {
-		m.items.Select(result.SelectItemID)
-	}
+	m.items.Select(preferred)
 	if pending != nil && isDeleteAction(pending.ActionID) {
 		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
 	}

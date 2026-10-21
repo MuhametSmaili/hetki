@@ -229,18 +229,18 @@ func (s *Sampler) parseCaptureBatch(out, marker string, targets []CaptureTarget,
 	if !ok || header != fmt.Sprintf("%d|%d|%s", s.server.PID, s.server.Started, s.server.Version) {
 		return nil, Inventory{}, ErrServerChanged
 	}
-	texts, err := splitScreens(rest, marker, targets)
-	if err != nil {
-		return nil, Inventory{}, err
-	}
 	after, err := s.parseInventory(facts, ids)
 	if err != nil {
 		return nil, Inventory{}, fmt.Errorf("parse post-capture inventory: %w", err)
 	}
+	texts, err := splitScreens(rest, marker, targets, after)
+	if err != nil {
+		return nil, Inventory{}, err
+	}
 	return texts, after, nil
 }
 
-func splitScreens(out, marker string, targets []CaptureTarget) (map[string]string, error) {
+func splitScreens(out, marker string, targets []CaptureTarget, after Inventory) (map[string]string, error) {
 	texts := make(map[string]string, len(targets))
 	for _, target := range targets {
 		key := strings.TrimPrefix(target.pane.ID, "%")
@@ -251,11 +251,19 @@ func splitScreens(out, marker string, targets []CaptureTarget) (map[string]strin
 		out = out[len(start):]
 		end := marker + "-end-" + key + "\n"
 		text, rest, ok := strings.Cut(out, end)
-		if !ok || !strings.HasSuffix(text, "\n") || len(text) > maxScreenBytes || strings.Contains(text, marker) || strings.Count(text, "\n") != target.last-target.first+1 {
+		rows := strings.Count(text, "\n")
+		if !ok || !strings.HasSuffix(text, "\n") || len(text) > maxScreenBytes || strings.Contains(text, marker) || rows > maxCaptureRows {
 			return nil, fmt.Errorf("invalid capture boundary, size or row count")
 		}
-		texts[target.pane.ID] = strings.Clone(text)
 		out = rest
+
+		if after.panes[target.pane.ID].Rows != target.pane.Rows {
+			continue
+		}
+		if rows != target.last-target.first+1 {
+			return nil, fmt.Errorf("unexpected capture row count for pane %s", target.pane.ID)
+		}
+		texts[target.pane.ID] = strings.Clone(text)
 	}
 	if out != "" {
 		return nil, fmt.Errorf("unexpected trailing capture data")

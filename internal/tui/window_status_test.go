@@ -6,6 +6,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
@@ -162,6 +163,77 @@ func TestTreeRepresentativeSurvivesRefreshAndViewToggle(t *testing.T) {
 
 	require.Equal(t, panes[1].Ref, m.paneStatus.representatives[id])
 	require.Equal(t, status.Working, m.paneStatus.rowValue(id, now).State)
+}
+
+func TestFilteredTreeRefreshPreservesSelectionAfterDetailsReturn(t *testing.T) {
+	first := list.ItemID{ID: "window-one"}
+	second := list.ItemID{ID: "window-two"}
+	cases := []struct {
+		name           string
+		preferred      list.ItemID
+		removeSelected bool
+		hideSelected   bool
+		want           list.ItemID
+	}{
+		{"keep current selection", list.ItemID{}, false, false, second},
+		{"explicit selection takes priority", first, false, false, first},
+		{"removed selection falls back", list.ItemID{}, true, false, first},
+		{"filtered-out selection falls back", list.ItemID{}, false, true, first},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := list.Snapshot{Items: []list.Item{{
+				ID: list.ItemID{ID: "session"}, Primary: "session",
+				Children: []list.Item{
+					{ID: first, Primary: "one", Secondary: "/shell"},
+					{ID: second, Primary: "two", Secondary: "/shell"},
+				},
+			}}}
+			windows := make(map[list.ItemID][]WindowPane)
+			values := make(map[status.PaneRef]status.Value)
+			for _, id := range []list.ItemID{first, second} {
+				ref := status.PaneRef{Server: "server", ID: id.ID, Generation: "birth"}
+				values[ref] = status.Value{State: status.Blocked, ValidUntil: time.Now().Add(time.Minute)}
+				windows[id] = []WindowPane{
+					{Active: true, Details: list.Details{Secondary: "/shell"}},
+					{Ref: ref, Details: list.Details{Trailing: "opencode", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "opencode"}}}},
+				}
+			}
+			snapshot, err := status.NewSnapshot(values)
+			require.NoError(t, err)
+			update := StatusUpdate{Values: snapshot, Windows: windows}
+			m := newModel(tree, func(request ActionRequest) (ActionResult, error) {
+				require.Equal(t, ActionRequest{ActionID: ActionRefresh}, request)
+				replacement := tree
+				if tc.removeSelected {
+					replacement.Items = slices.Clone(tree.Items)
+					replacement.Items[0].Children = tree.Items[0].Children[:1]
+					update.Windows = map[list.ItemID][]WindowPane{first: windows[first]}
+				}
+				if tc.hideSelected {
+					update.Windows = map[list.ItemID][]WindowPane{
+						first:  windows[first],
+						second: {{Active: true, Details: list.Details{Secondary: "/shell"}}},
+					}
+				}
+				return ActionResult{Snapshot: &replacement, Status: &update, SelectItemID: tc.preferred}, nil
+			})
+			m, _ = updateModel(t, m, statusResultMsg{update: update})
+			m, _ = updateModel(t, m, printableKey("opencode"))
+			m, _ = updateModel(t, m, specialKey(tea.KeyEscape))
+			m, _ = updateModel(t, m, specialKey(tea.KeyDown))
+			require.Equal(t, second, selectedNodeID(m))
+
+			m, cmd := updateModel(t, m, controlKey('r'))
+			require.NotNil(t, cmd)
+			m, _ = updateModel(t, m, cmd())
+
+			require.NoError(t, m.err)
+			require.False(t, m.busy)
+			require.Equal(t, "opencode", m.items.Query())
+			require.Equal(t, tc.want, selectedNodeID(m))
+		})
+	}
 }
 
 func TestRepresentativePrefersActivePaneOnInitialTie(t *testing.T) {

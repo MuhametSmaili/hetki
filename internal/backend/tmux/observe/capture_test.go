@@ -143,34 +143,87 @@ func TestCapturePreservesOtherPaneWhenNativeOwnerChanges(t *testing.T) {
 	require.Equal(t, "%2 content\n", results[1].Text)
 }
 
-func TestCaptureKeepsOtherPanesWhenOneCommandChanges(t *testing.T) {
+func TestCaptureKeepsOtherPanesWhenOneTargetChanges(t *testing.T) {
 	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
-	changed := false
-	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
-		first := testPaneRow
-		if changed {
-			first = strings.Replace(first, "|cat|", "|replacement|", 1)
-		}
-		if slices.Contains(args, "capture-pane") {
-			return captureFixtureReply(t, args, first+peer), nil
-		}
-		return testInventoryOutput(first + peer), nil
-	})
-	inventory, err := s.Inventory(t.Context(), 1)
-	require.NoError(t, err)
-	first, err := inventory.Target("%1", Region{Rows: 1})
-	require.NoError(t, err)
-	second, err := inventory.Target("%2", Region{Rows: 1})
-	require.NoError(t, err)
-	changed = true
+	cases := []struct {
+		name string
+		old  string
+		new  string
+		rows int
+	}{
+		{"command changed", "|cat|", "|replacement|", 30},
+		{"viewport shrank", "|30|", "|20|", 20},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			captures := 0
+			s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+				if slices.Contains(args, "capture-pane") {
+					first := strings.Replace(testPaneRow, tc.old, tc.new, 1)
+					captures++
+					out := captureFixtureReply(t, args, first+peer)
+					return strings.Replace(out, strings.Repeat("%1 content\n", 30), strings.Repeat("%1 content\n", tc.rows), 1), nil
+				}
+				return testInventoryOutput(testPaneRow + peer), nil
+			})
+			inventory, err := s.Inventory(t.Context(), 1)
+			require.NoError(t, err)
+			first, err := inventory.Target("%1", Region{})
+			require.NoError(t, err)
+			second, err := inventory.Target("%2", Region{Rows: 1})
+			require.NoError(t, err)
 
-	results, err := s.Capture(t.Context(), []CaptureTarget{first, second})
+			results, err := s.Capture(t.Context(), []CaptureTarget{first, second})
 
-	require.NoError(t, err)
-	require.ErrorIs(t, results[0].Err, ErrChanged)
-	require.Empty(t, results[0].Text)
-	require.NoError(t, results[1].Err)
-	require.Equal(t, "%2 content\n", results[1].Text)
+			require.NoError(t, err)
+			require.Equal(t, 1, captures)
+			require.ErrorIs(t, results[0].Err, ErrChanged)
+			require.Empty(t, results[0].Text)
+			require.True(t, results[0].StartedAt.IsZero())
+			require.NoError(t, results[1].Err)
+			require.Equal(t, "%2 content\n", results[1].Text)
+		})
+	}
+}
+
+func TestCaptureRejectsMalformedScreensWithResizedPane(t *testing.T) {
+	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
+	cases := []struct {
+		name      string
+		firstText string
+		peerRows  int
+	}{
+		{"unterminated resized screen", "resized", 30},
+		{"oversized resized screen", strings.Repeat("x", maxScreenBytes) + "\n", 30},
+		{"too many resized rows", strings.Repeat("row\n", maxCaptureRows+1), 30},
+		{"missing unchanged peer row", strings.Repeat("row\n", 20), 29},
+		{"extra unchanged peer row", strings.Repeat("row\n", 20), 31},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+				if !slices.Contains(args, "capture-pane") {
+					return testInventoryOutput(testPaneRow + peer), nil
+				}
+				resized := strings.Replace(testPaneRow, "|30|", "|20|", 1)
+				out := captureFixtureReply(t, args, resized+peer)
+				out = strings.Replace(out, strings.Repeat("%1 content\n", 30), tc.firstText, 1)
+				out = strings.Replace(out, strings.Repeat("%2 content\n", 30), strings.Repeat("%2 content\n", tc.peerRows), 1)
+				return out, nil
+			})
+			inventory, err := s.Inventory(t.Context(), 1)
+			require.NoError(t, err)
+			first, err := inventory.Target("%1", Region{})
+			require.NoError(t, err)
+			second, err := inventory.Target("%2", Region{})
+			require.NoError(t, err)
+
+			screens, err := s.Capture(t.Context(), []CaptureTarget{first, second})
+
+			require.Error(t, err)
+			require.Nil(t, screens)
+		})
+	}
 }
 
 func TestCapturePropagatesBatchFailureWithoutPartialResults(t *testing.T) {
@@ -362,7 +415,9 @@ func TestCaptureRegions(t *testing.T) {
 }
 
 func TestScreenFramingRejectsAmbiguousOrTruncatedText(t *testing.T) {
-	targets := []CaptureTarget{{pane: Pane{ID: "%1"}, first: 0, last: 1}}
+	pane := Pane{ID: "%1", Rows: 2}
+	targets := []CaptureTarget{{pane: pane, first: 0, last: 1}}
+	after := Inventory{panes: map[string]Pane{"%1": pane}}
 	cases := []struct {
 		name, out string
 	}{
@@ -377,7 +432,7 @@ func TestScreenFramingRejectsAmbiguousOrTruncatedText(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			texts, err := splitScreens(tc.out, "m", targets)
+			texts, err := splitScreens(tc.out, "m", targets, after)
 
 			require.Error(t, err)
 			require.Nil(t, texts)

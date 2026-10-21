@@ -85,6 +85,51 @@ func TestNativeStatusInventoryAndCaptureRegions(t *testing.T) {
 	}
 }
 
+func TestNativeStatusCapturePreservesPeerWhenPaneShrinks(t *testing.T) {
+	cases := []struct {
+		name   string
+		region observe.Region
+	}{
+		{"whole viewport", observe.Region{}},
+		{"bottom beyond resized viewport", observe.Region{Bottom: true, Rows: 2}},
+		{"partly clipped range", observe.Region{Start: 18, Rows: 10}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b, server, _, pane := nativeStatusFixture(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			peer, err := b.client.Run(ctx, "new-window", "-d", "-t", "native-status", "-P", "-F", "#{pane_id}",
+				"printf 'PEER-CAPTURE\\n'; exec cat")
+			require.NoError(t, err)
+			peer = strings.TrimSpace(peer)
+			waitForNativeScreen(t, ctx, b, peer, "PEER-CAPTURE")
+			waitForNativeCommand(t, ctx, b, peer, "cat")
+			sampler, err := b.StatusSampler(server)
+			require.NoError(t, err)
+			inventory, err := sampler.Inventory(ctx, 1)
+			require.NoError(t, err)
+			first, err := inventory.Target(pane, tc.region)
+			require.NoError(t, err)
+			second, err := inventory.Target(peer, observe.Region{})
+			require.NoError(t, err)
+			_, err = b.client.Run(ctx, "resize-window", "-t", pane, "-y", "20")
+			require.NoError(t, err)
+
+			screens, err := sampler.Capture(ctx, []observe.CaptureTarget{first, second})
+
+			require.NoError(t, err)
+			require.Len(t, screens, 2)
+			require.ErrorIs(t, screens[0].Err, observe.ErrChanged)
+			require.Empty(t, screens[0].Text)
+			require.True(t, screens[0].StartedAt.IsZero())
+			require.NoError(t, screens[1].Err)
+			require.Contains(t, screens[1].Text, "PEER-CAPTURE")
+			require.False(t, screens[1].StartedAt.IsZero())
+		})
+	}
+}
+
 func TestNativeStatusCaptureRejectsRespawnAndRetainsDeadPane(t *testing.T) {
 	b, server, _, pane := nativeStatusFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
