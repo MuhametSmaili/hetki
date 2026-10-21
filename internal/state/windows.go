@@ -59,17 +59,29 @@ func (c windowComparer) compareSessionWindows(desired, actual []*Window) ItemDif
 func (c windowComparer) findCandidate(desired *Window, actual []*Window, matched []bool) int {
 	candidate := -1
 	for i, window := range actual {
-		if matched[i] || keyForWindow(desired) != keyForWindow(window) {
+		if matched[i] || desired.Name != window.Name || !observedPathMatches(desired.Path, window.Path) {
 			continue
 		}
-		if candidate < 0 {
-			candidate = i
-		}
-		if c.windowsMatch(desired, window) {
+		if WindowsCorrespond(desired, window) && c.windowsMatch(desired, window) {
 			return i
+		}
+		if candidate < 0 || c.preferCandidate(desired, window, actual[candidate]) {
+			candidate = i
 		}
 	}
 	return candidate
+}
+
+// Fully known matches are selected by findCandidate. Among remaining candidates,
+// prefer matching properties, then a known window path; keep ties in input order.
+func (c windowComparer) preferCandidate(desired, candidate, current *Window) bool {
+	candidateMatches := c.windowsMatch(desired, candidate)
+	currentMatches := c.windowsMatch(desired, current)
+	if candidateMatches != currentMatches {
+		return candidateMatches
+	}
+
+	return candidateMatches && candidate.Path != "" && current.Path == ""
 }
 
 func (c windowComparer) windowsMatch(desired, actual *Window) bool {
@@ -79,17 +91,26 @@ func (c windowComparer) windowsMatch(desired, actual *Window) bool {
 		}
 	}
 
-	if !WindowsCorrespond(desired, actual) {
+	if desired.Name != actual.Name || !observedPathMatches(desired.Path, actual.Path) || len(desired.Panes) != len(actual.Panes) {
 		return false
 	}
 
 	for i := range desired.Panes {
+		if !observedPathMatches(desired.Panes[i].Path, actual.Panes[i].Path) {
+			return false
+		}
+
 		if desired.Panes[i].Zoom != actual.Panes[i].Zoom {
 			return false
 		}
 	}
 
 	return true
+}
+
+// An empty observed path is unavailable, not evidence of a different directory.
+func observedPathMatches(desired, observed string) bool {
+	return observed == "" || desired == observed
 }
 
 // WindowsCorrespond compares names and resolved directories, pairing panes by
