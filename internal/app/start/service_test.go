@@ -206,40 +206,31 @@ func TestServiceRunDryRunOutputsPlan(t *testing.T) {
 }
 
 func TestServiceRunDryRunIsReadOnlyWhenPlanIsEmpty(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		force bool
-	}{
-		{name: "merge"},
-		{name: "force", force: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			workspace := &manifest.Workspace{Sessions: []manifest.Session{{
-				Name:    "dev",
-				Windows: []manifest.Window{{Name: "editor", Path: "/work/hetki"}},
-			}}}
-			stub := &stubBackend{queryResult: backend.StateResult{
-				Sessions: []backend.Session{{
-					Name:    "dev",
-					Windows: []backend.Window{{Name: "editor", Path: "/work/hetki"}},
-				}},
-			}}
-			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
-			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
-				return workspace, "/work/hetki/.hetki.yaml", nil
-			}
-			var err error
-
-			output := captureLoggerOutput(t, func() {
-				err = service.Run(context.Background(), Options{Path: new("./.hetki.yaml"), DryRun: true, Force: tc.force})
-			})
-
-			require.NoError(t, err)
-			assert.Contains(t, output, "Workspace already up to date")
-			assert.Zero(t, stub.applyCalls)
-			assert.Zero(t, stub.attachCalls)
-		})
+	workspace := &manifest.Workspace{Sessions: []manifest.Session{{
+		Name:    "dev",
+		Windows: []manifest.Window{{Name: "editor", Path: "/work/hetki"}},
+	}}}
+	stub := &stubBackend{queryResult: backend.StateResult{
+		Sessions: []backend.Session{{
+			Name:    "dev",
+			Windows: []backend.Window{{Name: "editor", Path: "/work/hetki"}},
+		}},
+	}}
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
+	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
+		return workspace, "/work/hetki/.hetki.yaml", nil
 	}
+	var err error
+
+	output := captureLoggerOutput(t, func() {
+		err = service.Run(t.Context(), Options{Path: new("./.hetki.yaml"), DryRun: true, Force: true, PruneSessions: true})
+	})
+
+	require.NoError(t, err)
+	assert.Contains(t, output, "Workspace already up to date")
+	assert.Contains(t, output, "Workspace: /work/hetki/.hetki.yaml")
+	assert.Zero(t, stub.applyCalls)
+	assert.Zero(t, stub.attachCalls)
 }
 
 func TestServiceRunFailsWhenBackendStateQueryFails(t *testing.T) {
@@ -430,7 +421,7 @@ func TestToBackendActionsMapsPlannerActions(t *testing.T) {
 		plan.SendKeysAction{Session: "dev", Window: "server", Pane: 1, Command: "npm test"},
 		plan.SelectLayoutAction{Session: "dev", Window: "server", Layout: "tiled"},
 		plan.ZoomPaneAction{Session: "dev", Window: "server", Pane: 1},
-		plan.KillSessionAction{Name: "old"},
+		plan.KillSessionAction{Name: "old", SessionID: "$2"},
 		plan.KillWindowAction{Session: "dev", Window: "old-window", WindowID: "@7"},
 	}
 
@@ -443,7 +434,7 @@ func TestToBackendActionsMapsPlannerActions(t *testing.T) {
 		backend.SendKeysAction{Session: "dev", Window: "server", Pane: 1, Command: "npm test"},
 		backend.SelectLayoutAction{Session: "dev", Window: "server", Layout: "tiled"},
 		backend.ZoomPaneAction{Session: "dev", Window: "server", Pane: 1},
-		backend.KillSessionAction{Name: "old"},
+		backend.KillSessionAction{Name: "$2"},
 		backend.KillWindowAction{Session: "dev", Window: "old-window", WindowID: "@7"},
 	}, converted)
 }

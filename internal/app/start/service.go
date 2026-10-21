@@ -17,10 +17,11 @@ import (
 
 type Options struct {
 	// Nil selectors are omitted; non-nil empty values are invalid.
-	Name   *string
-	Path   *string
-	DryRun bool
-	Force  bool
+	Name          *string
+	Path          *string
+	DryRun        bool
+	Force         bool
+	PruneSessions bool
 }
 
 // Backend provides the reconciliation and attachment operations used by starting.
@@ -69,7 +70,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 		return appshared.WithHint(fmt.Errorf("failed to detect backend: %w", err), "Install tmux and make sure it is available on PATH.")
 	}
 
-	p, err := buildPlan(ctx, b, workspace, opts.Force)
+	p, err := buildPlan(ctx, b, workspace, opts)
 	if err != nil {
 		return err
 	}
@@ -95,7 +96,7 @@ func (s Service) detectBackend() (Backend, error) {
 	return backend.Detect()
 }
 
-func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, force bool) (*plan.Plan, error) {
+func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, opts Options) (*plan.Plan, error) {
 	desired := converter.ManifestToState(workspace)
 
 	result, err := b.QueryState(ctx)
@@ -105,24 +106,33 @@ func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, fo
 	actual := converter.BackendResultToState(result)
 
 	diff := state.Compare(desired, actual, b.LayoutsMatch)
-	planDiff := converter.StateDiffToPlanDiff(diff, desired)
+	planDiff := converter.StateDiffToPlanDiff(diff, desired, actual)
 
-	strategy := selectStrategy(force)
+	strategy := selectStrategy(opts)
 	p := strategy.Plan(planDiff)
 	if err := p.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid reconciliation plan: %w", err)
 	}
+	if opts.PruneSessions {
+		if err := validatePruning(result, p); err != nil {
+			return nil, err
+		}
+	}
 	return p, nil
 }
 
-func selectStrategy(force bool) plan.Strategy {
-	if force {
-		return &plan.ForceStrategy{}
+func selectStrategy(opts Options) plan.Strategy {
+	if opts.Force {
+		return &plan.ForceStrategy{PruneSessions: opts.PruneSessions}
 	}
-	return &plan.MergeStrategy{}
+	return &plan.MergeStrategy{PruneSessions: opts.PruneSessions}
 }
 
 func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspace *manifest.Workspace, workspacePath string, dryRun bool) error {
+	if dryRun && workspacePath != "" {
+		logger.Plain("Workspace: %s", workspacePath)
+	}
+
 	if p.IsEmpty() {
 		logger.Info("Workspace already up to date")
 		if dryRun {
@@ -138,7 +148,7 @@ func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspace *manife
 		return fmt.Errorf("failed to convert plan: %w", err)
 	}
 	if dryRun {
-		return printDryRun(b, actions)
+		return printDryRun(b, actions, p)
 	}
 
 	if err := b.Apply(ctx, actions); err != nil {
@@ -187,12 +197,17 @@ func stampWorkspacePath(ctx context.Context, b Backend, workspace *manifest.Work
 	return nil
 }
 
-func printDryRun(b Backend, actions []backend.Action) error {
+func printDryRun(b Backend, actions []backend.Action, p *plan.Plan) error {
 	lines, err := b.DryRun(actions)
 	if err != nil {
 		return fmt.Errorf("failed to render dry run: %w", err)
 	}
 	logger.Info("Dry run - actions to execute:")
+	for _, action := range p.Actions {
+		if _, ok := action.(plan.KillSessionAction); ok {
+			logger.Plain("  %s", action.Comment())
+		}
+	}
 	for _, line := range lines {
 		logger.Plain("  %s", line)
 	}
@@ -228,7 +243,7 @@ func toBackendAction(action plan.Action) (backend.Action, error) {
 	case plan.SendKeysAction:
 		return backend.SendKeysAction{Session: a.Session, Window: a.Window, Pane: a.Pane, Command: a.Command}, nil
 	case plan.KillSessionAction:
-		return backend.KillSessionAction{Name: a.Name}, nil
+		return backend.KillSessionAction{Name: a.SessionID}, nil
 	case plan.KillWindowAction:
 		return backend.KillWindowAction{Session: a.Session, Window: a.Window, WindowID: a.WindowID}, nil
 	case plan.SelectLayoutAction:

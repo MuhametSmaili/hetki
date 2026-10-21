@@ -100,7 +100,8 @@ func projectLiveState(ctx context.Context, result LoadStateResult, err error) (b
 	}
 
 	return backend.StateResult{
-		Sessions: sessions,
+		Sessions:   sessions,
+		Invocation: invocationContext(),
 		Active: backend.ActiveContext{
 			SessionID:   result.Active.SessionID,
 			Session:     result.Active.Session,
@@ -143,6 +144,10 @@ func (b *TmuxBackend) DryRun(actions []backend.Action) ([]string, error) {
 	}
 	lines := make([]string, len(args))
 	for i := range args {
+		if _, ok := actions[i].(backend.KillSessionAction); ok {
+			target := len(args[i]) - 1
+			args[i][target] = "'" + strings.ReplaceAll(args[i][target], "'", "'\\''") + "'"
+		}
 		lines[i] = "tmux " + strings.Join(args[i], " ")
 	}
 	return lines, nil

@@ -79,7 +79,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 			for _, force := range []bool{false, true} {
 				workspace, err := manifest.NewFileLoader(workspacePath, backendtmux.ValidateAuthoredLayout).Load()
 				require.NoError(t, err)
-				second, err := buildPlan(ctx, b, workspace, force)
+				second, err := buildPlan(ctx, b, workspace, Options{Force: force})
 				require.NoError(t, err)
 				require.True(t, second.IsEmpty(), "reloaded second start must plan no actions (force=%v): %v", force, second.Actions)
 

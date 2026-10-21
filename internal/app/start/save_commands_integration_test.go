@@ -84,7 +84,7 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 	require.True(t, restoredDev.Windows[0].Panes[1].Zoom)
 
 	for _, force := range []bool{false, true} {
-		planned, err := buildPlan(ctx, b, saved, force)
+		planned, err := buildPlan(ctx, b, saved, Options{Force: force})
 		require.NoError(t, err)
 		require.True(t, planned.IsEmpty(), "matching start must not recreate panes or resend commands: %v", planned.Actions)
 		require.NoError(t, starter.Run(ctx, Options{Path: new(path), Force: force}))

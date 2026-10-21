@@ -70,7 +70,10 @@ Both `start` and `save` require exactly one selector:
 hetki save -p ./path/to/your_workspace.yaml --all
 hetki start -p ./path/to/your_workspace.yaml --dry-run
 hetki start -p ./path/to/your_workspace.yaml
+hetki start -n your_workspace --prune-sessions --dry-run
 ```
+
+`start --prune-sessions` adds missing resources, then deletes sessions omitted from YAML, including unrelated sessions. It does not require `--force`. Without `--force`, it does not replace or delete existing windows in retained sessions. Combine both flags to reconcile their windows as well. Use `--dry-run` to inspect the selected workspace and deletion names/IDs before applying.
 
 A workspace name selects a file, not session ownership. Session names come from YAML. Hetki does not automatically discover a local workspace.
 
@@ -143,6 +146,8 @@ Older daemons can reject `stop` and `restart`. Hetki does not force-kill them.
 Normal start adds missing resources. `--force` also replaces mismatched windows and removes extra windows inside declared sessions. It can terminate their processes. Earlier actions remain applied after a failure.
 
 > **Caution:** With linked windows, `--force` can destroy windows and sessions outside the workspace. See [#12](https://github.com/MuhametSmaili/hetki/issues/12).
+
+`--prune-sessions` terminates processes in removed sessions' unshared windows. Deletion uses observed session IDs and runs only after reconciliation succeeds; there is no rollback. Pruning refuses before mutation if the plan would delete its invoking session or window, that invocation cannot be identified, or a force window deletion would affect linked sessions. A moved pane is protected in its current session. If only the invoking session is known (such as in a popup), all its windows are protected. Run from a retained pane or outside tmux. These checks also apply to dry runs. Plans use a snapshot: concurrent external tmux changes are not an atomic transaction.
 
 Saves use atomic replacement and reject a destination that changed during the save. Existing authored commands survive only when their live-pane matches are unambiguous. Hetki does not reconstruct commands from running processes.
 

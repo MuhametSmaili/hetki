@@ -84,7 +84,7 @@ func TestForceReplacementPreservesSessionOnIsolatedTmux(t *testing.T) {
 				assert.Equal(t, directory, window.Panes[1].Path)
 				assert.True(t, window.Panes[1].Zoom, "follow-ups must target the replacement, not the old same-named window")
 			}
-			second, err := buildPlan(ctx, b, workspace, true)
+			second, err := buildPlan(ctx, b, workspace, Options{Force: true})
 			require.NoError(t, err)
 			assert.True(t, second.IsEmpty(), "second force start must plan no actions, got %v", second.Actions)
 		})
@@ -178,8 +178,8 @@ set -g automatic-rename off
 	wrapperDir := t.TempDir()
 	wrapper := fmt.Sprintf(`#!/bin/sh
 case "$1" in attach-session|switch-client) exit 0;; esac
-if [ "$1" = "$HETKI_TEST_FAIL_COMMAND" ]; then
-  printf 'injected failure: %%s\n' "$1" >&2
+if [ "$1" = "$HETKI_TEST_FAIL_COMMAND" ] && { [ -z "$HETKI_TEST_FAIL_TARGET" ] || [ "$3" = "$HETKI_TEST_FAIL_TARGET" ]; }; then
+  printf 'injected failure: %%s\n' "$*" >&2
   exit 73
 fi
 exec %q -S %q -f %q "$@"
@@ -187,7 +187,9 @@ exec %q -S %q -f %q "$@"
 	require.NoError(t, os.WriteFile(filepath.Join(wrapperDir, "tmux"), []byte(wrapper), 0700))
 	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
 	t.Setenv("HETKI_TEST_FAIL_COMMAND", "")
+	t.Setenv("HETKI_TEST_FAIL_TARGET", "")
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

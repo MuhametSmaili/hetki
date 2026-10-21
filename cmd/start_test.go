@@ -11,23 +11,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunStartValidatesLayoutBeforeBackendDetection(t *testing.T) {
-	resetCommandGlobals()
+func TestRunStartValidatesManifestBeforeBackendDetection(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	path := writeWorkspaceFile(t, t.TempDir(), "workspace.yaml", "sessions:\n  - name: dev\n    windows:\n      - layout: diagonal\n")
 	previous := detectBackend
 	detectBackend = func(...string) (backend.Backend, error) {
-		t.Fatal("unexpected backend detection")
+		t.Fatal("invalid manifest reached backend detection")
 		return nil, nil
 	}
 	t.Cleanup(func() { detectBackend = previous })
 
-	require.NoError(t, startCmd.Flags().Set("path", path))
+	for _, tc := range []struct {
+		name  string
+		yaml  string
+		flags []string
+		want  []string
+	}{
+		{"invalid layout", "sessions:\n  - name: dev\n    windows:\n      - layout: diagonal\n", nil, []string{"sessions[0].windows[0].layout", "unknown layout"}},
+		{"empty pruning workspace", "sessions: []\n", []string{"--prune-sessions"}, []string{"at least one session is required"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeWorkspaceFile(t, t.TempDir(), "workspace.yaml", tc.yaml)
+			args := append([]string{"start", "-p", path}, tc.flags...)
 
-	err := runStart(startCmd, nil)
+			err := executeWorkspaceCommand(t, args...)
 
-	require.ErrorContains(t, err, "sessions[0].windows[0].layout")
-	require.ErrorContains(t, err, "unknown layout")
+			for _, message := range tc.want {
+				require.ErrorContains(t, err, message)
+			}
+		})
+	}
 }
 
 func TestRunStartDryRunOutputsPlan(t *testing.T) {

@@ -17,6 +17,7 @@ type Mismatch[T any] struct {
 }
 
 type Session struct {
+	ID      string
 	Name    string
 	Windows []Window
 }

@@ -7,13 +7,13 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/state"
 )
 
-func StateDiffToPlanDiff(sd state.Diff, desired *state.State) plan.Diff {
+func StateDiffToPlanDiff(sd state.Diff, desired, actual *state.State) plan.Diff {
 	pd := plan.Diff{
 		Windows: make(map[string]plan.ItemDiff[plan.Window]),
 	}
 
 	pd.Sessions.Missing = convertMissingSessions(sd.Sessions.Missing, desired)
-	pd.Sessions.Extra = convertExtraSessions(sd.Sessions.Extra)
+	pd.Sessions.Extra = convertExtraSessions(sd.Sessions.Extra, actual)
 
 	for _, sessionName := range sortedWindowDiffSessions(sd.Windows) {
 		wd := sd.Windows[sessionName]
@@ -36,10 +36,10 @@ func convertMissingSessions(names []string, desired *state.State) []plan.Session
 	return sessions
 }
 
-func convertExtraSessions(names []string) []plan.Session {
+func convertExtraSessions(names []string, actual *state.State) []plan.Session {
 	sessions := make([]plan.Session, 0, len(names))
 	for _, name := range names {
-		sessions = append(sessions, plan.Session{Name: name})
+		sessions = append(sessions, plan.Session{ID: actual.Sessions[name].ID, Name: name})
 	}
 	return sessions
 }

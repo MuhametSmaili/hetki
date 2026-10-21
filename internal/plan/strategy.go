@@ -6,15 +6,22 @@ type Strategy interface {
 	Plan(diff Diff) *Plan
 }
 
-type MergeStrategy struct{}
+type MergeStrategy struct {
+	PruneSessions bool
+}
 
 func (s *MergeStrategy) Plan(diff Diff) *Plan {
 	plan := &Plan{Actions: []Action{}}
 	createMissing(plan, diff)
+	if s.PruneSessions {
+		pruneExtraSessions(plan, diff)
+	}
 	return plan
 }
 
-type ForceStrategy struct{}
+type ForceStrategy struct {
+	PruneSessions bool
+}
 
 func (s *ForceStrategy) Plan(diff Diff) *Plan {
 	plan := &Plan{Actions: []Action{}}
@@ -22,7 +29,16 @@ func (s *ForceStrategy) Plan(diff Diff) *Plan {
 	createMissing(plan, diff)
 	recreateMismatched(plan, diff)
 	killExtraWindows(plan, diff)
+	if s.PruneSessions {
+		pruneExtraSessions(plan, diff)
+	}
 	return plan
+}
+
+func pruneExtraSessions(plan *Plan, diff Diff) {
+	for _, session := range diff.Sessions.Extra {
+		plan.Actions = append(plan.Actions, KillSessionAction{Name: session.Name, SessionID: session.ID})
+	}
 }
 
 func killExtraWindows(plan *Plan, diff Diff) {

@@ -71,7 +71,7 @@ func TestCommandsExecuteOnceAtCreationTime(t *testing.T) {
 
 	// Second start: no create actions are planned, so the command is not
 	// re-sent (append marker must stay single-line).
-	second, err := buildPlan(context.Background(), b, workspace, false)
+	second, err := buildPlan(context.Background(), b, workspace, Options{})
 	require.NoError(t, err)
 	require.True(t, second.IsEmpty(), "second start must plan no actions, got %v", second.Actions)
 	require.NoError(t, service.Run(context.Background(), Options{Path: new("./.hetki.yaml")}))

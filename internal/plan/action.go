@@ -83,16 +83,17 @@ func (a SendKeysAction) Validate() error {
 }
 
 type KillSessionAction struct {
-	Name string
+	Name      string
+	SessionID string
 }
 
 func (a KillSessionAction) Comment() string {
-	return fmt.Sprintf("# Kill session: %s", a.Name)
+	return fmt.Sprintf("# Kill session: %q (%s)", a.Name, a.SessionID)
 }
 
 func (a KillSessionAction) Validate() error {
-	if a.Name == "" {
-		return errors.New("kill session name cannot be empty")
+	if a.Name == "" || a.SessionID == "" {
+		return errors.New("kill session name and stable ID cannot be empty")
 	}
 	return nil
 }

@@ -3,6 +3,16 @@ package backend
 type StateResult struct {
 	Sessions []Session
 	Active   ActiveContext
+	// Invocation is nil outside tmux. A non-nil value with unresolved IDs is
+	// unknown, not permission to delete the process's containing session.
+	Invocation *Invocation
+}
+
+// Invocation identifies the environment in which the caller runs. A pane may
+// have moved or be linked into several sessions; consumers must check membership.
+type Invocation struct {
+	SessionID string
+	PaneID    string
 }
 
 type Session struct {
