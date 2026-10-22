@@ -143,7 +143,6 @@ func TestSubscriberLimitKeepsControlRequestsAvailable(t *testing.T) {
 	for _, subscription := range subscriptions {
 		require.NoError(t, subscription.Close())
 	}
-	source.set(testView(t, c.server, status.Working), nil)
 
 	require.Error(t, rejected)
 	require.NoError(t, pingErr)

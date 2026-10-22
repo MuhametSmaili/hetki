@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"syscall"
 	"time"
@@ -101,6 +102,20 @@ func (d *daemon) subscribe(ctx context.Context, conn *net.UnixConn) {
 	}
 
 	_ = conn.SetDeadline(time.Time{})
+	ctx, cancel := context.WithCancel(ctx)
+	disconnected := make(chan struct{})
+	go func() {
+		d.waitForSubscriberClose(ctx, conn)
+		cancel()
+		_ = conn.Close()
+		close(disconnected)
+	}()
+	defer func() {
+		cancel()
+		_ = conn.Close()
+		<-disconnected
+	}()
+
 	var frames frameEncoder
 	for ctx.Err() == nil {
 		changes := d.source.Changes()
@@ -112,6 +127,25 @@ func (d *daemon) subscribe(ctx context.Context, conn *net.UnixConn) {
 		case <-ctx.Done():
 		case <-changes:
 		}
+	}
+}
+
+// Subscribers send no more input after the request. Reading one byte detects
+// closure even when the source is quiet, without buffering unsolicited input.
+func (d *daemon) waitForSubscriberClose(ctx context.Context, conn *net.UnixConn) {
+	var input [1]byte
+	n, err := conn.Read(input[:])
+	if ctx.Err() != nil {
+		return
+	}
+
+	if n > 0 {
+		d.logs.repeatedFailure("request_rejected", errors.New("unexpected subscription input"))
+		return
+	}
+
+	if err != nil && !errors.Is(err, io.EOF) && !clientGone(err) {
+		d.logs.repeatedFailure("request_read_failed", err)
 	}
 }
 
