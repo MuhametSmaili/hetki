@@ -35,7 +35,7 @@ func (ptyDriver) Load(context.Context) (list.Snapshot, error) {
 
 func (ptyDriver) Execute(_ context.Context, request ui.ActionRequest) (ui.ActionResult, error) {
 	if request.ActionID != ui.ActionOpen || request.ItemID != sessionItemID("dev") {
-		return ui.ActionResult{}, fmt.Errorf("unexpected jump request: %+v", request)
+		return ui.ActionResult{}, fmt.Errorf("unexpected open request: %+v", request)
 	}
 	return ui.ActionResult{Navigation: request.ItemID}, nil
 }

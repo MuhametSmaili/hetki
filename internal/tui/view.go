@@ -80,7 +80,6 @@ func (m model) viewList(layout layoutMetrics) string {
 			Trailing:   row.Item.Trailing,
 			Status:     m.paneStatus.rowValue(row.Item.ID, now),
 			StatusTime: now,
-			JumpLabel:  m.jumpLabel(row.Item.ID),
 			Depth:      row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,
 			Active: m.items.IsActive(row.Item.ID), Selected: m.items.Offset()+i == m.items.Cursor(),
 		})
@@ -117,13 +116,6 @@ func (m model) viewOverlay(width, height int) string {
 	}
 }
 
-func (m model) jumpLabel(id list.ItemID) string {
-	if m.mode != modeJump {
-		return ""
-	}
-	return m.jump.labelFor(id)
-}
-
 func modalControls(keys KeyMap, mode KeyMode, confirmLabel string) string {
 	parts := make([]string, 0, 2)
 	for _, control := range []struct {
@@ -157,40 +149,19 @@ func headerPrompt(m model) string {
 		return " NORMAL "
 	case modeFilter:
 		return ">"
-	case modeJump:
-		return " JUMP "
 	default:
 		return ""
 	}
 }
 
 func headerHint(m model) string {
-	if m.mode == modeJump {
-		hint := "type a label to jump"
-		if bound := m.keys.Keys(KeyModeJump, ActionFilter); len(bound) > 0 {
-			hint += " or " + bound[0] + " to filter"
-		}
-		return hint
-	}
 	if m.mode != modeBrowse {
 		return ""
 	}
-	var parts []string
-	for _, control := range []struct {
-		action ActionID
-		label  string
-	}{
-		{ActionFilter, "filter"},
-		{ActionJump, "jump"},
-	} {
-		if bound := m.keys.Keys(KeyModeNormal, control.action); len(bound) > 0 {
-			parts = append(parts, bound[0]+" to "+control.label)
-		}
+	if bound := m.keys.Keys(KeyModeNormal, ActionFilter); len(bound) > 0 {
+		return "press " + bound[0] + " to filter"
 	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return "press " + strings.Join(parts, " or ")
+	return ""
 }
 
 func headerRight(m model) string {

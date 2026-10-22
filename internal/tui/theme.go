@@ -31,7 +31,7 @@ type theme struct {
 	selectedRow       lipgloss.Style
 	searchPrompt      lipgloss.Style
 	filterPrompt      lipgloss.Style
-	jumpLabel         lipgloss.Style
+	menuKey           lipgloss.Style
 	sectionLine       lipgloss.Style
 	appBorder         lipgloss.Style
 	modal             lipgloss.Style
@@ -69,7 +69,7 @@ func defaultTheme() theme {
 		selectedRow:       selection,
 		searchPrompt:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorPromptText)).Background(lipgloss.Color(colorPromptBackground)),
 		filterPrompt:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorActive)),
-		jumpLabel:         accent,
+		menuKey:           accent,
 		sectionLine:       lipgloss.NewStyle().Foreground(lipgloss.Color(colorDivider)),
 		appBorder:         border.Padding(0, 2),
 		modal:             border.Padding(0, 1),

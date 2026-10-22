@@ -59,19 +59,18 @@ func representativePane(
 }
 
 func (m *model) applyStatusPresentation(now time.Time) {
-	if m.syncWindowStatus(now) && m.mode == modeJump {
-		m.cancelJump()
-	}
+	m.syncWindowStatus(now)
 
 	m.applyScope(m.items.Query(), now)
 }
 
-func (m *model) syncWindowStatus(now time.Time) bool {
+func (m *model) syncWindowStatus(now time.Time) {
 	p := &m.paneStatus
 	p.windowChangeDue = p.nextWindowStatusChange(now)
 	if len(p.windows) == 0 {
 		// Retain the last tree choices across a flat-view detour.
-		return m.items.SetDetails(nil)
+		m.items.SetDetails(nil)
+		return
 	}
 
 	selected := make(map[list.ItemID]status.PaneRef, len(p.windows))
@@ -87,7 +86,7 @@ func (m *model) syncWindowStatus(now time.Time) bool {
 	}
 
 	p.representatives = selected
-	return m.items.SetDetails(details)
+	m.items.SetDetails(details)
 }
 
 func (p paneStatusState) nextWindowStatusChange(now time.Time) time.Time {

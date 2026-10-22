@@ -2,10 +2,10 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
@@ -20,6 +20,27 @@ func viewSnapshot() list.Snapshot {
 			SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "editor"}, {Tier: list.SearchSecondary, Text: "~/code/editor"}},
 		}},
 	}}}
+}
+
+func flatSnapshot(count int) list.Snapshot {
+	items := make([]list.Item, count)
+	for i := range items {
+		name := fmt.Sprintf("item %02d", i)
+		items[i] = list.Item{
+			ID: list.ItemID{ID: fmt.Sprintf("item-%02d", i)}, Primary: name,
+			SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: name}},
+		}
+	}
+	return list.Snapshot{Items: items}
+}
+
+func visibleIDs(m model) []list.ItemID {
+	rows := m.items.VisibleRows()
+	ids := make([]list.ItemID, len(rows))
+	for i, row := range rows {
+		ids[i] = row.Item.ID
+	}
+	return ids
 }
 
 func TestRunRejectsInvalidInitialProjectionBeforeStartingTea(t *testing.T) {
@@ -38,32 +59,26 @@ func TestModelStartMode(t *testing.T) {
 	for _, test := range []struct {
 		startMode StartMode
 		wantMode  uiMode
-		jump      bool
 	}{
 		{startMode: StartModeNormal, wantMode: modeBrowse},
 		{startMode: StartModeFilter, wantMode: modeFilter},
-		{startMode: StartModeJump, wantMode: modeBrowse, jump: true},
 	} {
 		m, err := newModelWithStartMode(viewSnapshot(), nil, DefaultKeyMap(), test.startMode)
 		require.NoError(t, err)
 		require.Equal(t, test.wantMode, m.mode)
-		require.Equal(t, test.jump, m.initialJump)
-		if test.jump {
-			m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 40, Height: 8})
-			require.Equal(t, modeJump, m.mode)
-			require.NotEmpty(t, m.jump.candidates)
-			m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 41, Height: 8})
-			require.Equal(t, modeBrowse, m.mode)
-			require.Empty(t, m.jump.candidates)
-		}
 	}
 
 	empty, err := newModelWithStartMode(list.Snapshot{}, nil, DefaultKeyMap(), StartModeFilter)
 	require.NoError(t, err)
 	require.Equal(t, modeBrowse, empty.mode)
 
-	_, err = newModelWithStartMode(viewSnapshot(), nil, DefaultKeyMap(), StartMode("invalid"))
-	require.ErrorContains(t, err, "invalid start mode")
+	for _, invalid := range []StartMode{"invalid", "jump"} {
+		t.Run(string(invalid), func(t *testing.T) {
+			_, err := newModelWithStartMode(viewSnapshot(), nil, DefaultKeyMap(), invalid)
+
+			require.ErrorContains(t, err, "invalid start mode")
+		})
+	}
 }
 
 func TestViewKeepsSecondaryTextOnItsRowWithoutGlobalHelp(t *testing.T) {

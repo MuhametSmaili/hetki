@@ -72,7 +72,7 @@ func TestServiceUsesConfiguredStartMode(t *testing.T) {
 	}{
 		{want: ui.StartModeFilter},
 		{configured: ui.StartModeNormal, want: ui.StartModeNormal},
-		{configured: ui.StartModeJump, want: ui.StartModeJump},
+		{configured: ui.StartModeFilter, want: ui.StartModeFilter},
 	} {
 		var got ui.StartMode
 		service := Service{

@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 )
@@ -17,7 +16,6 @@ type rowProps struct {
 	Trailing   string
 	Status     status.Value
 	StatusTime time.Time
-	JumpLabel  string
 	Depth      int
 	TreePrefix string
 	Expanded   bool
@@ -48,7 +46,7 @@ func renderList(props listProps) []string {
 	secondaryWidth := 0
 	trailingWidth := commandStatusWidth
 	for i, row := range props.Rows {
-		left[i] = renderRowLine(row, props.Theme, props.Compact)
+		left[i] = renderRowLine(row, props.Compact)
 		columnWidth = max(columnWidth, terminal.Width(left[i]))
 		secondaryWidth = max(secondaryWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Secondary))))
 		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
@@ -146,7 +144,7 @@ func shortenPath(path string, maxWidth int) string {
 	return terminal.Cut(path, 0, headWidth) + ellipsis + terminal.Cut(path, pathWidth-tailWidth, pathWidth)
 }
 
-func renderRowLine(row rowProps, styles theme, compact bool) string {
+func renderRowLine(row rowProps, compact bool) string {
 	return renderRowPrefix(row) + decoratedLabel(row, compact)
 }
 
@@ -155,11 +153,7 @@ func renderRowPrefix(row rowProps) string {
 	if row.Active {
 		indicator = "│"
 	}
-	parts := []string{indicator}
-	if jumpLabel := displayJumpLabel(row.JumpLabel); jumpLabel != "" {
-		parts = append(parts, jumpLabel)
-	}
-	return strings.Join(parts, " ") + " "
+	return indicator + " "
 }
 
 func styleRowLine(row rowProps, line string, width int, styles theme) string {
@@ -167,20 +161,7 @@ func styleRowLine(row rowProps, line string, width int, styles theme) string {
 	if row.Selected {
 		return style.Width(width).Render(line)
 	}
-	rendered := style.Render(line)
-	jumpLabel := displayJumpLabel(row.JumpLabel)
-	if jumpLabel == "" || width <= 2 {
-		return rendered
-	}
-	badge := terminal.Cut(styles.jumpLabel.Render(jumpLabel), 0, width-2)
-	return lipgloss.NewCompositor(
-		lipgloss.NewLayer(rendered),
-		lipgloss.NewLayer(badge).X(2).Z(1),
-	).Render()
-}
-
-func displayJumpLabel(label string) string {
-	return strings.TrimSpace(terminal.Sanitize(label))
+	return style.Render(line)
 }
 
 func decoratedLabel(row rowProps, compact bool) string {

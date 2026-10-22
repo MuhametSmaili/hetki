@@ -42,22 +42,17 @@ func previewModel(t *testing.T) model {
 func previewKey() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt} }
 
 func TestPreviewToggleModeOwnership(t *testing.T) {
-	for _, mode := range []uiMode{modeBrowse, modeFilter, modeJump, modeInput, modeConfirm, modeMenu} {
+	for _, mode := range []uiMode{modeBrowse, modeFilter, modeInput, modeConfirm, modeMenu} {
 		t.Run(string(mode), func(t *testing.T) {
 			m := previewModel(t)
-			if mode == modeJump {
-				m, _ = updateModel(t, m, printableKey(";"))
-			} else {
-				m.mode = mode
-			}
-			candidates, query, selected := m.jump.candidates, m.items.Query(), selectedNodeID(m)
+			m.mode = mode
+			query, selected := m.items.Query(), selectedNodeID(m)
 			m, cmd := updateModel(t, m, previewKey())
-			want := mode == modeBrowse || mode == modeFilter || mode == modeJump
+			want := mode == modeBrowse || mode == modeFilter
 			require.Equal(t, want, m.preview.visible)
 			require.Equal(t, mode, m.mode)
 			require.Equal(t, query, m.items.Query())
 			require.Equal(t, selected, selectedNodeID(m))
-			require.Equal(t, candidates, m.jump.candidates)
 			require.False(t, m.busy)
 			if want {
 				require.NotNil(t, cmd)
@@ -81,9 +76,9 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 }
 
 func TestPreviewReflowsStackedFlatList(t *testing.T) {
-	for _, mode := range []uiMode{modeBrowse, modeFilter, modeJump} {
+	for _, mode := range []uiMode{modeBrowse, modeFilter} {
 		t.Run(string(mode), func(t *testing.T) {
-			snapshot := flatJumpSnapshot(40)
+			snapshot := flatSnapshot(40)
 			for i := range snapshot.Items {
 				snapshot.Items[i].Context = "hetki"
 			}
@@ -92,9 +87,6 @@ func TestPreviewReflowsStackedFlatList(t *testing.T) {
 			m = m.reflow()
 			m.items.Select(snapshot.Items[15].ID)
 			m.mode = mode
-			if mode == modeJump {
-				m.jump = newJumpState(m.items.VisibleRows())
-			}
 
 			m, _ = updateModel(t, m, previewKey())
 
@@ -103,8 +95,7 @@ func TestPreviewReflowsStackedFlatList(t *testing.T) {
 			require.Equal(t, snapshot.Items[15].ID, selectedNodeID(m))
 			require.Contains(t, visibleIDs(m), selectedNodeID(m))
 			require.LessOrEqual(t, lipgloss.Height(m.View().Content), m.height)
-			require.Empty(t, m.jump.candidates)
-			require.NotEqual(t, modeJump, m.mode)
+			require.Equal(t, mode, m.mode)
 
 			m, _ = updateModel(t, m, specialKey(tea.KeyPgDown))
 

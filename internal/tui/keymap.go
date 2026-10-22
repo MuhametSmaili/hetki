@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -12,7 +13,6 @@ type KeyMode string
 
 const (
 	KeyModeNormal  KeyMode = "normal"
-	KeyModeJump    KeyMode = "jump"
 	KeyModeFilter  KeyMode = "filter"
 	KeyModeInput   KeyMode = "input"
 	KeyModeConfirm KeyMode = "confirm"
@@ -31,6 +31,12 @@ type KeyMap struct {
 func ResolveKeyMap(bindings map[KeyMode][]Binding) (KeyMap, error) {
 	resolved := KeyMap{bindings: make(map[KeyMode]map[ActionID]key.Binding, len(bindings))}
 	for mode, modeBindings := range bindings {
+		switch mode {
+		case KeyModeNormal, KeyModeFilter, KeyModeInput, KeyModeConfirm, KeyModeMenu:
+		default:
+			return KeyMap{}, fmt.Errorf("invalid key mode %q", mode)
+		}
+
 		actions, err := resolveModeBindings(mode, modeBindings)
 		if err != nil {
 			return KeyMap{}, err
@@ -47,6 +53,11 @@ func resolveModeBindings(mode KeyMode, bindings []Binding) (map[ActionID]key.Bin
 		if binding.Action == "" || len(binding.Keys) == 0 {
 			return nil, fmt.Errorf("mode %q has an empty action or key list", mode)
 		}
+
+		if !slices.Contains(declaredActions[:], binding.Action) {
+			return nil, fmt.Errorf("mode %q has an invalid action %q", mode, binding.Action)
+		}
+
 		if _, exists := actions[binding.Action]; exists {
 			return nil, fmt.Errorf("mode %q defines action %q more than once", mode, binding.Action)
 		}
@@ -90,7 +101,6 @@ func DefaultKeyMap() KeyMap {
 			{Action: ActionPageUp, Keys: []string{"pgup", "u"}},
 			{Action: ActionPageDown, Keys: []string{"pgdown", "d"}},
 			{Action: ActionFilter, Keys: []string{"/"}},
-			{Action: ActionJump, Keys: []string{";"}},
 			{Action: ActionNextMatch, Keys: []string{"n"}},
 			{Action: ActionPrevMatch, Keys: []string{"N"}},
 			{Action: ActionClearFilter, Keys: []string{"ctrl+l"}},
@@ -111,16 +121,6 @@ func DefaultKeyMap() KeyMap {
 			{Action: ActionOpen, Keys: []string{"enter", "ctrl+y"}},
 			{Action: ActionLastSession, Keys: []string{"ctrl+o"}},
 		},
-		KeyModeJump: {
-			{Action: ActionTogglePreview, Keys: []string{"alt+p"}},
-			{Action: ActionLastSession, Keys: []string{"ctrl+o"}},
-			{Action: ActionCancel, Keys: []string{"esc"}},
-			{Action: ActionMoveUp, Keys: []string{"ctrl+p"}},
-			{Action: ActionMoveDown, Keys: []string{"ctrl+n"}},
-			{Action: ActionFilter, Keys: []string{"/"}},
-			{Action: ActionToggleProjection, Keys: []string{"ctrl+t"}},
-			{Action: ActionToggleScope, Keys: []string{"tab"}},
-		},
 		KeyModeFilter: {
 			{Action: ActionToggleProjection, Keys: []string{"ctrl+t"}},
 			{Action: ActionToggleScope, Keys: []string{"tab"}},
@@ -130,7 +130,6 @@ func DefaultKeyMap() KeyMap {
 			{Action: ActionConfirm, Keys: []string{"enter", "ctrl+y"}},
 			{Action: ActionMoveUp, Keys: []string{"up", "ctrl+p"}},
 			{Action: ActionMoveDown, Keys: []string{"down", "ctrl+n"}},
-			{Action: ActionJump, Keys: []string{"ctrl+;"}},
 			{Action: ActionPageUp, Keys: []string{"pgup"}},
 			{Action: ActionPageDown, Keys: []string{"pgdown"}},
 			{Action: ActionBackspace, Keys: []string{"backspace", "delete"}},

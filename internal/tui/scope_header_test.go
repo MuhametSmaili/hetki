@@ -25,7 +25,7 @@ func TestScopeHeaderKeepsLabelsFixedAndEmphasizesActiveScope(t *testing.T) {
 			all := strings.Split(m.viewHeader(layout), "\n")[tc.metaRow]
 			m.scope.tracked = true
 			m.applyScope("idle", now)
-			m.mode = modeJump
+			m.mode = modeBrowse
 
 			lines := strings.Split(m.viewHeader(layout), "\n")
 			tracked := lines[tc.metaRow]
@@ -33,7 +33,7 @@ func TestScopeHeaderKeepsLabelsFixedAndEmphasizesActiveScope(t *testing.T) {
 			uv.NewStyledString(tracked).Draw(screen, screen.Bounds())
 
 			allText, trackedText := terminal.Sanitize(all), terminal.Sanitize(tracked)
-			require.Contains(t, terminal.Sanitize(lines[0]), "JUMP")
+			require.Contains(t, terminal.Sanitize(lines[0]), "NORMAL")
 			require.Contains(t, terminal.Sanitize(lines[0]), "idle")
 			require.NotContains(t, trackedText, "Flat")
 			require.NotContains(t, trackedText, "Tree")

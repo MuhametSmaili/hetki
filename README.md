@@ -96,7 +96,6 @@ The picker starts in filter mode. Press `Esc` for normal mode.
 | `Alt+P`                  | Toggle pane preview                      |
 | `Ctrl+O`                 | Jump to the previous session, marked `↶` |
 | `Enter`                  | Open the selected destination            |
-| `;` in normal mode       | Enter jump mode                          |
 | `Ctrl+R` in normal mode  | Refresh                                  |
 | `A` / `a` in normal mode | Create a session/window                  |
 | `R` / `r` in normal mode | Rename a session/window                  |

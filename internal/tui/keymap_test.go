@@ -52,17 +52,27 @@ func TestModelUsesTheInjectedResolvedKeyMap(t *testing.T) {
 	require.Equal(t, ActionRequest{ActionID: ActionRefresh}, got)
 }
 
-func TestDefaultJumpBindingsKeepControlNavigationOutOfTheLabelAlphabet(t *testing.T) {
-	keys := DefaultKeyMap()
-	require.Equal(t, []string{"ctrl+p"}, keys.Keys(KeyModeJump, ActionMoveUp))
-	require.Equal(t, []string{"ctrl+n"}, keys.Keys(KeyModeJump, ActionMoveDown))
+func TestResolveKeyMapRejectsRemovedJumpModeAndAction(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		bindings map[KeyMode][]Binding
+	}{
+		{name: "mode", bindings: map[KeyMode][]Binding{"jump": {{Action: ActionMoveDown, Keys: []string{"ctrl+n"}}}}},
+		{name: "empty mode", bindings: map[KeyMode][]Binding{"jump": nil}},
+		{name: "action", bindings: map[KeyMode][]Binding{KeyModeNormal: {{Action: "jump", Keys: []string{";"}}}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ResolveKeyMap(test.bindings)
+
+			require.ErrorContains(t, err, `"jump"`)
+		})
+	}
 }
 
 func TestDefaultContextMenuBindingsAreScopedToNormalAndFilter(t *testing.T) {
 	keys := DefaultKeyMap()
 	require.Equal(t, []string{"ctrl+k"}, keys.Keys(KeyModeNormal, ActionContextMenu))
 	require.Equal(t, []string{"ctrl+k"}, keys.Keys(KeyModeFilter, ActionContextMenu))
-	require.Empty(t, keys.Keys(KeyModeJump, ActionContextMenu))
 	require.Empty(t, keys.Keys(KeyModeInput, ActionContextMenu))
 	require.Empty(t, keys.Keys(KeyModeConfirm, ActionContextMenu))
 	require.Empty(t, keys.Keys(KeyModeMenu, ActionContextMenu))

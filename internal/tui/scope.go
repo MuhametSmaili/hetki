@@ -26,9 +26,7 @@ func (m *model) applyScope(query string, now time.Time) {
 	if m.scope.tracked {
 		included = m.trackedItems(now)
 	}
-	if m.items.SetFilter(query, included) && m.mode == modeJump {
-		m.cancelJump()
-	}
+	m.items.SetFilter(query, included)
 }
 
 func (m model) trackedItems(now time.Time) map[list.ItemID]struct{} {
@@ -43,8 +41,7 @@ func (m model) trackedItems(now time.Time) map[list.ItemID]struct{} {
 }
 
 func handleToggleScope(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	jumping := m.mode == modeJump
-	if !m.isListMode() && !jumping {
+	if !m.isListMode() {
 		return m.actionUnavailable(ActionToggleScope)
 	}
 	current, next := 0, 1
@@ -60,9 +57,5 @@ func handleToggleScope(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	if !m.items.Select(view.selected) {
 		m.items.Select(selected.Item.ID)
 	}
-	m = m.reflow()
-	if jumping {
-		return handleJump(m, list.ItemID{})
-	}
-	return m, nil
+	return m.reflow(), nil
 }

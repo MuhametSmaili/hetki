@@ -11,19 +11,17 @@ import (
 
 func TestBoundModeTransitionsDiscardTheOwnedOverlay(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		mode     uiMode
-		keyMode  KeyMode
-		action   ActionID
-		wantMode uiMode
+		name    string
+		mode    uiMode
+		keyMode KeyMode
 	}{
-		{name: "input to filter", mode: modeInput, keyMode: KeyModeInput, action: ActionFilter, wantMode: modeFilter},
-		{name: "confirmation to jump", mode: modeConfirm, keyMode: KeyModeConfirm, action: ActionJump, wantMode: modeJump},
-		{name: "menu to filter", mode: modeMenu, keyMode: KeyModeMenu, action: ActionFilter, wantMode: modeFilter},
+		{name: "input to filter", mode: modeInput, keyMode: KeyModeInput},
+		{name: "confirmation to filter", mode: modeConfirm, keyMode: KeyModeConfirm},
+		{name: "menu to filter", mode: modeMenu, keyMode: KeyModeMenu},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			keys, err := ResolveKeyMap(map[KeyMode][]Binding{
-				test.keyMode: {{Action: test.action, Keys: []string{"z"}}},
+				test.keyMode: {{Action: ActionFilter, Keys: []string{"z"}}},
 			})
 			require.NoError(t, err)
 			m, err := newModelWithKeys(interactionSnapshot(), nil, keys)
@@ -35,7 +33,7 @@ func TestBoundModeTransitionsDiscardTheOwnedOverlay(t *testing.T) {
 			m.menu = menuState{Title: "unfinished"}
 
 			m, _ = updateModel(t, m, printableKey("z"))
-			require.Equal(t, test.wantMode, m.mode)
+			require.Equal(t, modeFilter, m.mode)
 			switch test.mode {
 			case modeInput:
 				require.Equal(t, inputState{}, m.input)
@@ -46,21 +44,6 @@ func TestBoundModeTransitionsDiscardTheOwnedOverlay(t *testing.T) {
 			}
 		})
 	}
-
-	keys, err := ResolveKeyMap(map[KeyMode][]Binding{
-		KeyModeInput: {{Action: ActionJump, Keys: []string{"z"}}},
-	})
-	require.NoError(t, err)
-	m, err := newModelWithKeys(interactionSnapshot(), nil, keys)
-	require.NoError(t, err)
-	m = browseModel(m)
-	m.items.SetQuery("no matches")
-	m.mode = modeInput
-	m.input = inputState{Value: "unfinished"}
-
-	m, _ = updateModel(t, m, printableKey("z"))
-	require.Equal(t, modeInput, m.mode)
-	require.Equal(t, "unfinished", m.input.Value)
 }
 
 func TestEmptyInputFeedbackIsVisibleAndClearsWhenEditingOrCanceling(t *testing.T) {

@@ -52,13 +52,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
-	if m.mode == modeJump {
-		m.cancelJump()
-	}
 	m.width, m.height = msg.Width, msg.Height
-	m = m.reflow()
-	m.startInitialJump()
-	return m, nil
+	return m.reflow(), nil
 }
 
 func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
@@ -83,7 +78,6 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.busy {
 		return m, nil
 	}
-	m.startInitialJump()
 	if m.mode == modeMenu {
 		return m.updateMenuMode(msg)
 	}
@@ -95,8 +89,6 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m model) updateUnboundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.mode {
-	case modeJump:
-		return m.updateJumpInput(msg)
 	case modeFilter:
 		if msg.Text != "" {
 			m.setQuery(m.items.Query() + msg.Text)

@@ -75,43 +75,27 @@ func stackedIdentity(row rowProps, width int, styles theme) string {
 }
 
 func stackedDetailLine(row rowProps, trailingWidth, width int, styles theme) string {
-	detail := row
-	detail.JumpLabel = ""
-	style := styles.itemStyle(detail.Active, detail.Selected)
+	style := styles.itemStyle(row.Active, row.Selected)
 	pathStyle := styles.secondary.Inherit(style)
-	if detail.Selected {
+	if row.Selected {
 		pathStyle = styles.secondarySelected.Inherit(style)
 	}
 
-	if rowTrailingWidth(detail) == 0 {
+	if rowTrailingWidth(row) == 0 {
 		trailingWidth = 0
 	}
 	bodyWidth := width
 	if trailingWidth > 0 {
 		bodyWidth = max(0, width-trailingWidth-len(columnGap))
 	}
-	indent := terminal.Cut(stackedIndent(row), 0, bodyWidth)
+	indent := terminal.Cut(renderRowPrefix(row), 0, bodyWidth)
 	budget := max(0, bodyWidth-terminal.Width(indent))
-	line := indent + pathStyle.Render(shortenPath(columnText(detail.Secondary), budget))
+	line := indent + pathStyle.Render(shortenPath(columnText(row.Secondary), budget))
 	if trailingWidth > 0 {
 		padding := max(0, width-terminal.Width(line)-trailingWidth)
-		line += style.Render(strings.Repeat(" ", padding)) + renderTrailing(detail, trailingWidth, styles)
+		line += style.Render(strings.Repeat(" ", padding)) + renderTrailing(row, trailingWidth, styles)
 	}
-	return styleRowLine(detail, truncateWidth(line, width), width, styles)
-}
-
-// stackedIndent keeps the detail line under the label: it reserves the
-// jump-label gutter and repeats the active indicator without the label.
-func stackedIndent(row rowProps) string {
-	indicator := " "
-	if row.Active {
-		indicator = "│"
-	}
-	label := displayJumpLabel(row.JumpLabel)
-	if label == "" {
-		return indicator + " "
-	}
-	return indicator + " " + strings.Repeat(" ", terminal.Width(label)) + " "
+	return styleRowLine(row, truncateWidth(line, width), width, styles)
 }
 
 func measureColumns(rows []rowProps) columnWidths {
@@ -181,7 +165,6 @@ func renderColumnRow(row rowProps, columns columnWidths, width int, styles theme
 	trailing := renderTrailing(row, columns.trailing, styles)
 	padding := max(0, width-columns.trailing-terminal.Width(line))
 	line += style.Render(strings.Repeat(" ", padding)) + trailing
-	row.JumpLabel = terminal.Cut(displayJumpLabel(row.JumpLabel), 0, max(0, bodyWidth-2))
 	return styleRowLine(row, line, width, styles)
 }
 

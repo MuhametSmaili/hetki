@@ -32,15 +32,15 @@ func TestSearchBarRendersModeAppropriateContent(t *testing.T) {
 
 	hintStyle := lipgloss.NewStyle().Italic(true)
 	centered := renderSearchBar(searchBarProps{
-		Width: 32, Hint: "press key to jump", Meta: renderHeaderMeta(headerMetaProps{Right: "3/3"}),
+		Width: 32, Hint: "press / to filter", Meta: renderHeaderMeta(headerMetaProps{Right: "3/3"}),
 		Theme: theme{headerHint: hintStyle},
 	})
-	if !strings.Contains(centered, hintStyle.Render("press key to jump")) {
+	if !strings.Contains(centered, hintStyle.Render("press / to filter")) {
 		t.Fatalf("centered hint did not use its style: %q", centered)
 	}
 	plain := terminal.Sanitize(centered)
-	if strings.HasPrefix(strings.TrimLeft(plain, " "), "/") || strings.Index(plain, "press key to jump") != (32-len("press key to jump"))/2 {
-		t.Fatalf("jump header = %q", plain)
+	if strings.HasPrefix(strings.TrimLeft(plain, " "), "/") || strings.Index(plain, "press / to filter") != (32-len("press / to filter"))/2 {
+		t.Fatalf("normal header = %q", plain)
 	}
 }
 
@@ -48,12 +48,18 @@ func TestMenuUsesSharedItemSelectionColors(t *testing.T) {
 	styles := defaultTheme()
 	menu := renderMenu(menuProps{
 		LineWidth: 80,
-		Entries:   []MenuEntry{{Action: ActionOpen, Label: "Open destination"}},
-		Keys:      DefaultKeyMap(),
-		Theme:     styles,
+		Entries: []MenuEntry{
+			{Action: ActionOpen, Label: "Open destination"},
+			{Action: ActionRefresh, Label: "Refresh"},
+		},
+		Keys:  DefaultKeyMap(),
+		Theme: styles,
 	})
 	if selected := styles.itemStyle(false, true).Render("‹o› Open destination"); !strings.Contains(menu, selected) {
 		t.Fatalf("selected menu entry did not use the list selection colors: %q", menu)
+	}
+	if !strings.Contains(menu, styles.menuKey.Render("‹ctrl+r› ")) {
+		t.Fatalf("unselected menu shortcut lost its accent style: %q", menu)
 	}
 }
 

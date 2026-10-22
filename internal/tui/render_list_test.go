@@ -65,41 +65,22 @@ func TestRenderListUsesPresentationFallbackForEmptyPrimary(t *testing.T) {
 	}
 }
 
-func TestRenderListShowsJumpLabelBesideTheRow(t *testing.T) {
-	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
-	line := renderList(listProps{
-		Width: 40, Theme: theme{jumpLabel: labelStyle},
-		Rows: []rowProps{{Primary: "editor", JumpLabel: "aa"}},
-	})[0]
-	if plain := terminal.Sanitize(line); plain != "  aa editor" {
-		t.Fatalf("jump label was not placed beside its row: %q", plain)
-	}
-	if _, noColor := defaultTheme().jumpLabel.GetBackground().(lipgloss.NoColor); !noColor {
-		t.Fatal("jump labels must not form a continuous background column")
-	}
-	if width := terminal.Width(labelStyle.Render(displayJumpLabel("a"))); width != 1 {
-		t.Fatalf("single-character jump label width = %d, want one cell", width)
-	}
-}
-
 func TestRenderListUsesFullWidthSelectionAndCompactIndicators(t *testing.T) {
 	selected := lipgloss.NewStyle().Background(lipgloss.Color("1"))
 	secondarySelected := lipgloss.NewStyle().Background(lipgloss.Color("1")).Italic(true)
-	labelStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("2"))
 	theme := theme{
 		secondary:         lipgloss.NewStyle().Italic(true),
 		secondarySelected: secondarySelected,
 		selectedRow:       selected,
-		jumpLabel:         labelStyle,
 	}
 	got := renderList(listProps{Width: 24, Compact: true, Theme: theme, Rows: []rowProps{{
-		Primary: "editor", Secondary: "~/code", JumpLabel: "a", Active: true, Selected: true,
+		Primary: "editor", Secondary: "~/code", Active: true, Selected: true,
 	}}})[0]
-	want := selected.Width(24).Render("│ a editor  " + secondarySelected.Render("~/code"))
+	want := selected.Width(24).Render("│ editor  " + secondarySelected.Render("~/code"))
 	if got != want {
 		t.Fatalf("selected row was not styled as one full-width line:\n got %q\nwant %q", got, want)
 	}
-	if plain := strings.TrimRight(terminal.Sanitize(got), " "); plain != "│ a editor  ~/code" {
+	if plain := strings.TrimRight(terminal.Sanitize(got), " "); plain != "│ editor  ~/code" {
 		t.Fatalf("selected row has excess markers or spacing: %q", plain)
 	}
 }
@@ -202,7 +183,7 @@ func TestRenderListAlignsSecondaryColumnsAndTruncatesBothSides(t *testing.T) {
 }
 
 func TestRenderListSanitizesAndFitsNarrowWidths(t *testing.T) {
-	row := rowProps{Primary: "\x1b]0;owned\a中👨‍👩‍👧é\nnext", Secondary: "~/bad\tpath\x1b[2J", Trailing: "\x1b]0;owned\api中\ncommand", JumpLabel: "\x1b[31ma\n"}
+	row := rowProps{Primary: "\x1b]0;owned\a中👨‍👩‍👧é\nnext", Secondary: "~/bad\tpath\x1b[2J", Trailing: "\x1b]0;owned\api中\ncommand"}
 	for width := range 81 {
 		line := renderList(listProps{Width: width, Rows: []rowProps{row}})[0]
 		if strings.ContainsAny(line, "\x1b\n\r\t") {
@@ -220,7 +201,7 @@ func TestRenderListAlignsTrailingTextBeforeTheStatusCell(t *testing.T) {
 			t.Run(fmt.Sprintf("compact=%t/width=%d", compact, width), func(t *testing.T) {
 				rows := []rowProps{
 					{Primary: "deveditor", Secondary: "~/code", Trailing: "pi", Selected: true},
-					{Primary: "devtests", Secondary: "~/tests", Trailing: "opencode", Active: true, JumpLabel: "a"},
+					{Primary: "devtests", Secondary: "~/tests", Trailing: "opencode", Active: true},
 				}
 
 				lines := renderList(listProps{Width: width, Rows: rows, Compact: compact, Theme: defaultTheme()})
@@ -255,28 +236,21 @@ func TestRenderListPreservesCommandWhileShorteningOtherColumns(t *testing.T) {
 
 func TestSelectedRowBackgroundCoversEveryCellThroughTheCommand(t *testing.T) {
 	styles := defaultTheme()
-	wantR, wantG, wantB, wantA := styles.selectedRow.GetBackground().RGBA()
 	for _, compact := range []bool{false, true} {
 		for _, active := range []bool{false, true} {
 			for _, width := range []int{12, 24, 40, 80} {
 				line := renderList(listProps{Width: width, Compact: compact, Theme: styles, Rows: []rowProps{
-					{Primary: "dev editor", Secondary: "~/code", Trailing: "pi", JumpLabel: "a", Selected: true, Active: active},
+					{Primary: "dev editor", Secondary: "~/code", Trailing: "pi", Selected: true, Active: active},
 					{Primary: "dev tests", Secondary: "~/tests", Trailing: "opencode"},
 				}})[0]
-				if strings.Contains(line, "\n") || terminal.Width(line) != width {
-					t.Fatalf("selected row does not occupy one full-width line: %q", line)
-				}
+				require.NotContains(t, line, "\n")
+				require.Equal(t, width, terminal.Width(line), "selected row must occupy one full-width line")
 				screen := uv.NewScreenBuffer(width, 1)
 				uv.NewStyledString(line).Draw(screen, screen.Bounds())
 				for x := range width {
 					cell := screen.CellAt(x, 0)
-					if cell.Style.Bg == nil {
-						t.Fatalf("width %d: highlight stops at cell %d (%q): %q", width, x, cell.Content, line)
-					}
-					r, g, b, a := cell.Style.Bg.RGBA()
-					if r != wantR || g != wantG || b != wantB || a != wantA {
-						t.Fatalf("width %d: wrong highlight at cell %d (%q)", width, x, cell.Content)
-					}
+					require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg,
+						"width %d: wrong highlight at cell %d (%q)", width, x, cell.Content)
 				}
 			}
 		}

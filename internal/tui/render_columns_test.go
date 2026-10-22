@@ -97,7 +97,7 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 	styles := defaultTheme()
 	row := rowProps{
 		Context: "\x1b]0;bad\a日本👨‍👩‍👧", Primary: "1:éditor\nnext", Annotation: "·10\t",
-		Secondary: "~/long/path\x1b[2J", Trailing: "pi\r", JumpLabel: "a",
+		Secondary: "~/long/path\x1b[2J", Trailing: "pi\r",
 		Active: true, Selected: true, Status: status.Value{State: status.Blocked},
 	}
 	for width := range 81 {
@@ -141,8 +141,8 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 	require.Equal(t, lipgloss.Color(colorMuted), screen.CellAt(annotationColumn, 0).Style.Fg)
 }
 
-func TestFlatListReservesStatusBeforeJumpLabels(t *testing.T) {
-	row := rowProps{Context: "hetki", Primary: "tui", JumpLabel: "ab", Status: status.Value{State: status.Blocked}}
+func TestFlatListKeepsStatusAtNarrowWidths(t *testing.T) {
+	row := rowProps{Context: "hetki", Primary: "tui", Active: true, Status: status.Value{State: status.Blocked}}
 	for _, test := range []struct {
 		name     string
 		height   int
@@ -163,10 +163,10 @@ func TestFlatListReservesStatusBeforeJumpLabels(t *testing.T) {
 				require.Equal(t, width, terminal.Width(last))
 				require.Equal(t, "?", terminal.Cut(last, width-1, width))
 				if test.height == 2 {
-					prefix := terminal.Cut("  ab ", 0, width)
+					prefix := terminal.Cut("│ ", 0, width)
 					require.True(t, strings.HasPrefix(terminal.Sanitize(lines[0]), prefix))
 				} else if width >= 8 {
-					require.Equal(t, "  ab", terminal.Cut(terminal.Sanitize(lines[0]), 0, 4))
+					require.Equal(t, "│ ", terminal.Cut(terminal.Sanitize(lines[0]), 0, 2))
 				}
 			})
 		}
@@ -176,7 +176,7 @@ func TestFlatListReservesStatusBeforeJumpLabels(t *testing.T) {
 func TestStackedListKeepsIdentityAndDetailLines(t *testing.T) {
 	styles := defaultTheme()
 	rows := []rowProps{
-		{Context: "hetki", Primary: "tui", Annotation: "·1", Secondary: "~/Projects/hetki/internal/tui", Trailing: "opencode", JumpLabel: "a", Active: true},
+		{Context: "hetki", Primary: "tui", Annotation: "·1", Secondary: "~/Projects/hetki/internal/tui", Trailing: "opencode", Active: true},
 		{Context: "api", Primary: "server", Secondary: "~/Projects/api/internal/server", Trailing: "go test", Status: status.Value{State: status.Blocked}, Selected: true},
 	}
 
@@ -184,8 +184,8 @@ func TestStackedListKeepsIdentityAndDetailLines(t *testing.T) {
 	require.Len(t, stacked, 4)
 
 	identity, detail := terminal.Sanitize(stacked[0]), terminal.Sanitize(stacked[1])
-	require.Equal(t, "│ a hetki › tui  ·1", identity)
-	require.Equal(t, "│   ", terminal.Cut(detail, 0, 4))
+	require.Equal(t, "│ hetki › tui  ·1", identity)
+	require.Equal(t, "│ ", terminal.Cut(detail, 0, 2))
 	require.Contains(t, detail, "~/Projects/hetki/internal/tui")
 	require.True(t, strings.HasSuffix(detail, "opencode  "))
 
@@ -203,7 +203,7 @@ func TestStackedListKeepsIdentityAndDetailLines(t *testing.T) {
 func TestFlatListFitsShortViewport(t *testing.T) {
 	for _, height := range []int{3, 4, 5, 6, 7, 24} {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
-			snapshot := flatJumpSnapshot(20)
+			snapshot := flatSnapshot(20)
 			for i := range snapshot.Items {
 				snapshot.Items[i].Context = "hetki"
 				snapshot.Items[i].Trailing = "pi"

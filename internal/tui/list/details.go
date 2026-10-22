@@ -14,9 +14,9 @@ type Details struct {
 
 // SetDetails replaces presentation overrides and refilters while preserving selection
 // and expansion. Callers must not mutate the supplied details afterward.
-func (m *Model) SetDetails(details map[ItemID]Details) bool {
+func (m *Model) SetDetails(details map[ItemID]Details) {
 	if maps.EqualFunc(m.details, details, equalDetails) {
-		return false
+		return
 	}
 	selected, ok := m.Selected()
 	m.details = details
@@ -25,7 +25,6 @@ func (m *Model) SetDetails(details map[ItemID]Details) bool {
 		m.Select(selected.Item.ID)
 	}
 	m.reflow()
-	return true
 }
 
 func equalDetails(a, b Details) bool {

@@ -18,12 +18,8 @@ type actionResultMsg struct {
 func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	result := msg.result
 	pending, previousRows := m.pending, m.pendingRows
-	resumeJump := m.mode == modeJump && pending != nil && pending.ActionID == ActionToggleProjection
 	m.pending, m.pendingRows = nil, nil
 	m.busy, m.status = false, ""
-	if result.Snapshot != nil && m.mode == modeJump {
-		m.cancelJump()
-	}
 	m.err = msg.err
 	switch {
 	case m.err != nil:
@@ -59,9 +55,6 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	m.items.Select(preferred)
 	if pending != nil && isDeleteAction(pending.ActionID) {
 		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
-	}
-	if resumeJump {
-		return handleJump(m.reflow(), list.ItemID{})
 	}
 	return m.reflow(), nil
 }
@@ -157,13 +150,8 @@ func handleLastSession(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleOpen(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
-	switch m.mode {
-	case modeJump:
-		m.cancelJump()
-	case modeFilter:
-		if itemID.IsZero() {
-			m.mode = modeBrowse
-		}
+	if m.mode == modeFilter && itemID.IsZero() {
+		m.mode = modeBrowse
 	}
 	return m.startItemAction(ActionOpen, itemID)
 }

@@ -9,8 +9,6 @@ import (
 
 func keyModeFor(mode uiMode) KeyMode {
 	switch mode {
-	case modeJump:
-		return KeyModeJump
 	case modeFilter:
 		return KeyModeFilter
 	case modeInput:
@@ -33,8 +31,6 @@ func handleMoveUp(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case modeMenu:
 		m.menu.Cursor = max(0, m.menu.Cursor-1)
-	case modeJump:
-		m.moveJump(-1)
 	case modeBrowse, modeFilter:
 		m.items.Move(-1)
 	default:
@@ -47,8 +43,6 @@ func handleMoveDown(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case modeMenu:
 		m.menu.Cursor = min(len(m.menu.Entries)-1, m.menu.Cursor+1)
-	case modeJump:
-		m.moveJump(1)
 	case modeBrowse, modeFilter:
 		m.items.Move(1)
 	default:
@@ -58,10 +52,6 @@ func handleMoveDown(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleMoveTop(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	if m.mode == modeJump {
-		m.selectJumpEdge(false)
-		return m, nil
-	}
 	if !m.isListMode() {
 		return m.actionUnavailable(ActionMoveTop)
 	}
@@ -70,10 +60,6 @@ func handleMoveTop(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleMoveBottom(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	if m.mode == modeJump {
-		m.selectJumpEdge(true)
-		return m, nil
-	}
 	if !m.isListMode() {
 		return m.actionUnavailable(ActionMoveBottom)
 	}
@@ -82,10 +68,6 @@ func handleMoveBottom(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handlePageUp(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	if m.mode == modeJump {
-		m.moveJump(-max(1, m.items.Height()-1))
-		return m, nil
-	}
 	if !m.isListMode() {
 		return m.actionUnavailable(ActionPageUp)
 	}
@@ -94,10 +76,6 @@ func handlePageUp(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handlePageDown(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	if m.mode == modeJump {
-		m.moveJump(max(1, m.items.Height()-1))
-		return m, nil
-	}
 	if !m.isListMode() {
 		return m.actionUnavailable(ActionPageDown)
 	}
@@ -106,11 +84,7 @@ func handlePageDown(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleFilter(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	if m.mode == modeJump {
-		m.cancelJump()
-	} else {
-		m.clearOverlayState()
-	}
+	m.clearOverlayState()
 	m.mode = modeFilter
 	return m.reflow(), nil
 }
@@ -179,9 +153,6 @@ func handleCollapseAll(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func (m model) prepareListChange(action ActionID) (model, bool) {
-	if m.mode == modeJump {
-		m.cancelJump()
-	}
 	if !m.isListMode() {
 		m.err = fmt.Errorf("action %q is unavailable in %s mode", action, keyModeFor(m.mode))
 		return m, false

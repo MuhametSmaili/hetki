@@ -53,7 +53,7 @@ func renderMenu(props menuProps) string {
 			lines = append(lines, props.Theme.itemStyle(false, true).Render(key+label))
 			continue
 		}
-		lines = append(lines, props.Theme.jumpLabel.Render(key)+props.Theme.row.Render(label))
+		lines = append(lines, props.Theme.menuKey.Render(key)+props.Theme.row.Render(label))
 	}
 	if showHint {
 		lines = append(lines, props.Theme.modalHint.Render(terminal.Sanitize(props.Hint)))

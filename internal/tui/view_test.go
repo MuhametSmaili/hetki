@@ -24,9 +24,8 @@ func TestHeaderTracksMode(t *testing.T) {
 		wantPrompt string
 		wantHint   string
 	}{
-		{mode: modeBrowse, wantPrompt: " NORMAL ", wantHint: "press / to filter or ; to jump"},
+		{mode: modeBrowse, wantPrompt: " NORMAL ", wantHint: "press / to filter"},
 		{mode: modeFilter, wantPrompt: ">"},
-		{mode: modeJump, wantPrompt: " JUMP ", wantHint: "type a label to jump or / to filter"},
 		{mode: modeMenu},
 	} {
 		m.mode = tt.mode
@@ -66,11 +65,6 @@ func TestHeaderHintsFollowInjectedKeymap(t *testing.T) {
 	keys, err := ResolveKeyMap(map[KeyMode][]Binding{
 		KeyModeNormal: {
 			{Action: ActionFilter, Keys: []string{"ctrl+f"}},
-			{Action: ActionJump, Keys: []string{"ctrl+j"}},
-		},
-		KeyModeJump: {
-			{Action: ActionFilter, Keys: []string{"ctrl+f"}},
-			{Action: ActionJump, Keys: []string{"ctrl+j"}}, // Unhandled here: must not become a hint.
 		},
 	})
 	require.NoError(t, err)
@@ -79,12 +73,9 @@ func TestHeaderHintsFollowInjectedKeymap(t *testing.T) {
 	m = browseModel(m)
 	m.width, m.height = 120, 20
 	m = m.reflow()
-	require.Equal(t, "press ctrl+f to filter or ctrl+j to jump", headerHint(m))
+	require.Equal(t, "press ctrl+f to filter", headerHint(m))
 	require.Contains(t, m.View().Content, headerHint(m))
 
-	m, _ = updateModel(t, m, controlKey('j'))
-	require.Equal(t, modeJump, m.mode)
-	require.Equal(t, "type a label to jump or ctrl+f to filter", headerHint(m))
 	m, _ = updateModel(t, m, controlKey('f'))
 	require.Equal(t, modeFilter, m.mode)
 	require.Empty(t, headerHint(m))

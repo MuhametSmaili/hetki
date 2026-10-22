@@ -12,7 +12,7 @@ import (
 )
 
 func TestPreviewStartsBesideHeaderAndPreservesList(t *testing.T) {
-	for _, mode := range []uiMode{modeBrowse, modeFilter, modeJump} {
+	for _, mode := range []uiMode{modeBrowse, modeFilter} {
 		t.Run(string(mode), func(t *testing.T) {
 			m := previewModel(t)
 			m.theme.appBorder = lipgloss.NewStyle()

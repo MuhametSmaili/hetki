@@ -118,8 +118,6 @@ func (m model) activateMenuEntry(index int) (tea.Model, tea.Cmd) {
 
 func handleCancel(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	switch m.mode {
-	case modeJump:
-		m.cancelJump()
 	case modeFilter:
 		m.mode = modeBrowse
 	case modeInput:

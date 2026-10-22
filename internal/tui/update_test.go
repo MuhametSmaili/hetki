@@ -50,8 +50,6 @@ func selectNode(t *testing.T, m model, id list.ItemID) model {
 
 func browseModel(m model) model {
 	m.mode = modeBrowse
-	m.initialJump = false
-	m.jump = jumpState{}
 	return m
 }
 
@@ -119,6 +117,61 @@ func TestUpdateRoutesKeysByModeAndOverlay(t *testing.T) {
 	requireQuit(t, cmd)
 }
 
+func TestSemicolonShortcutsDoNotChangeMode(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		mode      uiMode
+		key       tea.KeyPressMsg
+		wantQuery string
+	}{
+		{name: "filter text", mode: modeFilter, key: printableKey(";"), wantQuery: "semi;"},
+		{name: "normal semicolon", mode: modeBrowse, key: printableKey(";"), wantQuery: "semi"},
+		{name: "filter control semicolon", mode: modeFilter, key: controlKey(';'), wantQuery: "semi"},
+		{name: "normal control semicolon", mode: modeBrowse, key: controlKey(';'), wantQuery: "semi"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := newModel(list.Snapshot{Items: []list.Item{{
+				ID: list.ItemID{ID: "semicolon"}, Primary: "semi;colon",
+				SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "semi;colon"}},
+			}}}, nil)
+			m.items.SetQuery("semi")
+			m.mode = test.mode
+
+			m, cmd := updateModel(t, m, test.key)
+
+			require.Nil(t, cmd)
+			require.False(t, m.busy)
+			require.NoError(t, m.err)
+			require.Equal(t, test.mode, m.mode)
+			require.Equal(t, test.wantQuery, m.items.Query())
+			require.Equal(t, list.ItemID{ID: "semicolon"}, selectedNodeID(m))
+		})
+	}
+}
+
+func TestNormalMatchKeysPreserveQueryAndSkipAncestors(t *testing.T) {
+	m := newModel(interactionSnapshot(), nil)
+	m, _ = updateModel(t, m, printableKey("er"))
+	m, _ = updateModel(t, m, specialKey(tea.KeyEscape))
+
+	for _, test := range []struct {
+		key  string
+		want list.ItemID
+	}{
+		{key: "n", want: list.ItemID{ID: "window-2"}},
+		{key: "n", want: list.ItemID{ID: "window-1"}},
+		{key: "N", want: list.ItemID{ID: "window-2"}},
+	} {
+		next, cmd := updateModel(t, m, printableKey(test.key))
+
+		require.Nil(t, cmd)
+		require.Equal(t, modeBrowse, next.mode)
+		require.Equal(t, "er", next.items.Query())
+		require.Equal(t, test.want, selectedNodeID(next))
+		m = next
+	}
+}
+
 func TestEnteringFilterPreservesExistingError(t *testing.T) {
 	want := errors.New("stale target")
 	m := browseModel(newModel(interactionSnapshot(), nil))
@@ -154,7 +207,6 @@ func TestLastSessionKeyWorksWithoutVisibleRowsAndRespectsOverlays(t *testing.T) 
 	}{
 		{name: "normal", mode: modeBrowse},
 		{name: "filter", mode: modeFilter},
-		{name: "jump", mode: modeJump},
 		{name: "input", mode: modeInput},
 		{name: "confirmation", mode: modeConfirm},
 		{name: "menu", mode: modeMenu},
@@ -228,7 +280,6 @@ func TestBoundDeleteSessionUsesOneActionFlowInEveryMode(t *testing.T) {
 		returnMode uiMode
 	}{
 		{name: "normal", mode: modeBrowse, keyMode: KeyModeNormal, returnMode: modeBrowse},
-		{name: "jump", mode: modeJump, keyMode: KeyModeJump, returnMode: modeBrowse},
 		{name: "filter", mode: modeFilter, keyMode: KeyModeFilter, returnMode: modeFilter},
 		{name: "input", mode: modeInput, keyMode: KeyModeInput, returnMode: modeFilter},
 		{name: "confirm", mode: modeConfirm, keyMode: KeyModeConfirm, returnMode: modeFilter},
@@ -315,28 +366,6 @@ func TestProjectionTogglePreservesTheFilterAndUsesPreferredSelection(t *testing.
 	require.NotNil(t, cmd)
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, "server", m.items.Query())
-	require.Equal(t, list.ItemID{ID: "destination-2"}, selectedNodeID(m))
-}
-
-func TestCtrlTFromJumpTogglesProjectionAndRebuildsLabels(t *testing.T) {
-	flat := list.Snapshot{Items: []list.Item{{
-		ID: list.ItemID{ID: "destination-2"}, Primary: "beta > api",
-		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "server"}},
-	}}}
-	m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
-		require.Equal(t, ActionRequest{ActionID: ActionToggleProjection, ItemID: list.ItemID{ID: "window-2"}}, request)
-		return ActionResult{Snapshot: &flat, SelectItemID: list.ItemID{ID: "destination-2"}}, nil
-	})
-	m = browseModel(m)
-	m = selectNode(t, m, list.ItemID{ID: "window-2"})
-	m, _ = updateModel(t, m, printableKey(";"))
-	require.Equal(t, modeJump, m.mode)
-
-	m, cmd := updateModel(t, m, controlKey('t'))
-	require.NotNil(t, cmd)
-	m, _ = updateModel(t, m, cmd())
-	require.Equal(t, modeJump, m.mode)
-	require.Equal(t, []jumpCandidate{{label: "a", itemID: list.ItemID{ID: "destination-2"}}}, m.jump.candidates)
 	require.Equal(t, list.ItemID{ID: "destination-2"}, selectedNodeID(m))
 }
 

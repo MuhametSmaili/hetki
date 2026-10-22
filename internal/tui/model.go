@@ -34,7 +34,6 @@ type StartMode string
 const (
 	StartModeNormal StartMode = "normal"
 	StartModeFilter StartMode = "filter"
-	StartModeJump   StartMode = "jump"
 )
 
 func DefaultStartMode() StartMode { return StartModeFilter }
@@ -43,7 +42,6 @@ type uiMode string
 
 const (
 	modeBrowse  uiMode = "browse"
-	modeJump    uiMode = "jump"
 	modeFilter  uiMode = "filter"
 	modeInput   uiMode = "input"
 	modeConfirm uiMode = "confirm"
@@ -59,8 +57,6 @@ type model struct {
 	input       inputState
 	confirm     confirmState
 	menu        menuState
-	jump        jumpState
-	initialJump bool
 	pending     *ActionRequest
 	pendingRows []list.ItemID
 	navigation  list.ItemID
@@ -112,8 +108,6 @@ func newModelWithStartMode(snapshot list.Snapshot, dispatch DispatchFunc, keys K
 		if len(m.items.Rows()) > 0 {
 			m.mode = modeFilter
 		}
-	case StartModeJump:
-		m.initialJump = len(m.items.Rows()) > 0
 	default:
 		return model{}, fmt.Errorf("invalid start mode %q", startMode)
 	}

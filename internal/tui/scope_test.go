@@ -126,7 +126,7 @@ func TestStatusPrefixIsOrdinarySearchText(t *testing.T) {
 }
 
 func TestScopeToggleIsLocalAndPreservesQueryAndSelection(t *testing.T) {
-	for _, mode := range []uiMode{modeBrowse, modeFilter, modeJump} {
+	for _, mode := range []uiMode{modeBrowse, modeFilter} {
 		t.Run(string(mode), func(t *testing.T) {
 			m, now := scopeFixture(t, "flat")
 			m.applyScope("idle", now)
@@ -183,19 +183,16 @@ func TestLayoutSwitchPreservesScopeAndQuery(t *testing.T) {
 	require.Equal(t, list.ItemID{ID: "idle"}, selectedNodeID(m))
 }
 
-func TestStatusMembershipChangeCancelsJumpInsteadOfRelabeling(t *testing.T) {
+func TestStatusMembershipChangePreservesFilter(t *testing.T) {
 	m, now := scopeFixture(t, "flat")
 	m.scope.tracked = true
-	m.applyScope("", now)
-	jumping, _ := handleJump(m, list.ItemID{})
-	m = jumping.(model)
-	m.jump.input = "a"
+	m.applyScope("idle", now)
 
 	next, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Values: status.Snapshot{}}})
 	m = next.(model)
 
-	require.Equal(t, modeBrowse, m.mode)
-	require.Empty(t, m.jump.candidates)
+	require.Equal(t, modeFilter, m.mode)
+	require.Equal(t, "idle", m.items.Query())
 	require.Empty(t, m.items.Rows())
 }
 

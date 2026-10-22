@@ -100,9 +100,9 @@ func (m *Model) SetQuery(query string) {
 }
 
 // SetFilter retains ancestors of included items; nil allows all items.
-func (m *Model) SetFilter(query string, included map[ItemID]struct{}) bool {
+func (m *Model) SetFilter(query string, included map[ItemID]struct{}) {
 	if m.query == query && (m.included == nil) == (included == nil) && maps.Equal(m.included, included) {
-		return false
+		return
 	}
 	selected, hasSelection := m.Selected()
 	preserve := m.query == query
@@ -113,7 +113,6 @@ func (m *Model) SetFilter(query string, included map[ItemID]struct{}) bool {
 		m.Select(selected.Item.ID)
 	}
 	m.reflow()
-	return true
 }
 
 func (m *Model) Resize(height int) {
