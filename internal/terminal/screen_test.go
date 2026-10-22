@@ -123,6 +123,7 @@ func TestScreenLinesSafeContent(t *testing.T) {
 		{"layout", "  中👨‍👩‍👧e\u0301  \n\n last \n\n", []string{"  中👨‍👩‍👧e\u0301  ", "", " last ", ""}},
 		{"unterminated record", "first\nlast", []string{"first", "last"}},
 		{"OSC", "a\x1b]0;title\ab\x1b]52;c;clipboard\x1b\\c\x1b]8;;https://example.invalid\alink\x1b]8;;\x1b\\d", []string{"abclinkd"}},
+		{"program status", "a" + ansi.SetProgramStatus(ansi.ProgramStatus{State: ansi.ProgramStateWorking, App: "charm"}) + "b", []string{"ab"}},
 		{"strings", "a\x1bP1;2qDCS\x1b\\b\x1b_Gimage\x1b\\c\x1b^private\x1b\\d\x1bXsos\x1b\\e", []string{"abcde"}},
 		{"ESC and CSI", "a\x1bc\x1b7\x1b8\x1b(Bb\x1b[2J\x1b[999;999H\x1b[?1049h\x1b[6n\x1b[!mc", []string{"abc"}},
 		{"C0", "a\x00\a\b\t\v\f\r\x0e\x0f\x18\x1a\x7fb\nc", []string{"ab", "c"}},

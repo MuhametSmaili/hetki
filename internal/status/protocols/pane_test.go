@@ -7,11 +7,49 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/status/protocols"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/require"
 )
 
 func report(payload string) []byte { return []byte("\x1b]7501;" + payload + "\a") }
 func marker(payload string) []byte { return []byte("\x1b]133;" + payload + "\a") }
+
+func TestCharmProgramStatusReports(t *testing.T) {
+	cases := []struct {
+		state   ansi.ProgramState
+		want    status.State
+		outcome status.Outcome
+	}{
+		{ansi.ProgramStateIdle, status.Idle, status.NoOutcome},
+		{ansi.ProgramStateWorking, status.Working, status.NoOutcome},
+		{ansi.ProgramStateBlocked, status.Blocked, status.NoOutcome},
+		{ansi.ProgramStateDone, status.Unknown, status.Completed},
+		{ansi.ProgramStateError, status.Unknown, status.Failed},
+		{ansi.ProgramStateClear, status.Withdrawn, status.NoOutcome},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.state), func(t *testing.T) {
+			input := ansi.SetProgramStatus(ansi.ProgramStatus{
+				State: tc.state, App: "charm", Kind: ansi.ProgramStatusKindPermission,
+				Progress: 42, HasProgress: true, Title: "Build 日本", Message: "Waiting: approve?",
+			})
+			require.NotEmpty(t, input)
+			pane := protocols.New(protocols.Options{ProgramStatus: true})
+			pane.Feed(report("state=working"))
+
+			var publish bool
+			for i := range len(input) {
+				_, changed := pane.Feed([]byte{input[i]})
+				publish = publish || changed
+			}
+			observation := pane.Snapshot()
+
+			require.True(t, publish)
+			require.Equal(t, tc.want, observation.Activity)
+			require.Equal(t, tc.outcome, observation.Outcome)
+		})
+	}
+}
 
 func TestPromptCleansActivityAndRetainsOutcomes(t *testing.T) {
 	cases := []struct {

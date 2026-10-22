@@ -67,7 +67,7 @@ func TestStatusRenderingPreservesSelectionAndTrailingContent(t *testing.T) {
 				wantTrailing = test.command + " " + test.glyph
 			}
 			position := 40 - terminal.Width(wantTrailing)
-			screen := uv.NewScreenBuffer(40, 1)
+			screen := lipgloss.NewCanvas(40, 1)
 
 			line := renderList(listProps{Width: 40, Rows: []rowProps{row}, Theme: styles})[0]
 			uv.NewStyledString(line).Draw(screen, screen.Bounds())
@@ -118,7 +118,7 @@ func TestStatusRowsFitNarrowWidths(t *testing.T) {
 
 			require.Equal(t, width, terminal.Width(line))
 			require.NotContains(t, line, "\x1b]0")
-			screen := uv.NewScreenBuffer(width, 1)
+			screen := lipgloss.NewCanvas(width, 1)
 			uv.NewStyledString(line).Draw(screen, screen.Bounds())
 			for x := 0; x < width; {
 				cell := screen.CellAt(x, 0)

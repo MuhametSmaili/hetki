@@ -119,7 +119,7 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 				require.Equal(t, width, terminal.Width(line))
 				require.NotContains(t, line, "\x1b]")
 				require.False(t, strings.ContainsAny(line, "\n\r\t"))
-				screen := uv.NewScreenBuffer(width, 1)
+				screen := lipgloss.NewCanvas(width, 1)
 				uv.NewStyledString(line).Draw(screen, screen.Bounds())
 				for x := 0; x < width; {
 					cell := screen.CellAt(x, 0)
@@ -131,7 +131,7 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 	}
 
 	line := renderList(listProps{Width: 80, Rows: []rowProps{row}, Theme: styles})[0]
-	screen := uv.NewScreenBuffer(80, 1)
+	screen := lipgloss.NewCanvas(80, 1)
 	uv.NewStyledString(line).Draw(screen, screen.Bounds())
 	require.Equal(t, "│", screen.CellAt(0, 0).Content)
 	require.Equal(t, lipgloss.Color(colorActive), screen.CellAt(0, 0).Style.Fg)
