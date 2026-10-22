@@ -14,6 +14,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -160,11 +161,7 @@ func newIsolatedStartBackend(t *testing.T) *backendtmux.TmuxBackend {
 		t.Skip("tmux is required for integration tests")
 	}
 
-	socketDir, err := os.MkdirTemp("/tmp", "hetki-force-")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(socketDir))
-	})
+	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
 	config := filepath.Join(socketDir, "tmux.conf")
 	configText := `set -g default-shell /bin/sh

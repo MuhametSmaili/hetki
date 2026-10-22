@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,9 +25,8 @@ func newNavigableTmuxBackend(t *testing.T) (*TmuxBackend, string) {
 	if err != nil {
 		t.Skip("tmux is required for integration tests")
 	}
-	socketDir, err := os.MkdirTemp("/tmp", "hetki-tmux-switch-")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+
+	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
 	t.Cleanup(func() { _ = exec.Command(realTmux, "-S", socket, "kill-server").Run() })
 
@@ -65,12 +65,12 @@ func TestSwitchTargetsStableIDsOnColonNamedSessions(t *testing.T) {
 	stalePane = strings.TrimSpace(stalePane)
 	_, err = b.client.Run(context.Background(), "kill-pane", "-t", stalePane)
 	require.NoError(t, err)
-	assert.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: windowID, PaneID: stalePane}), "stale pane ID must fail closed")
+	require.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: windowID, PaneID: stalePane}), "stale pane ID must fail closed")
 
 	t.Setenv("TMUX", fmt.Sprintf("%s,1,%s", "isolated", strings.TrimPrefix(sessionID, "$")))
 	require.NoError(t, b.Switch(context.Background(), target))
 
-	assert.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: "@999"}), "unknown window ID must fail closed")
+	require.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: "@999"}), "unknown window ID must fail closed")
 
 	logged, err := os.ReadFile(navLog)
 	require.NoError(t, err)

@@ -13,6 +13,7 @@ import (
 
 	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,9 +26,8 @@ func TestCommandsExecuteOnceAtCreationTime(t *testing.T) {
 	if err != nil {
 		t.Skip("tmux is required for integration tests")
 	}
-	socketDir, err := os.MkdirTemp("/tmp", "hetki-start-cmds-")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+
+	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
 	wrapperDir := t.TempDir()
 	wrapper := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in attach-session|switch-client) exit 0;; esac\nexec %q -S %q \"$@\"\n", realTmux, socket)

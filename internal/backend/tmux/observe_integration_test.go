@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,9 +32,7 @@ func nativeStatusFixture(t *testing.T) (*TmuxBackend, observe.Server, string, st
 func nativeStatusFixtureWithBinary(t *testing.T, bin string) (*TmuxBackend, observe.Server, string, string) {
 	t.Helper()
 
-	socketDir, err := os.MkdirTemp("", "hetki-observe-")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(socketDir)) })
+	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
 	wrapper := filepath.Join(t.TempDir(), "tmux")
 	script := fmt.Sprintf("#!/bin/sh\nunset TMUX\nexec %q -f /dev/null -S %q \"$@\"\n", bin, socket)
@@ -116,7 +115,7 @@ func assertNativeStatusDelivery(t *testing.T, b *TmuxBackend, c *observe.Connect
 	}()
 	t.Cleanup(func() {
 		cancel()
-		awaitTmuxChannel(t, done)
+		_ = awaitTmuxChannel(t, done)
 	})
 
 	_, err := b.client.Run(ctx, "send-keys", "-t", pane, "-l", "--", "mixed-layout\n")
@@ -167,7 +166,7 @@ func TestNativeStatusOutputPreservesBytesPaneAndGeometry(t *testing.T) {
 	}()
 	t.Cleanup(func() {
 		stopRead()
-		awaitTmuxChannel(t, done)
+		_ = awaitTmuxChannel(t, done)
 	})
 
 	_, sendErr := b.client.Run(ctx, "send-keys", "-t", pane, "-l", "--", string(wanted)+"\n")
@@ -222,7 +221,7 @@ func TestNativeStatusShutdownAndReconnectHaveSeparateLifetimes(t *testing.T) {
 	}()
 	t.Cleanup(func() {
 		cancel()
-		awaitTmuxChannel(t, done)
+		_ = awaitTmuxChannel(t, done)
 	})
 
 	_, stopErr := b.client.Run(ctx, "kill-server")
@@ -252,7 +251,7 @@ func TestNativeStatusOutputLossEndsObservation(t *testing.T) {
 	}()
 	t.Cleanup(func() {
 		cancel()
-		awaitTmuxChannel(t, done)
+		_ = awaitTmuxChannel(t, done)
 	})
 	client := fmt.Sprintf("hetki-status-%d-%s", os.Getpid(), session)
 

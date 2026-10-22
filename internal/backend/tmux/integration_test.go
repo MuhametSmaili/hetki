@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,13 +25,8 @@ func newIsolatedTmuxBackend(t *testing.T) *TmuxBackend {
 	if err != nil {
 		t.Skip("tmux is required for integration tests")
 	}
-	socketDir, err := os.MkdirTemp("/tmp", "hetki-tmux-parse-")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		if err := os.RemoveAll(socketDir); err != nil {
-			t.Errorf("remove isolated tmux directory: %v", err)
-		}
-	})
+
+	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

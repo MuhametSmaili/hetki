@@ -13,6 +13,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,9 +24,7 @@ func TestForceKeepsUnrelatedSessionOnIsolatedTmux(t *testing.T) {
 		t.Skip("tmux is required for integration tests")
 	}
 
-	socketDir, err := os.MkdirTemp("/tmp", "hetki-start-")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
 	navigationLog := filepath.Join(socketDir, "navigation.log")
 	wrapperDir := t.TempDir()
@@ -78,9 +77,7 @@ func TestCreationFollowupsUseReturnedIDsOnNonEmptyBaseOneSession(t *testing.T) {
 		t.Skip("tmux is required for integration tests")
 	}
 
-	socketDir, err := os.MkdirTemp("/tmp", "hetki-start-ids-")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
 	navigationLog := filepath.Join(socketDir, "navigation.log")
 	wrapperDir := t.TempDir()
