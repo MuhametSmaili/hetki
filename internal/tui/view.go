@@ -12,14 +12,17 @@ import (
 
 func (m model) View() tea.View {
 	layout := m.layout()
-	header := m.viewHeader(layout.innerWidth)
-	middle := lipgloss.PlaceVertical(layout.middleHeight, lipgloss.Top, m.viewList(layout))
+	header := m.viewHeader(layout)
+	body := lipgloss.PlaceVertical(layout.middleHeight, lipgloss.Top, m.viewList(layout))
+	content := lipgloss.JoinVertical(lipgloss.Left, header, body)
+
 	if layout.previewWidth > 0 {
-		left := lipgloss.NewStyle().Width(layout.listWidth).Render(middle)
-		divider := m.theme.sectionLine.Render(strings.TrimSuffix(strings.Repeat(" │ \n", layout.middleHeight), "\n"))
-		middle = lipgloss.JoinHorizontal(lipgloss.Top, left, divider, m.viewPreview(layout.previewWidth, layout.middleHeight))
+		height := layout.middleHeight + headerHeight
+		left := lipgloss.NewStyle().Width(layout.listWidth).Render(content)
+		divider := m.theme.sectionLine.Render(strings.TrimSuffix(strings.Repeat(" │ \n", height), "\n"))
+		content = lipgloss.JoinHorizontal(lipgloss.Top, left, divider, m.viewPreview(layout.previewWidth, height))
 	}
-	rendered := layout.frameStyle.Width(layout.lineWidth).Render(lipgloss.JoinVertical(lipgloss.Left, header, middle))
+	rendered := layout.frameStyle.Width(layout.lineWidth).Render(content)
 
 	if overlay := m.viewOverlay(layout.lineWidth, lipgloss.Height(rendered)); overlay != "" {
 		x := max(0, (layout.lineWidth-lipgloss.Width(overlay))/2)
@@ -35,17 +38,35 @@ func (m model) View() tea.View {
 	return view
 }
 
-func (m model) viewHeader(width int) string {
+func (m model) viewHeader(layout layoutMetrics) string {
+	width := layout.listWidth
 	scope := "All"
 	if m.scope.tracked {
 		scope = "Tracked"
 	}
-	return renderSearchBar(searchBarProps{
-		Width: width, Filter: m.items.Query(), Hint: headerHint(m), Right: headerRight(m),
+
+	total := len(m.items.Snapshot().Items)
+	meta := renderHeaderMeta(headerMetaProps{
 		Scope:      scope,
-		RightWidth: len(fmt.Sprintf("%d/%d", len(m.items.Snapshot().Items), len(m.items.Snapshot().Items))),
-		Prompt:     headerPrompt(m), Active: m.mode == modeFilter, Theme: m.theme,
-	}) + "\n" + m.theme.sectionLine.Render(strings.Repeat("─", width))
+		Right:      headerRight(m),
+		RightWidth: len(fmt.Sprintf("%d/%d", total, total)),
+		Theme:      m.theme,
+	})
+	query := searchBarProps{
+		Width:  width,
+		Filter: m.items.Query(),
+		Hint:   headerHint(m),
+		Prompt: headerPrompt(m),
+		Active: m.mode == modeFilter,
+		Theme:  m.theme,
+	}
+	if layout.previewWidth == 0 {
+		query.Meta = meta
+		return renderSearchBar(query) + "\n" + m.theme.sectionLine.Render(strings.Repeat("─", width))
+	}
+
+	metaLine := lipgloss.PlaceHorizontal(width, lipgloss.Right, truncateWidth(meta, width))
+	return renderSearchBar(query) + "\n" + metaLine
 }
 
 func (m model) viewList(layout layoutMetrics) string {
@@ -135,7 +156,7 @@ func headerPrompt(m model) string {
 	case modeBrowse:
 		return " NORMAL "
 	case modeFilter:
-		return " FILTER "
+		return ">"
 	case modeJump:
 		return " JUMP "
 	default:

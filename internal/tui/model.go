@@ -125,6 +125,8 @@ func (m model) reflow() model {
 	return m
 }
 
+const headerHeight = 2
+
 type layoutMetrics struct {
 	lineWidth    int
 	innerWidth   int
@@ -158,7 +160,7 @@ func (m model) layout() layoutMetrics {
 		innerWidth:   innerWidth,
 		listWidth:    listWidth,
 		previewWidth: previewWidth,
-		middleHeight: max(1, height-frameStyle.GetVerticalFrameSize()-2),
+		middleHeight: max(1, height-frameStyle.GetVerticalFrameSize()-headerHeight),
 		compact:      listWidth < narrowListWidth,
 		frameStyle:   frameStyle,
 	}

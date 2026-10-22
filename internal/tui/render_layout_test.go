@@ -12,14 +12,16 @@ func TestSearchBarRendersModeAppropriateContent(t *testing.T) {
 	prompt := lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("2"))
 	query := lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
 	got := renderSearchBar(searchBarProps{
-		Width: 32, Prompt: " / ", Right: "3/3", Theme: theme{searchBox: query, searchPrompt: prompt},
+		Width: 32, Prompt: " / ", Meta: renderHeaderMeta(headerMetaProps{Right: "3/3"}),
+		Theme: theme{searchBox: query, searchPrompt: prompt},
 	})
 	if !strings.Contains(got, prompt.Render(" / ")) || terminal.Width(got) != 32 {
 		t.Fatalf("search shortcut header = %q", got)
 	}
 
 	active := renderSearchBar(searchBarProps{
-		Width: 20, Prompt: " / ", Filter: "dev", Active: true, Theme: theme{searchBox: query, searchPrompt: prompt},
+		Width: 20, Prompt: " / ", Filter: "dev", Active: true,
+		Theme: theme{searchBox: query, filterPrompt: prompt},
 	})
 	if !strings.Contains(active, query.Render(" dev█")) {
 		t.Fatalf("active query used the wrong styling: %q", active)
@@ -30,7 +32,8 @@ func TestSearchBarRendersModeAppropriateContent(t *testing.T) {
 
 	hintStyle := lipgloss.NewStyle().Italic(true)
 	centered := renderSearchBar(searchBarProps{
-		Width: 32, Hint: "press key to jump", Right: "3/3", Theme: theme{headerHint: hintStyle},
+		Width: 32, Hint: "press key to jump", Meta: renderHeaderMeta(headerMetaProps{Right: "3/3"}),
+		Theme: theme{headerHint: hintStyle},
 	})
 	if !strings.Contains(centered, hintStyle.Render("press key to jump")) {
 		t.Fatalf("centered hint did not use its style: %q", centered)
@@ -60,7 +63,9 @@ func TestHeadersAndModalsSanitizeAndFit(t *testing.T) {
 
 	for width := range 21 {
 		rendered := []string{
-			renderSearchBar(searchBarProps{Width: width, Filter: unsafe, Right: unsafe}),
+			renderSearchBar(searchBarProps{
+				Width: width, Filter: unsafe, Meta: renderHeaderMeta(headerMetaProps{Right: unsafe}),
+			}),
 			renderInputModal(inputModalProps{LineWidth: width, Title: "INPUT", Prompt: unsafe, Value: unsafe, Theme: theme{modal: border}}),
 			renderConfirmModal(confirmModalProps{LineWidth: width, Title: "CONFIRM", Body: unsafe, Theme: theme{modal: border}}),
 			renderMenu(menuProps{

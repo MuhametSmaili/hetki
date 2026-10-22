@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +25,7 @@ func TestHeaderTracksMode(t *testing.T) {
 		wantHint   string
 	}{
 		{mode: modeBrowse, wantPrompt: " NORMAL ", wantHint: "press / to filter or ; to jump"},
-		{mode: modeFilter, wantPrompt: " FILTER "},
+		{mode: modeFilter, wantPrompt: ">"},
 		{mode: modeJump, wantPrompt: " JUMP ", wantHint: "type a label to jump or / to filter"},
 		{mode: modeMenu},
 	} {
@@ -36,6 +38,28 @@ func TestHeaderTracksMode(t *testing.T) {
 	m.mode = modeFilter
 	m.items.SetQuery("dev")
 	require.Empty(t, headerHint(m))
+}
+
+func TestFilterHeaderUsesDedicatedPromptStyle(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		previewWidth int
+	}{
+		{name: "full-width"},
+		{name: "preview", previewWidth: 20},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newModel(viewSnapshot(), nil)
+			m.mode = modeFilter
+			m.theme.filterPrompt = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+			m.theme.activeRow = lipgloss.NewStyle().Background(lipgloss.Color("1"))
+			layout := layoutMetrics{listWidth: 80, previewWidth: tc.previewWidth}
+
+			header := m.viewHeader(layout)
+
+			require.True(t, strings.HasPrefix(header, m.theme.filterPrompt.Render(">")))
+		})
+	}
 }
 
 func TestHeaderHintsFollowInjectedKeymap(t *testing.T) {

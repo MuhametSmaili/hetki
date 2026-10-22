@@ -8,14 +8,19 @@ import (
 )
 
 type searchBarProps struct {
-	Width      int
-	Filter     string
-	Hint       string
+	Width  int
+	Filter string
+	Hint   string
+	Meta   string // Styled metadata from renderHeaderMeta.
+	Prompt string
+	Active bool
+	Theme  theme
+}
+
+type headerMetaProps struct {
+	Scope      string
 	Right      string
 	RightWidth int
-	Scope      string
-	Prompt     string
-	Active     bool
 	Theme      theme
 }
 
@@ -35,7 +40,7 @@ func renderSearchBar(props searchBarProps) string {
 		}
 	}
 
-	right := renderHeaderMeta(props)
+	right := props.Meta
 	rightW := terminal.Width(right)
 	if rightW >= props.Width {
 		return truncateWidth(right, props.Width)
@@ -44,7 +49,11 @@ func renderSearchBar(props searchBarProps) string {
 	if rightW > 0 {
 		leftW -= rightW + 1
 	}
-	prompt := props.Theme.searchPrompt.Render(terminal.Sanitize(props.Prompt))
+	promptStyle := props.Theme.searchPrompt
+	if props.Active {
+		promptStyle = props.Theme.filterPrompt
+	}
+	prompt := promptStyle.Render(terminal.Sanitize(props.Prompt))
 	left := terminal.Cut(prompt, 0, leftW)
 	if promptW := terminal.Width(prompt); leftW > promptW {
 		text = truncateWidth(text, leftW-promptW)
@@ -70,7 +79,7 @@ func renderSearchBar(props searchBarProps) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func renderHeaderMeta(props searchBarProps) string {
+func renderHeaderMeta(props headerMetaProps) string {
 	var parts []string
 	if props.Scope != "" {
 		for _, scope := range []string{"All", "Tracked"} {
