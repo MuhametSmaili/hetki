@@ -89,6 +89,11 @@ func serveLocked(ctx context.Context, path, epoch string, binding Binding, start
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	executable, executableErr := currentExecutable()
+	if executableErr != nil {
+		logs.failure("executable_check_unavailable", executableErr)
+	}
+
 	if !bindingAlive(ctx, binding) {
 		return fmt.Errorf("status server no longer lives")
 	}
@@ -130,6 +135,7 @@ func serveLocked(ctx context.Context, path, epoch string, binding Binding, start
 		cancel:      cancel,
 		logs:        logs,
 		subscribers: make(chan struct{}, maxSubscribers),
+		executable:  executable,
 		info: Info{
 			PID:   os.Getpid(),
 			Epoch: epoch,

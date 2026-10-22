@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"io"
 	"net"
 	"strings"
 	"testing"
@@ -46,7 +47,6 @@ func TestClientRejectsIncompatibleReply(t *testing.T) {
 		change func(*reply)
 		want   error
 	}{
-		{"version", func(r *reply) { r.Version++ }, ErrProtocol},
 		{"server", func(r *reply) { r.Server = "replacement" }, ErrIdentity},
 		{"epoch", func(r *reply) { r.Epoch = "invalid" }, ErrIdentity},
 		{"pid", func(r *reply) { r.PID = 0 }, ErrIdentity},
@@ -77,26 +77,103 @@ func TestClientRejectsIncompatibleReply(t *testing.T) {
 	}
 }
 
-func TestDaemonRejectsWrongVersionAndServer(t *testing.T) {
-	c := fixtureClient(t, "compatible")
-	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
-	for _, req := range []request{
-		{Version: protocolVersion + 1, Server: c.server, Action: "subscribe"},
-		{Version: protocolVersion, Server: "another-server", Action: "subscribe"},
-	} {
-		conn, err := net.Dial("unix", c.path)
-		require.NoError(t, err)
-		require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
-		require.NoError(t, writeFrame(conn, maxRequestBytes, req))
+func TestClientReportsDaemonProtocolMismatch(t *testing.T) {
+	row := reply{Version: protocolVersion + 1, Server: "server", PID: 4321, Epoch: strings.Repeat("a", 32), Error: protocolMismatch}
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	require.NoError(t, client.SetDeadline(time.Now().Add(time.Second)))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
 
-		var result reply
-		err = readFrame(conn, maxReplyBytes, &result)
+		var req request
+		_ = readFrame(server, maxRequestBytes, &req)
+		_ = writeFrame(server, maxReplyBytes, row)
+	}()
+
+	_, err := (&Client{server: "server"}).exchange(client, "ping")
+
+	var mismatch *ProtocolMismatchError
+	require.ErrorAs(t, err, &mismatch)
+	require.Equal(t, ProtocolMismatchError{PID: 4321, Version: protocolVersion + 1}, *mismatch)
+	require.ErrorIs(t, err, ErrProtocol)
+	receive(t, done)
+}
+
+func TestPingReportsDaemonThatClosesWithoutReplying(t *testing.T) {
+	c := fixtureClient(t, "no-reply")
+	listener, cleanup, err := listen(c.path)
+	require.NoError(t, err)
+	t.Cleanup(cleanup)
+	require.NoError(t, listener.SetDeadline(time.Now().Add(3*time.Second)))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		conn, err := listener.AcceptUnix()
+		if err != nil {
+			return
+		}
+		var req request
+		_ = readFrame(conn, maxRequestBytes, &req)
 		_ = conn.Close()
+	}()
 
-		require.Error(t, err)
+	_, err = c.Ping(t.Context())
+
+	require.ErrorIs(t, err, errNoReply)
+	require.ErrorIs(t, err, io.EOF)
+	receive(t, done)
+}
+
+func TestDaemonRepliesToOtherProtocolVersions(t *testing.T) {
+	c := fixtureClient(t, "protocol-mismatch")
+	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
+	identity, err := c.Ping(t.Context())
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name  string
+		frame map[string]any
+	}{
+		{"older client", map[string]any{"version": protocolVersion - 1, "server": c.server, "action": "ping"}},
+		{"newer client with unknown fields", map[string]any{"version": protocolVersion + 1, "server": c.server, "action": "ping", "future": true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, err := net.Dial("unix", c.path)
+			require.NoError(t, err)
+			defer conn.Close()
+			require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
+			require.NoError(t, writeFrame(conn, maxRequestBytes, tc.frame))
+
+			var result reply
+			err = readFrame(conn, maxReplyBytes, &result)
+
+			require.NoError(t, err)
+			require.Equal(t, reply{
+				Version: protocolVersion, Server: c.server, PID: identity.PID, Epoch: identity.Epoch, Error: protocolMismatch,
+			}, result)
+		})
 	}
 
-	_, err := c.Ping(context.Background())
+	_, err = c.Ping(t.Context())
+	require.NoError(t, err)
+}
+
+func TestDaemonRejectsForeignServerWithoutReplying(t *testing.T) {
+	c := fixtureClient(t, "compatible")
+	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
+	conn, err := net.Dial("unix", c.path)
+	require.NoError(t, err)
+	require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
+	require.NoError(t, writeFrame(conn, maxRequestBytes, request{Version: protocolVersion, Server: "another-server", Action: "subscribe"}))
+
+	var result reply
+	err = readFrame(conn, maxReplyBytes, &result)
+	_ = conn.Close()
+
+	require.ErrorIs(t, err, io.EOF)
+	_, err = c.Ping(context.Background())
 	require.NoError(t, err)
 }
 

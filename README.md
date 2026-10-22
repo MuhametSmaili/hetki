@@ -47,6 +47,8 @@ Release updates exclude prereleases. Use `hetki update --version v0.4.0` to sele
 
 The built-in updater supports Go-bin installations and binaries in `~/.local/bin` or `~/bin`.
 
+tmux keeps the `PATH` from when its server started, so new panes and popups can still run a `hetki` from an older install location. Bind the picker to the binary's absolute path, or run `tmux set-environment -g PATH "$PATH"` from a shell that runs the updated `hetki`.
+
 For mise, `--head` also supports an active, non-linked `go:github.com/MuhametSmaili/hetki@main` installation. It updates that binary in place and leaves mise configuration unchanged. The previous binary remains available for rollback until the new binary passes verification. Mise discovery requires `mise` on `PATH`.
 
 Other mise selections require an explicit switch to `main` through mise first. Use mise for release updates and linked installations.
@@ -131,7 +133,7 @@ The picker starts the status daemon automatically. These commands let you manage
 
 Inside tmux, commands affect the current server. Outside tmux, they affect the default server. That server must already exist.
 
-The daemon keeps running after the command exits. When its tmux server exits, the daemon stops.
+The daemon keeps running after the command exits. When its tmux server exits, the daemon stops. It also stops within about a second when its binary is replaced or removed, for example by `hetki update`. The next picker or `hetki service start` launches the new build.
 
 Stop is not a permanent disable. Running `hetki service start` or opening the picker starts it again. An already-open picker can also restart it automatically.
 

@@ -22,6 +22,10 @@ type daemon struct {
 	logs        *daemonLog
 	subscribers chan struct{}
 
+	// Nil when the startup binary could not be recorded; the daemon then cannot
+	// detect that an update replaced it and keeps running until stopped.
+	executable *executableImage
+
 	lifecycle sync.Mutex
 }
 
@@ -56,11 +60,29 @@ func (d *daemon) watchLifetime(ctx context.Context) {
 			return
 
 		case <-ticker.C:
-			if !d.checkLifetime(ctx) {
+			if !d.checkLifetime(ctx) || d.executableReplaced() {
 				return
 			}
 		}
 	}
+}
+
+func (d *daemon) executableReplaced() bool {
+	if d.executable == nil {
+		return false
+	}
+
+	replaced, err := d.executable.replaced()
+	if err != nil {
+		d.logs.repeatedFailure("executable_check_failed", err)
+		return false
+	}
+
+	if replaced {
+		d.logs.info("executable_replaced")
+		d.cancel()
+	}
+	return replaced
 }
 
 func (d *daemon) accept(ctx context.Context, listener *net.UnixListener, workers *sync.WaitGroup) error {

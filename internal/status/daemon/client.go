@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"time"
@@ -61,6 +62,10 @@ func (c *Client) callRequest(ctx context.Context, req request, timeout time.Dura
 		return reply{}, ctx.Err()
 	}
 
+	if errors.Is(err, io.EOF) {
+		return reply{}, fmt.Errorf("%w (it may be shutting down or from an older hetki build): %w", errNoReply, err)
+	}
+
 	return result, err
 }
 
@@ -104,7 +109,7 @@ func (c *Client) readReply(conn net.Conn) (reply, error) {
 	}
 
 	if result.Version != protocolVersion {
-		return reply{}, ErrProtocol
+		return reply{}, &ProtocolMismatchError{PID: max(result.PID, 0), Version: result.Version}
 	}
 
 	if result.Server != c.server || result.PID <= 0 || !validEpoch(result.Epoch) {

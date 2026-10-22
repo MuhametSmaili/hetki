@@ -72,11 +72,23 @@ func (d *daemon) publish(ctx context.Context, conn *net.UnixConn, req request, r
 
 func (d *daemon) readRequest(ctx context.Context, conn *net.UnixConn) (request, bool) {
 	_ = conn.SetDeadline(time.Now().Add(requestTimeout))
-	var req request
-	if err := readFrame(conn, maxRequestBytes, &req); err != nil {
+	raw, err := readFrameData(conn, maxRequestBytes)
+	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, io.EOF) {
 			d.logs.repeatedFailure("request_read_failed", err)
 		}
+		return request{}, false
+	}
+
+	// Other versions may send fields that strict decoding rejects.
+	if version, ok := frameVersion(raw); ok && version != protocolVersion {
+		d.rejectProtocol(ctx, conn, version)
+		return request{}, false
+	}
+
+	var req request
+	if err := decodeFrame(raw, &req); err != nil {
+		d.logs.repeatedFailure("request_read_failed", err)
 		return request{}, false
 	}
 
@@ -92,6 +104,16 @@ func (d *daemon) readRequest(ctx context.Context, conn *net.UnixConn) (request, 
 	}
 
 	return req, true
+}
+
+func (d *daemon) rejectProtocol(ctx context.Context, conn *net.UnixConn, version int) {
+	d.logs.repeatedFailure("request_rejected", fmt.Errorf("client protocol %d, daemon protocol %d", version, protocolVersion))
+
+	row := d.identity()
+	row.Error = protocolMismatch
+	if err := writeFrame(conn, maxReplyBytes, row); err != nil && ctx.Err() == nil {
+		d.logs.repeatedFailure("reply_write_failed", err)
+	}
 }
 
 func (d *daemon) checkLifetime(ctx context.Context) bool {

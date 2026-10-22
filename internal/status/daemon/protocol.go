@@ -62,22 +62,69 @@ type entry struct {
 	ValidUntil   time.Time      `json:"valid_until"`
 }
 
+var errNoReply = errors.New("status daemon closed the connection without replying")
+
+// Mismatch replies must keep only fields that every protocol version decodes:
+// version, server, pid, epoch and error.
+const protocolMismatch = "protocol_mismatch"
+
+// ProtocolMismatchError reports a daemon on another protocol version. A zero
+// PID means the daemon reported none. It matches ErrProtocol.
+type ProtocolMismatchError struct {
+	PID     int
+	Version int
+}
+
+func (e *ProtocolMismatchError) Error() string {
+	daemon := "daemon"
+	if e.PID > 0 {
+		daemon = fmt.Sprintf("daemon PID %d", e.PID)
+	}
+	return fmt.Sprintf("%s: %s speaks protocol %d, this hetki speaks %d", ErrProtocol, daemon, e.Version, protocolVersion)
+}
+
+func (e *ProtocolMismatchError) Is(target error) bool { return target == ErrProtocol }
+
 func readFrame(r io.Reader, limit int, value any) error {
+	raw, err := readFrameData(r, limit)
+	if err != nil {
+		return err
+	}
+
+	return decodeFrame(raw, value)
+}
+
+func readFrameData(r io.Reader, limit int) ([]byte, error) {
 	var header [4]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
-		return err
+		return nil, err
 	}
 
 	size := binary.BigEndian.Uint32(header[:])
 	if size == 0 || size > uint32(limit) {
-		return fmt.Errorf("invalid status frame size %d", size)
+		return nil, fmt.Errorf("invalid status frame size %d", size)
 	}
 
 	raw := make([]byte, int(size))
 	if _, err := io.ReadFull(r, raw); err != nil {
-		return err
+		return nil, err
 	}
 
+	return raw, nil
+}
+
+func frameVersion(raw []byte) (int, bool) {
+	var header struct {
+		Version *int `json:"version"`
+	}
+	if err := json.Unmarshal(raw, &header); err != nil || header.Version == nil {
+		return 0, false
+	}
+
+	return *header.Version, true
+}
+
+func decodeFrame(raw []byte, value any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
