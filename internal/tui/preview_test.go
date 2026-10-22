@@ -80,6 +80,47 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 	require.Nil(t, cmd)
 }
 
+func TestPreviewReflowsStackedFlatList(t *testing.T) {
+	for _, mode := range []uiMode{modeBrowse, modeFilter, modeJump} {
+		t.Run(string(mode), func(t *testing.T) {
+			snapshot := flatJumpSnapshot(40)
+			for i := range snapshot.Items {
+				snapshot.Items[i].Context = "hetki"
+			}
+			m := browseModel(newModel(snapshot, nil))
+			m.width, m.height = 100, 24
+			m = m.reflow()
+			m.items.Select(snapshot.Items[15].ID)
+			m.mode = mode
+			if mode == modeJump {
+				m.jump = newJumpState(m.items.VisibleRows())
+			}
+
+			m, _ = updateModel(t, m, previewKey())
+
+			require.Equal(t, 10, m.items.Height())
+			require.Len(t, m.items.VisibleRows(), 10)
+			require.Equal(t, snapshot.Items[15].ID, selectedNodeID(m))
+			require.Contains(t, visibleIDs(m), selectedNodeID(m))
+			require.LessOrEqual(t, lipgloss.Height(m.View().Content), m.height)
+			require.Empty(t, m.jump.candidates)
+			require.NotEqual(t, modeJump, m.mode)
+
+			m, _ = updateModel(t, m, specialKey(tea.KeyPgDown))
+
+			require.Equal(t, snapshot.Items[25].ID, selectedNodeID(m))
+			require.Contains(t, visibleIDs(m), selectedNodeID(m))
+
+			m, _ = updateModel(t, m, previewKey())
+
+			require.Equal(t, 20, m.items.Height())
+			require.Len(t, m.items.VisibleRows(), 20)
+			require.Equal(t, snapshot.Items[25].ID, selectedNodeID(m))
+			require.LessOrEqual(t, lipgloss.Height(m.View().Content), m.height)
+		})
+	}
+}
+
 func TestPreviewDistinguishesEqualLocalIDs(t *testing.T) {
 	first := list.ItemID{Scope: "first scope", Parent: "parent", ID: "shared"}
 	second := list.ItemID{Scope: "second scope", Parent: "parent", ID: "shared"}

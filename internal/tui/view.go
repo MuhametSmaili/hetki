@@ -65,7 +65,7 @@ func (m model) viewList(layout layoutMetrics) string {
 		})
 	}
 	return strings.Join(renderList(listProps{
-		Width: layout.listWidth, EmptyText: emptyStateText(m), Rows: visibleRows,
+		Width: layout.listWidth, Height: layout.middleHeight, EmptyText: emptyStateText(m), Rows: visibleRows,
 		Compact: layout.compact, Theme: m.theme,
 	}), "\n")
 }

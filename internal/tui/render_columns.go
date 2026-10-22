@@ -14,6 +14,11 @@ const (
 	minColumnPathWidth = 6
 )
 
+// Below this list width a flat row trades its columns for two stacked lines:
+// identity first, then path and trailing. The threshold matches compact tree
+// rows. A one-line viewport falls back to columns rather than overflowing.
+const narrowListWidth = 56
+
 type columnWidths struct {
 	prefix     int
 	context    int
@@ -24,12 +29,89 @@ type columnWidths struct {
 }
 
 func renderColumnList(props listProps) []string {
+	if props.Width < narrowListWidth && props.Height != 1 {
+		return renderStackedList(props)
+	}
+
 	columns := measureColumns(props.Rows).fit(props.Width)
 	lines := make([]string, len(props.Rows))
 	for i, row := range props.Rows {
 		lines[i] = renderColumnRow(row, columns, props.Width, props.Theme)
 	}
 	return lines
+}
+
+// renderStackedList emits exactly two lines per row so the caller can halve
+// its visible row budget and page by items instead of lines.
+func renderStackedList(props listProps) []string {
+	trailingWidth := 0
+	for _, row := range props.Rows {
+		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
+	}
+
+	trailingWidth = min(trailingWidth, props.Width, max(1, props.Width/3))
+
+	lines := make([]string, 0, 2*len(props.Rows))
+	for _, row := range props.Rows {
+		lines = append(lines,
+			styleRowLine(row, stackedIdentity(row, props.Width, props.Theme), props.Width, props.Theme),
+			stackedDetailLine(row, trailingWidth, props.Width, props.Theme),
+		)
+	}
+	return lines
+}
+
+func stackedIdentity(row rowProps, width int, styles theme) string {
+	prefix := terminal.Cut(renderRowPrefix(row), 0, width)
+	style := styles.itemStyle(row.Active, row.Selected)
+	muted := styles.meta.Inherit(style)
+	label := columnText(row.Context) + muted.Render(contextSeparator) + style.Render(columnText(row.Primary))
+	if annotation := columnText(row.Annotation); annotation != "" {
+		label += muted.Render(columnGap + annotation)
+	}
+
+	budget := max(0, width-terminal.Width(prefix))
+	return prefix + truncateWidth(label, budget)
+}
+
+func stackedDetailLine(row rowProps, trailingWidth, width int, styles theme) string {
+	detail := row
+	detail.JumpLabel = ""
+	style := styles.itemStyle(detail.Active, detail.Selected)
+	pathStyle := styles.secondary.Inherit(style)
+	if detail.Selected {
+		pathStyle = styles.secondarySelected.Inherit(style)
+	}
+
+	if rowTrailingWidth(detail) == 0 {
+		trailingWidth = 0
+	}
+	bodyWidth := width
+	if trailingWidth > 0 {
+		bodyWidth = max(0, width-trailingWidth-len(columnGap))
+	}
+	indent := terminal.Cut(stackedIndent(row), 0, bodyWidth)
+	budget := max(0, bodyWidth-terminal.Width(indent))
+	line := indent + pathStyle.Render(shortenPath(columnText(detail.Secondary), budget))
+	if trailingWidth > 0 {
+		padding := max(0, width-terminal.Width(line)-trailingWidth)
+		line += style.Render(strings.Repeat(" ", padding)) + renderTrailing(detail, trailingWidth, styles)
+	}
+	return styleRowLine(detail, truncateWidth(line, width), width, styles)
+}
+
+// stackedIndent keeps the detail line under the label: it reserves the
+// jump-label gutter and repeats the active indicator without the label.
+func stackedIndent(row rowProps) string {
+	indicator := " "
+	if row.Active {
+		indicator = "│"
+	}
+	label := displayJumpLabel(row.JumpLabel)
+	if label == "" {
+		return indicator + " "
+	}
+	return indicator + " " + strings.Repeat(" ", terminal.Width(label)) + " "
 }
 
 func measureColumns(rows []rowProps) columnWidths {
@@ -48,7 +130,7 @@ func measureColumns(rows []rowProps) columnWidths {
 func (c columnWidths) fit(width int) columnWidths {
 	gapWidth := len(columnGap)
 	separatorWidth := terminal.Width(contextSeparator)
-	c.trailing = min(c.trailing, max(0, width/3))
+	c.trailing = min(c.trailing, width, max(1, width/3))
 	c.annotation = min(c.annotation, max(0, width/4))
 	available := max(0, width-c.trailing-gapWidth-c.prefix-separatorWidth)
 	if c.annotation > 0 {
@@ -79,7 +161,7 @@ func renderColumnRow(row rowProps, columns columnWidths, width int, styles theme
 	style := styles.itemStyle(row.Active, row.Selected)
 	muted := styles.meta.Inherit(style)
 	prefix := padColumn(renderRowPrefix(row), columns.prefix)
-	line := prefix + padColumn(columnText(row.Context), columns.context) +
+	line := padColumn(columnText(row.Context), columns.context) +
 		muted.Render(contextSeparator) + style.Render(padColumn(columnText(row.Primary), columns.primary))
 	if columns.annotation > 0 {
 		line += muted.Render(columnGap + padColumn(columnText(row.Annotation), columns.annotation))
@@ -94,10 +176,12 @@ func renderColumnRow(row rowProps, columns columnWidths, width int, styles theme
 	}
 
 	bodyWidth := max(0, width-columns.trailing-len(columnGap))
-	line = truncateWidth(line, bodyWidth)
+	prefix = terminal.Cut(prefix, 0, bodyWidth)
+	line = prefix + truncateWidth(line, max(0, bodyWidth-terminal.Width(prefix)))
 	trailing := renderTrailing(row, columns.trailing, styles)
 	padding := max(0, width-columns.trailing-terminal.Width(line))
 	line += style.Render(strings.Repeat(" ", padding)) + trailing
+	row.JumpLabel = terminal.Cut(displayJumpLabel(row.JumpLabel), 0, max(0, bodyWidth-2))
 	return styleRowLine(row, line, width, styles)
 }
 

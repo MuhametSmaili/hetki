@@ -159,11 +159,26 @@ func (m model) layout() layoutMetrics {
 		listWidth:    listWidth,
 		previewWidth: previewWidth,
 		middleHeight: max(1, height-frameStyle.GetVerticalFrameSize()-2),
-		compact:      listWidth < 56,
+		compact:      listWidth < narrowListWidth,
 		frameStyle:   frameStyle,
 	}
 }
 
-func (m model) availableListHeight() int { return m.layout().middleHeight }
+func (m model) availableListHeight() int {
+	layout := m.layout()
+	if !m.stackedList(layout) {
+		return layout.middleHeight
+	}
+	return layout.middleHeight / 2
+}
+
+// stackedList reports whether the current snapshot renders as a flat list of
+// two-line rows. Flat projection items carry a session context; tree rows do
+// not, so the first root item distinguishes the two layouts.
+func (m model) stackedList(layout layoutMetrics) bool {
+	snapshot := m.items.Snapshot()
+	return len(snapshot.Items) > 0 && snapshot.Items[0].Context != "" &&
+		layout.listWidth < narrowListWidth && layout.middleHeight != 1
+}
 
 func (m model) selectedRow() (list.Row, bool) { return m.items.Selected() }

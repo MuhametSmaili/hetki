@@ -28,6 +28,7 @@ type rowProps struct {
 
 type listProps struct {
 	Width     int
+	Height    int // Zero means unconstrained; one forces single-line items.
 	EmptyText string
 	Rows      []rowProps
 	Compact   bool

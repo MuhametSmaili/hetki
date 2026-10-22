@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
@@ -85,7 +86,9 @@ func TestViewAlignsColumnsAcrossStatusAndFilterChanges(t *testing.T) {
 
 			lines := strings.Split(m.viewList(layoutMetrics{listWidth: test.width}), "\n")
 
-			require.Equal(t, test.want, terminal.Cut(terminal.Sanitize(lines[1]), test.width-terminal.Width(test.want), test.width))
+			// Narrow flat rows stack; the second row's detail line is line 3.
+			detail := terminal.Sanitize(lines[3])
+			require.Equal(t, test.want, terminal.Cut(detail, test.width-terminal.Width(test.want), test.width))
 		})
 	}
 }
@@ -99,17 +102,30 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 	}
 	for width := 0; width <= 80; width++ {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			line := renderList(listProps{Width: width, Rows: []rowProps{row}, Theme: styles})[0]
+			lines := renderList(listProps{Width: width, Rows: []rowProps{row}, Theme: styles})
 
-			require.Equal(t, width, terminal.Width(line))
-			require.NotContains(t, line, "\x1b]")
-			require.False(t, strings.ContainsAny(line, "\n\r\t"))
-			screen := uv.NewScreenBuffer(width, 1)
-			uv.NewStyledString(line).Draw(screen, screen.Bounds())
-			for x := 0; x < width; {
-				cell := screen.CellAt(x, 0)
-				require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg, "cell %d", x)
-				x += max(1, cell.Width)
+			if width < narrowListWidth {
+				require.Len(t, lines, 2)
+			} else {
+				require.Len(t, lines, 1)
+			}
+
+			if width > 0 {
+				last := terminal.Sanitize(lines[len(lines)-1])
+				require.Equal(t, "?", terminal.Cut(last, width-1, width))
+			}
+
+			for _, line := range lines {
+				require.Equal(t, width, terminal.Width(line))
+				require.NotContains(t, line, "\x1b]")
+				require.False(t, strings.ContainsAny(line, "\n\r\t"))
+				screen := uv.NewScreenBuffer(width, 1)
+				uv.NewStyledString(line).Draw(screen, screen.Bounds())
+				for x := 0; x < width; {
+					cell := screen.CellAt(x, 0)
+					require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg, "cell %d", x)
+					x += max(1, cell.Width)
+				}
 			}
 		})
 	}
@@ -123,4 +139,117 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 	require.Equal(t, lipgloss.Color(colorBlocked), screen.CellAt(79, 0).Style.Fg)
 	annotationColumn := terminal.Width(strings.Split(terminal.Sanitize(line), "·10")[0])
 	require.Equal(t, lipgloss.Color(colorMuted), screen.CellAt(annotationColumn, 0).Style.Fg)
+}
+
+func TestFlatListReservesStatusBeforeJumpLabels(t *testing.T) {
+	row := rowProps{Context: "hetki", Primary: "tui", JumpLabel: "ab", Status: status.Value{State: status.Blocked}}
+	for _, test := range []struct {
+		name     string
+		height   int
+		selected bool
+	}{
+		{name: "stack", height: 2},
+		{name: "selected stack", height: 2, selected: true},
+		{name: "single-line fallback", height: 1},
+		{name: "selected fallback", height: 1, selected: true},
+	} {
+		for width := 1; width <= 10; width++ {
+			t.Run(fmt.Sprintf("%s width %d", test.name, width), func(t *testing.T) {
+				row.Selected = test.selected
+
+				lines := renderList(listProps{Width: width, Height: test.height, Rows: []rowProps{row}, Theme: defaultTheme()})
+
+				last := terminal.Sanitize(lines[len(lines)-1])
+				require.Equal(t, width, terminal.Width(last))
+				require.Equal(t, "?", terminal.Cut(last, width-1, width))
+				if test.height == 2 {
+					prefix := terminal.Cut("  ab ", 0, width)
+					require.True(t, strings.HasPrefix(terminal.Sanitize(lines[0]), prefix))
+				} else if width >= 8 {
+					require.Equal(t, "  ab", terminal.Cut(terminal.Sanitize(lines[0]), 0, 4))
+				}
+			})
+		}
+	}
+}
+
+func TestStackedListKeepsIdentityAndDetailLines(t *testing.T) {
+	styles := defaultTheme()
+	rows := []rowProps{
+		{Context: "hetki", Primary: "tui", Annotation: "·1", Secondary: "~/Projects/hetki/internal/tui", Trailing: "opencode", JumpLabel: "a", Active: true},
+		{Context: "api", Primary: "server", Secondary: "~/Projects/api/internal/server", Trailing: "go test", Status: status.Value{State: status.Blocked}, Selected: true},
+	}
+
+	stacked := renderList(listProps{Width: narrowListWidth - 1, Rows: rows, Theme: styles})
+	require.Len(t, stacked, 4)
+
+	identity, detail := terminal.Sanitize(stacked[0]), terminal.Sanitize(stacked[1])
+	require.Equal(t, "│ a hetki › tui  ·1", identity)
+	require.Equal(t, "│   ", terminal.Cut(detail, 0, 4))
+	require.Contains(t, detail, "~/Projects/hetki/internal/tui")
+	require.True(t, strings.HasSuffix(detail, "opencode  "))
+
+	selected := terminal.Sanitize(stacked[3])
+	require.True(t, strings.HasSuffix(selected, "go test ?"))
+	require.Equal(t, narrowListWidth-1, terminal.Width(selected))
+
+	tight := renderList(listProps{Width: 30, Rows: rows, Theme: styles})
+	require.Contains(t, terminal.Sanitize(tight[1]), "~/.../tui")
+
+	wide := renderList(listProps{Width: narrowListWidth, Rows: rows, Theme: styles})
+	require.Len(t, wide, 2)
+}
+
+func TestFlatListFitsShortViewport(t *testing.T) {
+	for _, height := range []int{3, 4, 5, 6, 7, 24} {
+		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
+			snapshot := flatJumpSnapshot(20)
+			for i := range snapshot.Items {
+				snapshot.Items[i].Context = "hetki"
+				snapshot.Items[i].Trailing = "pi"
+			}
+			m := browseModel(newModel(snapshot, nil))
+
+			m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 40, Height: height})
+			m, _ = updateModel(t, m, specialKey(tea.KeyPgDown))
+
+			layout := m.layout()
+			require.LessOrEqual(t, lipgloss.Height(m.View().Content), height)
+			require.LessOrEqual(t, lipgloss.Height(m.viewList(layout)), layout.middleHeight)
+			require.Equal(t, m.availableListHeight(), m.items.Cursor())
+			require.Contains(t, visibleIDs(m), selectedNodeID(m))
+			if layout.middleHeight == 1 {
+				require.Contains(t, terminal.Sanitize(m.viewList(layout)), "hetki")
+				require.True(t, strings.HasSuffix(terminal.Sanitize(m.viewList(layout)), "pi  "))
+			}
+		})
+	}
+}
+
+func TestStackedFlatListHalvesVisibleRows(t *testing.T) {
+	flatItems := make([]list.Item, 12)
+	treeItems := make([]list.Item, 12)
+	for i := range flatItems {
+		id := list.ItemID{ID: fmt.Sprintf("pane-%d", i)}
+		flatItems[i] = list.Item{ID: id, Context: "hetki", Primary: fmt.Sprintf("w%d", i), Secondary: "~/code", Trailing: "sh"}
+		treeItems[i] = list.Item{ID: id, Primary: fmt.Sprintf("w%d", i), Secondary: "~/code", Trailing: "sh"}
+	}
+
+	m := browseModel(newModel(list.Snapshot{Items: flatItems}, nil))
+	m.width, m.height = 40, 24
+	m = m.reflow()
+
+	layout := m.layout()
+	require.True(t, m.stackedList(layout))
+	require.Equal(t, 10, m.availableListHeight())
+	require.Len(t, m.items.VisibleRows(), 10)
+	require.Len(t, strings.Split(m.viewList(layout), "\n"), 20)
+
+	tree := browseModel(newModel(list.Snapshot{Items: treeItems}, nil))
+	tree.width, tree.height = 40, 24
+	tree = tree.reflow()
+
+	require.False(t, tree.stackedList(tree.layout()))
+	require.Equal(t, 20, tree.availableListHeight())
+	require.Len(t, tree.items.VisibleRows(), 12)
 }

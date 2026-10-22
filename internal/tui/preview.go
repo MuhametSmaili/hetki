@@ -46,7 +46,12 @@ func (p *previewState) invalidate() {
 }
 
 func handleTogglePreview(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
+	previousHeight := m.items.Height()
 	m.preview.visible = !m.preview.visible
+	m = m.reflow()
+	if m.mode == modeJump && previousHeight != m.items.Height() {
+		m.cancelJump()
+	}
 	return m, nil
 }
 
