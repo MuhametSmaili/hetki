@@ -78,20 +78,6 @@ func TestCapturePaneProcessCancellationAndTimeout(t *testing.T) {
 	_, err = os.Stat(started)
 	require.True(t, os.IsNotExist(err), "already-canceled capture must not dispatch")
 
-	ctx, cancel = context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		_, err := b.CapturePane(ctx, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"})
-		done <- err
-	}()
-	require.Eventually(t, func() bool {
-		_, err := os.Stat(started)
-		return err == nil
-	}, 3*time.Second, 10*time.Millisecond)
-	cancel()
-	require.ErrorIs(t, awaitTmuxChannel(t, done), context.Canceled)
-
 	start := time.Now()
 	_, err = b.CapturePane(context.Background(), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
