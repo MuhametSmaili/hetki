@@ -414,7 +414,11 @@ func TestStoreRecordCancelsWhileWaitingForProcessLock(t *testing.T) {
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) //nolint:errcheck
+	defer func() {
+		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+			t.Error(err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()

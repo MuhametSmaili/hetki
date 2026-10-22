@@ -4,6 +4,7 @@ package profile
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -114,7 +115,7 @@ func decode(data []byte, doc *document) error {
 	}
 
 	var extra yaml.Node
-	if err := decoder.Decode(&extra); err != io.EOF {
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return fmt.Errorf("profile requires exactly one YAML document")
 	}
 	return nil

@@ -134,7 +134,7 @@ func TestAcceptedStopBlocksReadinessUntilCancellation(t *testing.T) {
 	}()
 	defer func() {
 		release()
-		receive(t, stopDone)
+		_ = receive(t, stopDone)
 	}()
 	var response reply
 	require.NoError(t, readFrame(stopPeer, maxReplyBytes, &response))
@@ -151,7 +151,7 @@ func TestAcceptedStopBlocksReadinessUntilCancellation(t *testing.T) {
 	}()
 	defer func() {
 		release()
-		receive(t, pingDone)
+		_ = receive(t, pingDone)
 	}()
 	receive(t, pingStarted)
 	require.NoError(t, pingPeer.SetReadDeadline(time.Now().Add(100*time.Millisecond)))

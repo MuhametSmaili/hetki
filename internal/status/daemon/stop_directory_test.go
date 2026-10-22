@@ -70,7 +70,7 @@ func TestStopRejectsDirectoryChangesDuringCleanup(t *testing.T) {
 			}()
 			defer func() {
 				cancel()
-				receive(t, stopped)
+				_ = receive(t, stopped)
 			}()
 			receive(t, closing)
 			restore := changeServiceDirectory(t, filepath.Dir(client.path), change)

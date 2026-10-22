@@ -36,8 +36,8 @@ func init() {
 	startCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Print plan without executing")
 	startCmd.Flags().BoolVarP(&force, "force", "f", false, "Reconcile windows inside declared sessions (can terminate processes)")
 	startCmd.Flags().BoolVar(&pruneSessions, "prune-sessions", false, "Delete sessions not declared in this workspace, including unrelated sessions; independent of --force")
-	startCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames)
-	startCmd.MarkFlagFilename("path", "yaml", "yml")
+	cobra.CheckErr(startCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames))
+	cobra.CheckErr(startCmd.MarkFlagFilename("path", "yaml", "yml"))
 	rootCmd.AddCommand(startCmd)
 }
 

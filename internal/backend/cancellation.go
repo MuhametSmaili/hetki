@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 )
 
@@ -21,7 +22,7 @@ func (e *CanceledProcessError) Unwrap() error { return e.Cause }
 // failures joined to cancellation are not quiet cancellation outcomes. The caller
 // must also establish that its context was canceled before suppressing output.
 func IsCancellationOnly(err error) bool {
-	switch cause := err.(type) {
+	switch cause := err.(type) { //nolint:errorlint // walks every cause itself; errors.As would stop at the first match
 	case *CanceledProcessError:
 		return true
 	case interface{ Unwrap() []error }:
@@ -38,6 +39,6 @@ func IsCancellationOnly(err error) bool {
 	case interface{ Unwrap() error }:
 		return IsCancellationOnly(cause.Unwrap())
 	default:
-		return err == context.Canceled
+		return errors.Is(err, context.Canceled)
 	}
 }

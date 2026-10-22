@@ -137,7 +137,7 @@ func (s *Store) Record(ctx context.Context, path, session string) error {
 			return loadErr
 		}
 		if _, err := s.preserveInvalid(now); err != nil {
-			return fmt.Errorf("preserve invalid frecency state after %v: %w", loadErr, err)
+			return fmt.Errorf("preserve invalid frecency state after %w: %w", loadErr, err)
 		}
 		if err := ctx.Err(); err != nil {
 			return err

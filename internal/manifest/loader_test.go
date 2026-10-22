@@ -144,10 +144,10 @@ func TestScanWorkspaces(t *testing.T) {
 	t.Run("scans directory with multiple files", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		os.WriteFile(filepath.Join(tmpDir, "project1.yaml"), []byte("sessions: []"), 0644)
-		os.WriteFile(filepath.Join(tmpDir, "project2.yml"), []byte("sessions: []"), 0644)
-		os.WriteFile(filepath.Join(tmpDir, "project3.json"), []byte(`{"sessions":[]}`), 0644)
-		os.WriteFile(filepath.Join(tmpDir, "readme.txt"), []byte("text"), 0644)
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "project1.yaml"), []byte("sessions: []"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "project2.yml"), []byte("sessions: []"), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "project3.json"), []byte(`{"sessions":[]}`), 0644))
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "readme.txt"), []byte("text"), 0644))
 
 		paths, err := ScanWorkspaces(tmpDir)
 		require.NoError(t, err)
@@ -173,8 +173,8 @@ func TestScanWorkspaces(t *testing.T) {
 	t.Run("ignores subdirectories", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		os.WriteFile(filepath.Join(tmpDir, "workspace.yaml"), []byte("sessions: []"), 0644)
-		os.Mkdir(filepath.Join(tmpDir, "subdir"), 0755)
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "workspace.yaml"), []byte("sessions: []"), 0644))
+		require.NoError(t, os.Mkdir(filepath.Join(tmpDir, "subdir"), 0755))
 
 		paths, err := ScanWorkspaces(tmpDir)
 		require.NoError(t, err)

@@ -242,7 +242,7 @@ func replaceDestination(ctx context.Context, path string, data []byte, observed 
 	}
 	if err := syncSaveDir(parent); err != nil {
 		if rollbackErr := restoreDestination(path, observed); rollbackErr != nil {
-			return fmt.Errorf("sync destination directory: %w; uncertain state: rollback could not be proven: %v", err, rollbackErr)
+			return fmt.Errorf("sync destination directory: %w; uncertain state: rollback could not be proven: %w", err, rollbackErr)
 		}
 		return fmt.Errorf("sync destination directory: %w (replacement rolled back)", err)
 	}

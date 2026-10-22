@@ -7,8 +7,35 @@ linters:
     - ineffassign
     - staticcheck
     - unused
+
+    # Error handling.
+    - errcheck
+    - errorlint
+
+    # Bug classes with no current findings.
+    - asasalint
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - durationcheck
+    - misspell
+    - nilnesserr
+    - reassign
+    - unconvert
+    - usestdlibvars
+
+    - nolintlint
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
   exclusions:
+    warn-unused: true
+    presets:
+      # Close, Flush, print and os.*env results.
+      - std-error-handling
     rules:
-      # Existing simplification; keep visible while preventing new findings.
-      - path: internal/manifest/validator.go
-        text: "QF1001: could apply De Morgan's law"
+      # Test HTTP handlers: a failed write fails the client side of the test.
+      - path: _test\.go
+        linters: [errcheck]
+        text: "`w.Write`"

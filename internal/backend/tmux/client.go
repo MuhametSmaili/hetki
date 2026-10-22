@@ -126,8 +126,8 @@ func runCommand(ctx context.Context, cmd *exec.Cmd) error {
 
 	err := cmd.Run()
 	// Run/Wait joins os/exec's context watcher before we read its kill result.
-	exitErr, ok := err.(*exec.ExitError)
-	if !ok {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
 		return err
 	}
 	status, ok := exitErr.Sys().(syscall.WaitStatus)

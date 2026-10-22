@@ -33,8 +33,8 @@ func init() {
 	saveCmd.Flags().StringVarP(&saveName, "name", "n", "", "Workspace name in Hetki's configured directory")
 	saveCmd.Flags().BoolVar(&saveAll, "all", false, "Save all tmux sessions")
 
-	saveCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames)
-	saveCmd.MarkFlagFilename("path", "yaml", "yml")
+	cobra.CheckErr(saveCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames))
+	cobra.CheckErr(saveCmd.MarkFlagFilename("path", "yaml", "yml"))
 }
 
 func runSave(cmd *cobra.Command, _ []string) error {

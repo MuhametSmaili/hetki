@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -19,7 +20,7 @@ func decodeStrict(data []byte, path string) (*Workspace, error) {
 			return nil, fmt.Errorf("parse yaml config: %w", err)
 		}
 		var extra yaml.Node
-		if err := dec.Decode(&extra); err != io.EOF {
+		if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("parse yaml config: only one document is allowed")
 		}
 		return &ws, nil
