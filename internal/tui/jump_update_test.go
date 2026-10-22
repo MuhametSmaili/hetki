@@ -179,7 +179,7 @@ func TestJumpAcceptsPartialLabelsAndReportsInvalidInput(t *testing.T) {
 	require.Nil(t, cmd)
 	require.Equal(t, modeJump, m.mode)
 	require.Equal(t, "a", m.jump.input)
-	m, cmd = updateModel(t, m, printableKey("a"))
+	_, cmd = updateModel(t, m, printableKey("a"))
 	require.NotNil(t, cmd)
 	cmd()
 	require.Equal(t, ActionRequest{ActionID: ActionOpen, ItemID: list.ItemID{ID: "item-00"}}, got)

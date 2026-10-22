@@ -12,7 +12,7 @@ func BenchmarkInventory(b *testing.B) {
 	for _, count := range []int{40, 1024} {
 		b.Run(fmt.Sprintf("panes=%d", count), func(b *testing.B) {
 			var rows strings.Builder
-			for n := 0; n < count; n++ {
+			for n := range count {
 				fmt.Fprintf(&rows, "$1|@%d|%%%d|%d|0|/dev/pts/%d|cat|80|30|0\n", n, n, 100+n, n)
 			}
 			out := testInventoryOutput(rows.String())

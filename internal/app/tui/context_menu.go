@@ -7,7 +7,7 @@ import (
 )
 
 func contextualMenu(item liveItem) (ui.ItemMenu, error) {
-	title, openLabel := "", ""
+	var title, openLabel string
 	switch item.Kind {
 	case liveSession:
 		title, openLabel = "SESSION ACTIONS", "Open session"

@@ -39,9 +39,9 @@ func TestRemovedSessionIsJoinedAndPaneIDReuseGetsNewScope(t *testing.T) {
 
 func TestSubscriptionLimitRetainsExistingOwners(t *testing.T) {
 	streams, record, connections := streamFixture(t)
-	sessions := make([]string, maxSubscriptions)
-	for n := range sessions {
-		sessions[n] = fmt.Sprintf("$%03d", n+1)
+	sessions := make([]string, 0, maxSubscriptions+1)
+	for n := range maxSubscriptions {
+		sessions = append(sessions, fmt.Sprintf("$%03d", n+1))
 	}
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, sessions...)))
 	connections["$001"].send(t, "%1", "before")

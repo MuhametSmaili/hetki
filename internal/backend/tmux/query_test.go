@@ -7,6 +7,7 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadStateQuery(t *testing.T) {
@@ -90,7 +91,7 @@ func TestLoadStateQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := q.Parse(tt.output)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -102,7 +103,7 @@ func TestLoadStateQueryScopesActivePaneToActiveWindow(t *testing.T) {
 	output := "0\n0\n$1|dev|@1|editor|0|layout-a|0|1|%1|0|1|~/active|vim|\n$1|dev|@2|logs|1|layout-b|0|0|%2|0|1|~/inactive|tail|"
 
 	got, err := q.Parse(output)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, ActiveContext{SessionID: "$1", Session: "dev", WindowID: "@1", Window: "editor", WindowIndex: 0, PaneID: "%1", Pane: 0, Path: "~/active"}, got.Active)
 }
 
@@ -130,7 +131,7 @@ func TestLoadStateQueryParsesWorkspacePathOption(t *testing.T) {
 	output := "0\n0\n$1|dev|@1|editor|0|layout-a|0|1|%1|0|1|~/code|vim|/tmp/workspace.yaml"
 
 	got, err := q.Parse(output)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	if assert.Len(t, got.Sessions, 1) {
 		assert.Equal(t, "/tmp/workspace.yaml", got.Sessions[0].WorkspacePath)
 	}
@@ -163,7 +164,7 @@ func TestLoadStateQueryOrdersSessionsAndWindows(t *testing.T) {
 
 	for range 100 {
 		got, err := q.Parse(output)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, want, got.Sessions)
 	}
 }
@@ -234,7 +235,7 @@ func TestLoadStateQueryPropertyRoundTrip(t *testing.T) {
 	for _, name := range values {
 		output := "0\n0\n" + paneRow(name, name, name, name, name)
 		got, err := q.Parse(output)
-		assert.NoError(t, err, name)
+		require.NoError(t, err, name)
 		if assert.Len(t, got.Sessions, 1, name) {
 			assert.Equal(t, name, got.Sessions[0].Name, name)
 		}
@@ -271,9 +272,9 @@ func TestLoadStateQueryAcceptsRecordTerminator(t *testing.T) {
 	output := "0\n0\n$1|dev|@1|editor|0|layout-a|0|1|%1|0|1|~/code|vim|\n"
 
 	got, err := q.Parse(output)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	if assert.Len(t, got.Sessions, 1) {
-		assert.Equal(t, "", got.Sessions[0].WorkspacePath)
+		assert.Empty(t, got.Sessions[0].WorkspacePath)
 	}
 }
 

@@ -509,7 +509,7 @@ func (s *Store) lock(ctx context.Context) (*os.File, error) {
 
 func (s *Store) preserveInvalid(now time.Time) (string, error) {
 	base := s.path + ".corrupt-" + now.UTC().Format("20060102T150405.000000000Z")
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		candidate := base
 		if i > 0 {
 			candidate += fmt.Sprintf("-%d", i)

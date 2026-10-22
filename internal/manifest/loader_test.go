@@ -49,14 +49,14 @@ func TestLoadUnsupportedFormat(t *testing.T) {
 
 	loader := NewFileLoader(configPath, acceptLayout)
 	_, err = loader.Load()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported config format")
 }
 
 func TestLoadFileNotFound(t *testing.T) {
 	loader := NewFileLoader("/nonexistent/config.yaml", acceptLayout)
 	_, err := loader.Load()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "read config")
 }
 
@@ -110,7 +110,7 @@ func TestLoadYAMLRejectsUnsupportedPaneFields(t *testing.T) {
 
 	_, err = NewFileLoader(configPath, acceptLayout).Load()
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "panes[0].split: unsupported field")
+	require.ErrorContains(t, err, "panes[0].split: unsupported field")
 	assert.ErrorContains(t, err, "panes[0].size: unsupported field")
 }
 

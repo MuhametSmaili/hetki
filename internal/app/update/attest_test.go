@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,9 +29,7 @@ func TestFetchAttestationBundlesReturnsAllBundles(t *testing.T) {
 	bundles, err := fetchAttestationBundles(context.Background(), "abc")
 	require.NoError(t, err)
 	require.Len(t, bundles, 2)
-	var raw map[string]any
-	require.NoError(t, json.Unmarshal(bundles[1], &raw))
-	assert.Equal(t, float64(2), raw["x"])
+	assert.JSONEq(t, `{"x":2}`, string(bundles[1]))
 }
 
 func TestFetchAttestationBundlesResolvesSnappyBundleURL(t *testing.T) {

@@ -202,7 +202,7 @@ func TestPreviewCoalescesSelectionAndRejectsStaleResults(t *testing.T) {
 	m, cmd = updateModel(t, m, cmd())
 	require.Nil(t, cmd)
 	require.Equal(t, "screen c", terminal.Sanitize(m.preview.lines[0]))
-	require.Nil(t, canceled)
+	require.NoError(t, canceled)
 }
 
 func TestPreviewReopenRejectsPreviousGenerationOfSameItem(t *testing.T) {
@@ -225,7 +225,7 @@ func TestPreviewFilteringErrorsAndEmptySelection(t *testing.T) {
 	m, cmd := updateModel(t, m, previewKey())
 	m, cmd = updateModel(t, m, cmd())
 	require.Nil(t, cmd, "errors do not retry automatically")
-	require.Nil(t, m.err, "preview failure must not overwrite the action error")
+	require.NoError(t, m.err, "preview failure must not overwrite the action error")
 	require.Contains(t, terminal.Sanitize(m.View().Content), "missing pane")
 	require.NotContains(t, m.View().Content, "secret")
 	m, _ = updateModel(t, m, printableKey("/"))
@@ -286,7 +286,7 @@ func TestPreviewCancellationOnHideResizeAndQuit(t *testing.T) {
 		m := previewModel(t)
 		var readCtx context.Context
 		m.readPreview = func(ctx context.Context, _ list.ItemID) (string, error) {
-			readCtx = ctx
+			readCtx = ctx //nolint:fatcontext // records the context to assert its cancellation
 			return "ignored", nil
 		}
 		m, pending := updateModel(t, m, previewKey())

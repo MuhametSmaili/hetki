@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -49,12 +48,7 @@ func TestRunStartDryRunOutputsPlan(t *testing.T) {
 	workspace := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: " + tmpDir + "\n"
 	writeWorkspaceFile(t, tmpDir, ".hetki.yaml", workspace)
 
-	previousWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmpDir))
-	t.Cleanup(func() {
-		require.NoError(t, os.Chdir(previousWD))
-	})
+	t.Chdir(tmpDir)
 
 	stub := &stubBackend{dryRunLines: []string{"tmux new-session -d -s dev -n editor -c " + tmpDir}}
 	withStubBackend(t, stub)
@@ -82,21 +76,16 @@ func TestRunStartFailsWhenBackendStateQueryFails(t *testing.T) {
 	workspace := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: " + filepath.ToSlash(tmpDir) + "\n"
 	writeWorkspaceFile(t, tmpDir, ".hetki.yaml", workspace)
 
-	previousWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmpDir))
-	t.Cleanup(func() {
-		require.NoError(t, os.Chdir(previousWD))
-	})
+	t.Chdir(tmpDir)
 
 	stub := &stubBackend{queryErr: errors.New("query failed")}
 	withStubBackend(t, stub)
 
 	require.NoError(t, startCmd.Flags().Set("path", "./.hetki.yaml"))
 
-	err = runStart(startCmd, nil)
+	err := runStart(startCmd, nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "failed to query backend state: query failed")
+	require.ErrorContains(t, err, "failed to query backend state: query failed")
 	assert.Zero(t, stub.dryRunCalls)
 	assert.Zero(t, stub.applyCalls)
 }

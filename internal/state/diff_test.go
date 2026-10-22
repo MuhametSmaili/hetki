@@ -103,8 +103,8 @@ func TestCompareWindowsMismatchedPaneCount(t *testing.T) {
 	assert.Empty(t, diff.Windows["s"].Missing)
 	assert.Empty(t, diff.Windows["s"].Extra)
 	assert.Len(t, diff.Windows["s"].Mismatched, 1)
-	assert.Equal(t, 3, len(diff.Windows["s"].Mismatched[0].Desired.Panes))
-	assert.Equal(t, 1, len(diff.Windows["s"].Mismatched[0].Actual.Panes))
+	assert.Len(t, diff.Windows["s"].Mismatched[0].Desired.Panes, 3)
+	assert.Len(t, diff.Windows["s"].Mismatched[0].Actual.Panes, 1)
 }
 
 func TestCompareWindowsForMissingSession(t *testing.T) {

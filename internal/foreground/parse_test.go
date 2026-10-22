@@ -9,8 +9,7 @@ import (
 )
 
 func darwinArgs(argc uint32, executable string, pointerSize int, argv ...string) []byte {
-	buf := make([]byte, 4)
-	binary.NativeEndian.PutUint32(buf, argc)
+	buf := binary.NativeEndian.AppendUint32(nil, argc)
 	buf = append(buf, executable...)
 	buf = append(buf, 0)
 	for (len(buf)-4)%pointerSize != 0 {

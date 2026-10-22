@@ -52,7 +52,7 @@ func TestServiceRunPreservesDestinationWhenBackendCannotExportLayout(t *testing.
 	_, err := service.Run(t.Context(), Options{Path: new(path), All: true})
 
 	require.ErrorIs(t, err, failure)
-	assert.ErrorContains(t, err, `session "dev": window "editor"`)
+	require.ErrorContains(t, err, `session "dev": window "editor"`)
 	after, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, before, after)

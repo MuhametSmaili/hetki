@@ -182,7 +182,7 @@ func TestContextMenuViewportFitsAndCentersTheFullMenu(t *testing.T) {
 	wantX := (80 - lipgloss.Width(overlay)) / 2
 	wantY := (lipgloss.Height(content) - lipgloss.Height(overlay)) / 2
 	lines := strings.Split(content, "\n")
-	require.True(t, wantY < len(lines))
+	require.Less(t, wantY, len(lines))
 	line := terminal.Sanitize(lines[wantY])
 	border := strings.Index(line, "╭")
 	require.NotEqual(t, -1, border, "centered overlay border missing from %q", line)

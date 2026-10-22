@@ -64,7 +64,7 @@ func TestFlatAndNestedListsShareMovementFilterAndViewport(t *testing.T) {
 			m.Bottom()
 			require.Equal(t, test.wantRows[len(test.wantRows)-1], selectedID(m))
 			require.Len(t, m.VisibleRows(), 2)
-			require.Greater(t, m.Offset(), 0)
+			require.Positive(t, m.Offset())
 			m.Top()
 			require.Equal(t, test.wantRows[0], selectedID(m))
 			require.Zero(t, m.Offset())

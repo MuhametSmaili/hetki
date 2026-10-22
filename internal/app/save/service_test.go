@@ -165,7 +165,7 @@ func TestSaveWorkspacePreservesMalformedDestination(t *testing.T) {
 
 	_, err := saveWorkspace(context.Background(), testSaveWorkspace(), path, false, acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "existing destination is invalid")
+	require.ErrorContains(t, err, "existing destination is invalid")
 	after, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, before, after)
@@ -181,7 +181,7 @@ func TestSaveWorkspaceRejectsOversizedDestination(t *testing.T) {
 
 	_, err = saveWorkspace(context.Background(), testSaveWorkspace(), path, false, acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "destination exceeds")
+	require.ErrorContains(t, err, "destination exceeds")
 	info, statErr := os.Stat(path)
 	require.NoError(t, statErr)
 	assert.Greater(t, info.Size(), int64(manifest.MaxManifestBytes), "oversized destination must remain untouched")
@@ -197,7 +197,7 @@ func TestSaveWorkspaceRejectsFinalSymlink(t *testing.T) {
 
 	_, err := saveWorkspace(context.Background(), testSaveWorkspace(), path, false, acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "must not be a symlink")
+	require.ErrorContains(t, err, "must not be a symlink")
 	after, readErr := os.ReadFile(target)
 	require.NoError(t, readErr)
 	assert.Equal(t, before, after)
@@ -211,7 +211,7 @@ func TestSaveWorkspaceRejectsWrongFormatAndDirectory(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "workspace.json")
 		_, err := saveWorkspace(context.Background(), testSaveWorkspace(), path, false, acceptLayout)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "unsupported format")
+		require.ErrorContains(t, err, "unsupported format")
 		_, statErr := os.Lstat(path)
 		assert.ErrorIs(t, statErr, os.ErrNotExist)
 	})
@@ -254,7 +254,7 @@ func TestSaveWorkspaceDetectsConflictBeforeCommit(t *testing.T) {
 
 	_, err := saveWorkspace(context.Background(), testSaveWorkspace(), path, false, acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "changed since it was read")
+	require.ErrorContains(t, err, "changed since it was read")
 	after, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, concurrent, after, "the concurrent writer's bytes must not be replaced")
@@ -301,7 +301,7 @@ func TestSaveWorkspaceRollsBackWhenDirectorySyncFails(t *testing.T) {
 
 	_, err := saveWorkspace(context.Background(), testSaveWorkspace(), path, false, acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "replacement rolled back")
+	require.ErrorContains(t, err, "replacement rolled back")
 	after, readErr := os.ReadFile(path)
 	require.NoError(t, readErr)
 	assert.Equal(t, before, after)
@@ -351,7 +351,7 @@ func TestSaveWorkspaceRollsBackNewFileWhenDirectorySyncFails(t *testing.T) {
 
 	_, err := saveWorkspace(context.Background(), testSaveWorkspace(), path, false, acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "replacement rolled back")
+	require.ErrorContains(t, err, "replacement rolled back")
 	_, statErr := os.Lstat(path)
 	assert.ErrorIs(t, statErr, os.ErrNotExist)
 }

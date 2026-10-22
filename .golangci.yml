@@ -24,6 +24,14 @@ linters:
     - unconvert
     - usestdlibvars
 
+    # Tests and loops.
+    - fatcontext
+    - intrange
+    - makezero
+    - testifylint
+    - usetesting
+    - wastedassign
+
     - nolintlint
   settings:
     nolintlint:

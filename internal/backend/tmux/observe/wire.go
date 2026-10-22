@@ -148,8 +148,7 @@ func identifyNative(wire *net.UnixConn, layout headerLayout, session string, inp
 	}
 
 	args := []string{"attach-session", "-E", "-f", "ignore-size", "-t", session}
-	body := make([]byte, 4)
-	binary.NativeEndian.PutUint32(body, uint32(len(args)))
+	body := binary.NativeEndian.AppendUint32(nil, uint32(len(args)))
 	body = append(body, strings.Join(args, "\x00")...)
 	body = append(body, 0)
 	return writeNativeMessage(wire, layout, nativeCommand, body, -1)

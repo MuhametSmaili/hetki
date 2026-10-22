@@ -161,9 +161,9 @@ func TestParseRequiresAnExistingDirectoryForRoot(t *testing.T) {
 			_, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 			require.Error(t, err)
-			assert.ErrorContains(t, err, "sessions[0].root")
+			require.ErrorContains(t, err, "sessions[0].root")
 			if tc.cause != nil {
-				assert.ErrorIs(t, err, tc.cause)
+				require.ErrorIs(t, err, tc.cause)
 			}
 			if tc.message != "" {
 				assert.ErrorContains(t, err, tc.message)
@@ -179,7 +179,7 @@ func TestParseDoesNotGuessAnUnavailableHomeDirectory(t *testing.T) {
 	_, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "sessions[0].root")
+	require.ErrorContains(t, err, "sessions[0].root")
 	assert.ErrorContains(t, err, "home directory")
 }
 
@@ -215,7 +215,7 @@ func TestParseRejectsInvalidExpandedChildDirectories(t *testing.T) {
 			_, err = Parse(source, "workspace.yaml", acceptLayout)
 
 			require.Error(t, err)
-			assert.ErrorContains(t, err, tc.field)
+			require.ErrorContains(t, err, tc.field)
 			assert.ErrorContains(t, err, tc.message)
 		})
 	}
@@ -228,7 +228,7 @@ func TestParseRejectsInvalidHomeDirectoryText(t *testing.T) {
 	_, err := Parse([]byte(source), "workspace.yaml", acceptLayout)
 
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "windows[0].path")
+	require.ErrorContains(t, err, "windows[0].path")
 	assert.ErrorContains(t, err, "home directory path contains a newline")
 }
 

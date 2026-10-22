@@ -18,6 +18,7 @@ import (
 func PrivateHome(t testing.TB) string {
 	t.Helper()
 
+	//nolint:usetesting // t.TempDir is too long for unix socket paths on macOS
 	dir, err := os.MkdirTemp("/tmp", "ht-")
 	if err != nil {
 		t.Fatalf("create private test home: %v", err)

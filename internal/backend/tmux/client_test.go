@@ -99,7 +99,7 @@ func TestRunQuery(t *testing.T) {
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.want, got)
 			}
 		})
@@ -204,15 +204,15 @@ func TestClientRunLimitedBoundsOutputAtReadTime(t *testing.T) {
 	// An endless producer catches implementations that truncate only after exit.
 	output, err = c.RunLimited(ctx, 8, "-c", `while :; do printf 123456789; done`)
 	require.ErrorContains(t, err, "stdout exceeds 8 bytes")
-	assert.NotErrorIs(t, err, context.Canceled, "overflow is not caller cancellation")
+	require.NotErrorIs(t, err, context.Canceled, "overflow is not caller cancellation")
 	assert.False(t, backend.IsCancellationOnly(errors.Join(context.Canceled, err)))
 	assert.LessOrEqual(t, len(output), 8)
-	assert.NoError(t, ctx.Err(), "overflow must cancel only the owned process")
+	require.NoError(t, ctx.Err(), "overflow must cancel only the owned process")
 
 	_, err = c.RunLimited(ctx, 8, "-c", `while :; do printf 123456789 >&2; done`)
 	require.ErrorContains(t, err, "stderr exceeds 4096 bytes")
 	assert.Less(t, len(err.Error()), 4600, "stderr diagnostics must stay bounded")
-	assert.NoError(t, ctx.Err())
+	require.NoError(t, ctx.Err())
 
 	output, err = c.Run(ctx, "-c", `i=0; while [ "$i" -lt 5000 ]; do printf x; i=$((i+1)); done`)
 	require.NoError(t, err)
@@ -235,7 +235,7 @@ func TestClientRunLimitedValidatesLimitAndPreservesExitErrors(t *testing.T) {
 	var exitErr *exec.ExitError
 	require.ErrorAs(t, err, &exitErr)
 	assert.Equal(t, 7, exitErr.ExitCode())
-	assert.ErrorContains(t, err, "denied")
+	require.ErrorContains(t, err, "denied")
 	assert.Equal(t, "partial", output)
 }
 
@@ -275,7 +275,7 @@ func TestClientPreservesProcessExitCauses(t *testing.T) {
 			for _, err := range []error{runErr, executeErr} {
 				var exitErr *exec.ExitError
 				require.ErrorAs(t, err, &exitErr)
-				assert.NotErrorIs(t, err, context.Canceled, "do not invent caller cancellation")
+				require.NotErrorIs(t, err, context.Canceled, "do not invent caller cancellation")
 				assert.Equal(t, test.cancellationOnly, backend.IsCancellationOnly(errors.Join(context.Canceled, err)))
 				if test.stderr != "" {
 					assert.ErrorContains(t, err, test.stderr)
@@ -297,6 +297,6 @@ func TestMockClient_Execute(t *testing.T) {
 
 	err := mock.Execute(context.Background(), CreateSession{Name: "dev", Path: "~/code"})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, CreateSession{Name: "dev", Path: "~/code"}, capturedAction)
 }

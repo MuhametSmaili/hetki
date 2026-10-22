@@ -181,12 +181,7 @@ func TestServiceRunDryRunOutputsPlan(t *testing.T) {
 	workspace := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: " + filepath.ToSlash(tmpDir) + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".hetki.yaml"), []byte(workspace), 0644))
 
-	previousWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmpDir))
-	t.Cleanup(func() {
-		require.NoError(t, os.Chdir(previousWD))
-	})
+	t.Chdir(tmpDir)
 
 	stub := &stubBackend{dryRunLines: []string{"tmux new-session -d -s dev -n editor -c " + filepath.ToSlash(tmpDir)}}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
@@ -238,19 +233,14 @@ func TestServiceRunFailsWhenBackendStateQueryFails(t *testing.T) {
 	workspace := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: " + filepath.ToSlash(tmpDir) + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".hetki.yaml"), []byte(workspace), 0644))
 
-	previousWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmpDir))
-	t.Cleanup(func() {
-		require.NoError(t, os.Chdir(previousWD))
-	})
+	t.Chdir(tmpDir)
 
 	stub := &stubBackend{queryErr: errors.New("query failed")}
 	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
 
-	err = service.Run(context.Background(), Options{Path: new("./.hetki.yaml")})
+	err := service.Run(context.Background(), Options{Path: new("./.hetki.yaml")})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "failed to query backend state: query failed")
+	require.ErrorContains(t, err, "failed to query backend state: query failed")
 	assert.Equal(t, "Check access to the tmux server and retry.", appshared.ErrorHint(err))
 	assert.Zero(t, stub.dryRunCalls)
 	assert.Zero(t, stub.applyCalls)
@@ -330,12 +320,7 @@ func TestServiceRunColdStartAppliesCreateActions(t *testing.T) {
 	workspace := "sessions:\n  - name: dev\n    windows:\n      - name: editor\n        path: " + filepath.ToSlash(tmpDir) + "\n"
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".hetki.yaml"), []byte(workspace), 0644))
 
-	previousWD, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tmpDir))
-	t.Cleanup(func() {
-		require.NoError(t, os.Chdir(previousWD))
-	})
+	t.Chdir(tmpDir)
 
 	// Cold tmux: QueryState returns an empty StateResult, no error.
 	stub := &stubBackend{queryResult: backend.StateResult{}}

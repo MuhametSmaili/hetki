@@ -78,7 +78,7 @@ func TestUnsupportedBackendActionFailsApplyAndDryRunBeforeDispatch(t *testing.T)
 	}}}
 	actions := []backend.Action{backend.KillSessionAction{Name: "dev"}, unsupportedBackendAction{}}
 
-	assert.ErrorContains(t, b.Apply(context.Background(), actions), "unsupported backend action")
+	require.ErrorContains(t, b.Apply(context.Background(), actions), "unsupported backend action")
 	assert.False(t, dispatched)
 	_, err := b.DryRun(actions)
 	assert.ErrorContains(t, err, "unsupported backend action")
@@ -98,7 +98,7 @@ func TestQueryStateToleratesEmptyServer(t *testing.T) {
 			},
 		}}
 		res, err := b.QueryState(context.Background())
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Empty(t, res.Sessions)
 	}
 }
@@ -137,7 +137,7 @@ func TestQueryStateDoesNotSuppressParseFailureFromEmptyServer(t *testing.T) {
 
 		_, err := b.QueryState(context.Background())
 
-		assert.ErrorContains(t, err, "missing base indexes")
+		require.ErrorContains(t, err, "missing base indexes")
 		assert.ErrorContains(t, err, "no server running")
 	}
 }
@@ -166,7 +166,7 @@ func TestQueryStatePreservesStableObjectIDsAndPaneIndex(t *testing.T) {
 	}}}
 
 	result, err := b.QueryState(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	if assert.Len(t, result.Sessions, 1) && assert.Len(t, result.Sessions[0].Windows, 1) && assert.Len(t, result.Sessions[0].Windows[0].Panes, 1) {
 		assert.Equal(t, "/bin/sh", result.Sessions[0].DefaultShell)
 		assert.Equal(t, "$1", result.Sessions[0].ID)
@@ -185,7 +185,7 @@ func TestApplyRejectsWindowDestructionWithoutStableID(t *testing.T) {
 	}}}
 
 	err := b.Apply(context.Background(), []backend.Action{backend.KillWindowAction{Session: "dev", Window: "editor"}})
-	assert.ErrorContains(t, err, "stable ID")
+	require.ErrorContains(t, err, "stable ID")
 	assert.False(t, executed)
 }
 
@@ -202,7 +202,7 @@ func TestApplyRejectsMalformedStableWindowIDs(t *testing.T) {
 
 		err := b.Apply(context.Background(), []backend.Action{action})
 
-		assert.ErrorContains(t, err, "invalid window ID")
+		require.ErrorContains(t, err, "invalid window ID")
 		assert.False(t, executed)
 	}
 }
@@ -268,7 +268,7 @@ func TestApplyUsesReturnedCreationIDsForFollowups(t *testing.T) {
 		backend.KillWindowAction{Session: "dev", Window: "logs", WindowID: "@11"},
 	}
 
-	assert.NoError(t, b.Apply(context.Background(), actions))
+	require.NoError(t, b.Apply(context.Background(), actions))
 	assert.Equal(t, []string{
 		"run new-session -d -s dev -n editor -c ~/code -P -F #{window_id}|#{pane_id}",
 		"run split-window -t @10 -c ~/api -P -F #{pane_id}",

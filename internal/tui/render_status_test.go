@@ -105,7 +105,7 @@ func TestAbsentStatusRendersWithoutIndicator(t *testing.T) {
 }
 
 func TestStatusRowsFitNarrowWidths(t *testing.T) {
-	for width := 0; width <= 80; width++ {
+	for width := range 81 {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			row := rowProps{
 				Primary: "中👨‍👩‍👧éditor", Secondary: "~/src", Depth: 1, TreePrefix: "└─ ",

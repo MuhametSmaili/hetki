@@ -203,7 +203,7 @@ func TestRenderListAlignsSecondaryColumnsAndTruncatesBothSides(t *testing.T) {
 
 func TestRenderListSanitizesAndFitsNarrowWidths(t *testing.T) {
 	row := rowProps{Primary: "\x1b]0;owned\a中👨‍👩‍👧é\nnext", Secondary: "~/bad\tpath\x1b[2J", Trailing: "\x1b]0;owned\api中\ncommand", JumpLabel: "\x1b[31ma\n"}
-	for width := 0; width <= 80; width++ {
+	for width := range 81 {
 		line := renderList(listProps{Width: width, Rows: []rowProps{row}})[0]
 		if strings.ContainsAny(line, "\x1b\n\r\t") {
 			t.Fatalf("width %d left terminal controls in %q", width, line)

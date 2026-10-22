@@ -58,7 +58,7 @@ func TestHeadersAndModalsSanitizeAndFit(t *testing.T) {
 	unsafe := "中👨‍👩‍👧é\x1b]0;owned\a\nnext"
 	border := lipgloss.NewStyle().Border(lipgloss.RoundedBorder())
 
-	for width := 0; width <= 20; width++ {
+	for width := range 21 {
 		rendered := []string{
 			renderSearchBar(searchBarProps{Width: width, Filter: unsafe, Right: unsafe}),
 			renderInputModal(inputModalProps{LineWidth: width, Title: "INPUT", Prompt: unsafe, Value: unsafe, Theme: theme{modal: border}}),

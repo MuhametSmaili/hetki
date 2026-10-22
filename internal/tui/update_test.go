@@ -369,7 +369,7 @@ func TestPromptAndConfirmationKeepTheOriginatingItemID(t *testing.T) {
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, modeConfirm, m.mode)
 	require.Equal(t, list.ItemID{ID: "window-2"}, m.confirm.Request.ItemID)
-	m, cmd = updateModel(t, m, printableKey("y"))
+	_, cmd = updateModel(t, m, printableKey("y"))
 	cmd()
 	require.Equal(t, list.ItemID{ID: "window-2"}, requests[len(requests)-1].ItemID)
 	require.True(t, requests[len(requests)-1].Confirmed)

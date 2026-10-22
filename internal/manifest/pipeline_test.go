@@ -46,16 +46,16 @@ func TestParseBoundsCardinalityAndLengths(t *testing.T) {
 		case "sessions":
 			b.Reset()
 			b.WriteString("sessions:\n")
-			for i := 0; i < n; i++ {
+			for range n {
 				b.WriteString("  - name: s\n    windows:\n      - path: /p\n")
 			}
 		case "windows":
-			for i := 0; i < n; i++ {
+			for range n {
 				b.WriteString("      - path: /p\n")
 			}
 		case "panes":
 			b.WriteString("        panes:\n")
-			for i := 0; i < n; i++ {
+			for range n {
 				b.WriteString("          - path: /p\n")
 			}
 		}
@@ -65,15 +65,15 @@ func TestParseBoundsCardinalityAndLengths(t *testing.T) {
 
 	_, err := Parse([]byte(tooMany("sessions", MaxSessions+1, "")), "w.yaml", acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "too many sessions")
+	require.ErrorContains(t, err, "too many sessions")
 
 	_, err = Parse([]byte(tooMany("windows", MaxWindowsPerSession+1, "")), "w.yaml", acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "too many windows")
+	require.ErrorContains(t, err, "too many windows")
 
 	_, err = Parse([]byte(tooMany("panes", MaxPanesPerWindow+1, "")), "w.yaml", acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "too many panes")
+	require.ErrorContains(t, err, "too many panes")
 
 	longName := "sessions:\n  - name: " + strings.Repeat("x", MaxNameLength+1) + "\n    windows:\n      - path: /p\n"
 	_, err = Parse([]byte(longName), "w.yaml", acceptLayout)
@@ -202,7 +202,7 @@ func TestParseRejectsControlBytesInCommands(t *testing.T) {
 	// YAML double-quoted scalars interpret \n and \t escapes.
 	for _, cmd := range []string{`"echo a\nb"`, `"echo\ttab"`} {
 		_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        panes:\n          - command: "+cmd+"\n"), "w.yaml", acceptLayout)
-		assert.Error(t, err, cmd)
+		require.Error(t, err, cmd)
 	}
 
 	_, err := Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /p\n        command: \";\"\n"), "w.yaml", acceptLayout)
@@ -213,12 +213,12 @@ func TestParseValidatesNormalizedValues(t *testing.T) {
 	t.Setenv("HETKI_LONG_PATH", "/"+strings.Repeat("x", MaxPathLength))
 	_, err := Parse([]byte("sessions:\n  - name: dev\n    root: $HETKI_LONG_PATH\n    windows:\n      - name: editor\n"), "w.yaml", acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "sessions[0].root: resolved path is too long")
+	require.ErrorContains(t, err, "sessions[0].root: resolved path is too long")
 
 	longBase := strings.Repeat("x", MaxNameLength+1)
 	_, err = Parse([]byte("sessions:\n  - name: dev\n    windows:\n      - path: /tmp/"+longBase+"\n"), "w.yaml", acceptLayout)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "windows[0].path")
+	require.ErrorContains(t, err, "windows[0].path")
 	var pathError *os.PathError
 	assert.ErrorAs(t, err, &pathError)
 }

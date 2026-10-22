@@ -83,7 +83,7 @@ func TestResolverNamedPathKeepsInvalidCandidatePrecedence(t *testing.T) {
 
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
-				assert.ErrorContains(t, err, fmt.Sprintf("%q", candidate))
+				require.ErrorContains(t, err, fmt.Sprintf("%q", candidate))
 				assert.Empty(t, path, "an invalid .yaml candidate must not fall back to .yml")
 				return
 			}
@@ -101,7 +101,7 @@ func TestResolverNamedPathPreservesInspectionErrors(t *testing.T) {
 	path, err := resolver.NamedPath("dev")
 
 	assert.Empty(t, path)
-	assert.ErrorIs(t, err, syscall.ENOTDIR)
+	require.ErrorIs(t, err, syscall.ENOTDIR)
 	assert.ErrorContains(t, err, fmt.Sprintf("%q", filepath.Join(configDir, "workspaces", "dev.yaml")))
 }
 

@@ -15,7 +15,7 @@ func TestSafeTerminalText(t *testing.T) {
 		t.Fatalf("Sanitize() = %q", got)
 	}
 
-	for width := 0; width <= 12; width++ {
+	for width := range 13 {
 		truncated := Truncate(got, width)
 		if actual := Width(truncated); actual > width {
 			t.Fatalf("Truncate width %d produced %q at width %d", width, truncated, actual)

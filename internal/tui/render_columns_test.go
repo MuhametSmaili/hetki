@@ -100,7 +100,7 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 		Secondary: "~/long/path\x1b[2J", Trailing: "pi\r", JumpLabel: "a",
 		Active: true, Selected: true, Status: status.Value{State: status.Blocked},
 	}
-	for width := 0; width <= 80; width++ {
+	for width := range 81 {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			lines := renderList(listProps{Width: width, Rows: []rowProps{row}, Theme: styles})
 
