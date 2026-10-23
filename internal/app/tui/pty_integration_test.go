@@ -40,7 +40,7 @@ func (ptyDriver) Execute(_ context.Context, request ui.ActionRequest) (ui.Action
 	return ui.ActionResult{Navigation: request.ItemID}, nil
 }
 
-func (ptyDriver) Preview(context.Context, list.ItemID) (string, error) {
+func (ptyDriver) Preview(context.Context, ui.PreviewRequest) (string, error) {
 	return "PREVIEW CONTENT", nil
 }
 

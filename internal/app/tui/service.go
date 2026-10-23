@@ -14,7 +14,7 @@ import (
 type Driver interface {
 	Load(context.Context) (list.Snapshot, error)
 	Execute(context.Context, ui.ActionRequest) (ui.ActionResult, error)
-	Preview(context.Context, list.ItemID) (string, error)
+	Preview(context.Context, ui.PreviewRequest) (string, error)
 	Navigate(context.Context, list.ItemID) error
 }
 

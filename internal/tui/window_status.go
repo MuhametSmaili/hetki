@@ -106,6 +106,13 @@ func (p paneStatusState) nextWindowStatusChange(now time.Time) time.Time {
 	return due
 }
 
+func (p paneStatusState) displayedPaneID(id list.ItemID) string {
+	if len(p.windows[id]) == 0 {
+		return ""
+	}
+	return p.representatives[id].paneID
+}
+
 func (p paneStatusState) rowValue(id list.ItemID, now time.Time) status.Value {
 	if _, ok := p.windows[id]; ok {
 		return displayedStatus(p.values.Lookup(p.representatives[id].ref), now)

@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
-	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type uiEffects struct {
@@ -51,7 +50,7 @@ func (e *uiEffects) dispatch(request ui.ActionRequest) (ui.ActionResult, error) 
 	return result, err
 }
 
-func (e *uiEffects) preview(ctx context.Context, id list.ItemID) (string, error) {
+func (e *uiEffects) preview(ctx context.Context, request ui.PreviewRequest) (string, error) {
 	if err := e.begin(); err != nil {
 		return "", err
 	}
@@ -63,7 +62,7 @@ func (e *uiEffects) preview(ctx context.Context, id list.ItemID) (string, error)
 	defer cancel()
 	stop := context.AfterFunc(ctx, cancel)
 	defer stop()
-	return e.driver.Preview(readCtx, id)
+	return e.driver.Preview(readCtx, request)
 }
 
 func (e *uiEffects) statusOptions() ui.StatusOptions {

@@ -181,8 +181,8 @@ func (m model) startAction(action ActionID, itemID list.ItemID) (tea.Model, tea.
 	}
 
 	request := ActionRequest{ActionID: action, ItemID: itemID}
-	if action == ActionOpen && len(m.paneStatus.windows[itemID]) > 0 {
-		request.PaneID = m.paneStatus.representatives[itemID].paneID
+	if action == ActionOpen {
+		request.PaneID = m.paneStatus.displayedPaneID(itemID)
 	}
 	return m.startRequest(request, status)
 }

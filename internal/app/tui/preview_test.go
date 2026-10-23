@@ -10,15 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func (*switchDriver) Preview(context.Context, list.ItemID) (string, error) {
+func (*switchDriver) Preview(context.Context, ui.PreviewRequest) (string, error) {
 	panic("unexpected preview")
 }
 
-func (*navigationDriver) Preview(context.Context, list.ItemID) (string, error) {
+func (*navigationDriver) Preview(context.Context, ui.PreviewRequest) (string, error) {
 	panic("unexpected preview")
 }
 
-func (d *blockingDriver) Preview(ctx context.Context, _ list.ItemID) (string, error) {
+func (d *blockingDriver) Preview(ctx context.Context, _ ui.PreviewRequest) (string, error) {
 	_, err := d.Execute(ctx, ui.ActionRequest{})
 	return "", err
 }
@@ -32,11 +32,11 @@ func TestPreviewResolvesOnlyTheSelectedTarget(t *testing.T) {
 	}
 	adapter := loadedAdapter(t, stub)
 	for _, id := range []list.ItemID{sessionItemID("$1"), windowItemID("$1", "@1")} {
-		text, err := adapter.Preview(context.Background(), id)
+		text, err := adapter.Preview(context.Background(), ui.PreviewRequest{ItemID: id})
 		require.NoError(t, err)
 		require.Equal(t, "screen", text)
 	}
-	require.Equal(t, []backend.Target{{SessionID: "$1"}, {SessionID: "$1", WindowID: "@1"}}, targets)
+	require.Equal(t, []backend.Target{{SessionID: "$1"}, {SessionID: "$1", WindowID: "@1", PaneID: "%1"}}, targets)
 	require.Equal(t, 1, stub.queryCalls, "preview must not reload state")
 	require.Empty(t, stub.applyCalls)
 	require.Empty(t, stub.switchCalls)
@@ -53,17 +53,17 @@ func TestPreviewResolvesOnlyTheSelectedTarget(t *testing.T) {
 	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: windowItemID("$1", "@1")})
 	require.NoError(t, err)
 	id := destinationItemID("$1", "@1", "%1")
-	_, err = adapter.Preview(context.Background(), id)
+	_, err = adapter.Preview(context.Background(), ui.PreviewRequest{ItemID: id})
 	require.NoError(t, err)
 	require.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}, targets[len(targets)-1])
 	require.Equal(t, adapter.index[id].Target, targets[len(targets)-1])
 	require.Equal(t, 2, stub.queryCalls)
 
-	_, err = adapter.Preview(context.Background(), list.ItemID{ID: "removed"})
+	_, err = adapter.Preview(context.Background(), ui.PreviewRequest{ItemID: list.ItemID{ID: "removed"}})
 	require.ErrorContains(t, err, "stale")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err = adapter.Preview(ctx, id)
+	_, err = adapter.Preview(ctx, ui.PreviewRequest{ItemID: id})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Len(t, targets, 3)
 }
@@ -77,7 +77,7 @@ func TestPreviewDoesNotHoldTheIndexLockDuringCapture(t *testing.T) {
 	}}
 	adapter := loadedAdapter(t, stub)
 	go func() {
-		_, err := adapter.Preview(context.Background(), windowItemID("$1", "@1"))
+		_, err := adapter.Preview(context.Background(), ui.PreviewRequest{ItemID: windowItemID("$1", "@1")})
 		done <- err
 	}()
 	awaitChannel(t, started)
@@ -98,7 +98,7 @@ func TestPreviewReadCanRaceWithSnapshotReplacement(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		for range 100 {
-			if _, err := adapter.Preview(context.Background(), windowItemID("$1", "@1")); err != nil {
+			if _, err := adapter.Preview(context.Background(), ui.PreviewRequest{ItemID: windowItemID("$1", "@1")}); err != nil {
 				done <- err
 				return
 			}
@@ -121,7 +121,7 @@ func TestServiceCancelsAndJoinsPreviewOnExit(t *testing.T) {
 			require.Equal(t, 65, preview.Width)
 			read = preview.Read
 			go func() {
-				_, err := read(context.Background(), list.ItemID{ID: "pane"})
+				_, err := read(context.Background(), ui.PreviewRequest{ItemID: list.ItemID{ID: "pane"}})
 				done <- err
 			}()
 			awaitChannel(t, driver.started)
@@ -135,7 +135,7 @@ func TestServiceCancelsAndJoinsPreviewOnExit(t *testing.T) {
 		t.Fatal("preview outlived UI")
 	}
 	require.ErrorIs(t, awaitChannel(t, done), context.Canceled)
-	_, err := read(context.Background(), list.ItemID{ID: "late"})
+	_, err := read(context.Background(), ui.PreviewRequest{ItemID: list.ItemID{ID: "late"}})
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -147,7 +147,7 @@ func TestServicePropagatesSelectionCancellation(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			go func() {
-				_, err := preview.Read(ctx, list.ItemID{ID: "pane"})
+				_, err := preview.Read(ctx, ui.PreviewRequest{ItemID: list.ItemID{ID: "pane"}})
 				done <- err
 			}()
 			awaitChannel(t, driver.started)

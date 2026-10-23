@@ -18,7 +18,7 @@ func TestPreviewStartsBesideHeaderAndPreservesList(t *testing.T) {
 			m.theme.appBorder = lipgloss.NewStyle()
 			m.width, m.height, m.mode = 100, 12, mode
 			m.preview.visible, m.preview.ready = true, true
-			m.preview.itemID = list.ItemID{ID: "a"}
+			m.preview.request.ItemID = list.ItemID{ID: "a"}
 			m = m.reflow()
 			layout := m.layout()
 			m.preview.lines = []string{"older row"}

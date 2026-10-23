@@ -13,7 +13,14 @@ import (
 
 const DefaultPreviewWidth = 70
 
-type PreviewFunc func(context.Context, list.ItemID) (string, error)
+// PreviewRequest identifies the selected row and its displayed tree pane.
+// PaneID overrides tree windows only; empty retains their projected pane.
+type PreviewRequest struct {
+	ItemID list.ItemID
+	PaneID string
+}
+
+type PreviewFunc func(context.Context, PreviewRequest) (string, error)
 
 type PreviewOptions struct {
 	Width int // Resolved percentage of content width.
@@ -23,7 +30,7 @@ type PreviewOptions struct {
 type previewState struct {
 	visible    bool
 	width      int
-	itemID     list.ItemID
+	request    PreviewRequest
 	generation uint64
 	ready      bool
 	cancel     context.CancelFunc
@@ -52,28 +59,31 @@ func handleTogglePreview(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 
 // syncPreview coalesces selection changes into one in-flight capture.
 func (m model) syncPreview() (model, tea.Cmd) {
-	if !m.preview.visible && m.preview.itemID.IsZero() {
+	if !m.preview.visible && m.preview.request.ItemID.IsZero() {
 		return m, nil
 	}
-	var id list.ItemID
+
+	var request PreviewRequest
 	if m.layout().previewWidth > 0 && !m.quitting && m.navigation.IsZero() {
 		if row, ok := m.selectedRow(); ok {
-			id = row.Item.ID
+			request = PreviewRequest{ItemID: row.Item.ID, PaneID: m.paneStatus.displayedPaneID(row.Item.ID)}
 		}
 	}
+
 	p := &m.preview
-	if id != p.itemID {
-		p.itemID = id
+	if request != p.request {
+		p.request = request
 		p.invalidate()
 	}
-	if id.IsZero() || p.ready || p.cancel != nil || m.busy || m.readPreview == nil {
+	if request.ItemID.IsZero() || p.ready || p.cancel != nil || m.busy || m.readPreview == nil {
 		return m, nil
 	}
+
 	ctx, cancel := context.WithCancel(m.ctx)
 	p.cancel = cancel
 	generation, read := p.generation, m.readPreview
 	return m, func() tea.Msg {
-		text, err := read(ctx, id)
+		text, err := read(ctx, request)
 		return previewResultMsg{generation: generation, text: text, err: err}
 	}
 }
@@ -84,7 +94,7 @@ func (m model) handlePreviewResult(msg previewResultMsg) (tea.Model, tea.Cmd) {
 		p.cancel()
 		p.cancel = nil
 	}
-	if msg.generation == p.generation && !p.itemID.IsZero() {
+	if msg.generation == p.generation && !p.request.ItemID.IsZero() {
 		p.ready, p.err = true, msg.err
 		if msg.err == nil {
 			p.lines = terminal.ScreenLines(msg.text)
@@ -102,7 +112,7 @@ func (m model) viewPreview(width, height int) string {
 	body := m.preview.lines
 	message := ""
 	switch {
-	case m.preview.itemID.IsZero():
+	case m.preview.request.ItemID.IsZero():
 		message = "no selection"
 	case m.readPreview == nil:
 		message = "preview unavailable"

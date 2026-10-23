@@ -29,10 +29,10 @@ func previewModel(t *testing.T) model {
 		{ID: "b"}: "screen b",
 		{ID: "c"}: "screen c",
 	}
-	m.readPreview = func(_ context.Context, id list.ItemID) (string, error) {
-		screen, exists := screens[id]
+	m.readPreview = func(_ context.Context, request PreviewRequest) (string, error) {
+		screen, exists := screens[request.ItemID]
 		if !exists {
-			return "", fmt.Errorf("unexpected preview item %q", id)
+			return "", fmt.Errorf("unexpected preview item %q", request.ItemID)
 		}
 		return screen, nil
 	}
@@ -123,8 +123,8 @@ func TestPreviewDistinguishesEqualLocalIDs(t *testing.T) {
 	}}, nil, DefaultKeyMap(), StartModeNormal)
 	require.NoError(t, err)
 	var captured []list.ItemID
-	m.readPreview = func(_ context.Context, id list.ItemID) (string, error) {
-		captured = append(captured, id)
+	m.readPreview = func(_ context.Context, request PreviewRequest) (string, error) {
+		captured = append(captured, request.ItemID)
 		return "captured screen", nil
 	}
 
@@ -143,9 +143,9 @@ func TestPreviewHasNoHiddenOrRepeatingRead(t *testing.T) {
 	m := previewModel(t)
 	calls := 0
 	read := m.readPreview
-	m.readPreview = func(ctx context.Context, id list.ItemID) (string, error) {
+	m.readPreview = func(ctx context.Context, request PreviewRequest) (string, error) {
 		calls++
-		return read(ctx, id)
+		return read(ctx, request)
 	}
 	require.Nil(t, m.Init())
 	for _, key := range []tea.KeyPressMsg{specialKey(tea.KeyDown), specialKey(tea.KeyUp)} {
@@ -176,9 +176,9 @@ func TestPreviewCoalescesSelectionAndRejectsStaleResults(t *testing.T) {
 	m := previewModel(t)
 	var canceled error
 	read := m.readPreview
-	m.readPreview = func(ctx context.Context, id list.ItemID) (string, error) {
+	m.readPreview = func(ctx context.Context, request PreviewRequest) (string, error) {
 		canceled = ctx.Err()
-		return read(ctx, id) // Simulate a completed read racing cancellation.
+		return read(ctx, request) // Simulate a completed read racing cancellation.
 	}
 	m, old := updateModel(t, m, previewKey())
 	m, cmd := updateModel(t, m, specialKey(tea.KeyDown))
@@ -210,7 +210,7 @@ func TestPreviewReopenRejectsPreviousGenerationOfSameItem(t *testing.T) {
 
 func TestPreviewFilteringErrorsAndEmptySelection(t *testing.T) {
 	m := previewModel(t)
-	m.readPreview = func(context.Context, list.ItemID) (string, error) {
+	m.readPreview = func(context.Context, PreviewRequest) (string, error) {
 		return "", errors.New("missing pane\x1b]52;c;secret\a\nnext")
 	}
 	m, cmd := updateModel(t, m, previewKey())
@@ -222,12 +222,12 @@ func TestPreviewFilteringErrorsAndEmptySelection(t *testing.T) {
 	m, _ = updateModel(t, m, printableKey("/"))
 	m, cmd = updateModel(t, m, tea.PasteMsg{Content: "bravo"})
 	require.NotNil(t, cmd)
-	require.Equal(t, list.ItemID{ID: "b"}, m.preview.itemID)
+	require.Equal(t, list.ItemID{ID: "b"}, m.preview.request.ItemID)
 	result := cmd()
 	m, _ = updateModel(t, m, tea.PasteMsg{Content: "no match"})
 	m, cmd = updateModel(t, m, result)
 	require.Nil(t, cmd)
-	require.Empty(t, m.preview.itemID)
+	require.Empty(t, m.preview.request.ItemID)
 	require.Empty(t, m.preview.lines)
 	require.Contains(t, terminal.Sanitize(m.View().Content), "no selection")
 }
@@ -247,7 +247,7 @@ func TestPreviewRefreshInvalidatesUnchangedItem(t *testing.T) {
 	require.NotNil(t, cmd, "same item ID can resolve to a different pane after refresh")
 	m, cmd = updateModel(t, m, cmd())
 	require.Nil(t, cmd)
-	require.Equal(t, list.ItemID{ID: "a"}, m.preview.itemID)
+	require.Equal(t, list.ItemID{ID: "a"}, m.preview.request.ItemID)
 }
 
 func TestPreviewRetainsSnapshotAcrossReadOnlyOverlays(t *testing.T) {
@@ -276,7 +276,7 @@ func TestPreviewCancellationOnHideResizeAndQuit(t *testing.T) {
 	for _, msg := range []tea.Msg{previewKey(), tea.WindowSizeMsg{Width: 10, Height: 12}, controlKey('c'), printableKey("q")} {
 		m := previewModel(t)
 		var readCtx context.Context
-		m.readPreview = func(ctx context.Context, _ list.ItemID) (string, error) {
+		m.readPreview = func(ctx context.Context, _ PreviewRequest) (string, error) {
 			readCtx = ctx //nolint:fatcontext // records the context to assert its cancellation
 			return "ignored", nil
 		}
@@ -291,7 +291,7 @@ func TestPreviewCancellationOnHideResizeAndQuit(t *testing.T) {
 
 func TestPreviewShowsBottomRowsWithoutTitle(t *testing.T) {
 	m := previewModel(t)
-	m.preview.itemID, m.preview.ready = list.ItemID{ID: "a"}, true
+	m.preview.request.ItemID, m.preview.ready = list.ItemID{ID: "a"}, true
 	m.preview.lines = terminal.ScreenLines("first\nsecond\nthird\n")
 	require.Equal(t, "second\\nthird ", terminal.Sanitize(m.viewPreview(6, 2)))
 	require.Equal(t, "third ", terminal.Sanitize(m.viewPreview(6, 1)))
@@ -310,7 +310,7 @@ func TestPreviewEndsAtLastNonblankRow(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := previewModel(t)
-			m.preview.itemID = list.ItemID{ID: "a"}
+			m.preview.request.ItemID = list.ItemID{ID: "a"}
 
 			updated, _ := m.handlePreviewResult(previewResultMsg{generation: m.preview.generation, text: tc.capture})
 			m = updated.(model)
@@ -324,7 +324,7 @@ func checkPreviewLayout(t *testing.T, m model) {
 	t.Helper()
 	m = m.reflow()
 	listHeight := m.items.Height()
-	m.readPreview = func(context.Context, list.ItemID) (string, error) {
+	m.readPreview = func(context.Context, PreviewRequest) (string, error) {
 		return strings.Repeat("\x1b[41m中👨‍👩‍👧é "+strings.Repeat("x", 300)+"\n", 100), nil
 	}
 

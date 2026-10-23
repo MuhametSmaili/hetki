@@ -66,7 +66,7 @@ func TestLiveAdapterUsesOpaqueReferenceForPaneActions(t *testing.T) {
 	require.Equal(t, id, opened.Navigation)
 	require.NoError(t, adapter.Navigate(context.Background(), opened.Navigation))
 	require.Equal(t, []backend.Target{target}, stub.switchCalls)
-	screen, err := adapter.Preview(context.Background(), id)
+	screen, err := adapter.Preview(context.Background(), ui.PreviewRequest{ItemID: id})
 	require.NoError(t, err)
 	require.Equal(t, "screen", screen)
 
