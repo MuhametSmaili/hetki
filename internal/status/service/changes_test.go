@@ -10,37 +10,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestChangesSuppressDeadlineOnlyReportsAndWakeOnRenewal(t *testing.T) {
-	pane := fixturePane(service.Screen)
-	core := fixtureService(t, pane)
-	target := targetFor(t, core, pane, service.Screen)
+func TestChangesPublishDeadlineExtensionsTogether(t *testing.T) {
+	first := fixturePane(service.Screen)
+	second := fixturePane(service.Screen)
+	second.Ref.ID = "%2"
+	core := fixtureService(t, first, second)
+	targets := []service.Target{
+		targetFor(t, core, first, service.Screen),
+		targetFor(t, core, second, service.Screen),
+	}
+
 	value := status.Value{State: status.Working, ValidUntil: time.Now().Add(10 * time.Second)}
-	require.NoError(t, core.Apply(target, 1, value))
+	for _, target := range targets {
+		require.NoError(t, core.Apply(target, 1, value))
+	}
+
 	before, changes := core.Changes()
-
 	value.ValidUntil = value.ValidUntil.Add(time.Second)
-	require.NoError(t, core.Apply(target, 2, value))
-	after, unchanged := core.Changes()
+	for _, target := range targets {
+		require.NoError(t, core.Apply(target, 2, value))
+	}
+	unpublished, _ := core.Changes()
+	require.Equal(t, before, unpublished)
+
+	core.PublishRenewals()
+	core.PublishRenewals()
+
+	after, _ := core.Changes()
+	require.Equal(t, before+1, after, "extensions coalesce and repeat publication is a no-op")
 	snapshot, err := core.ReadStatus(t.Context())
-
 	require.NoError(t, err)
-	require.Equal(t, before, after)
-	require.Equal(t, changes, unchanged)
-	require.Equal(t, value.ValidUntil, snapshot.Lookup(pane.Ref).ValidUntil)
-	select {
-	case <-changes:
-		t.Fatal("deadline-only capture woke readers")
-	default:
+	for _, target := range targets {
+		require.Equal(t, value.ValidUntil, snapshot.Lookup(target.Pane.Ref).ValidUntil)
 	}
-
-	require.NoError(t, core.UpdateInventory(inventory(2, pane)))
 	select {
 	case <-changes:
 	default:
-		t.Fatal("inventory renewal did not wake readers")
+		t.Fatal("deadline publication did not wake readers")
 	}
-	version, _ := core.Changes()
-	require.Greater(t, version, before)
 }
 
 func TestChangesWakeOnActivityInvalidationAndClose(t *testing.T) {

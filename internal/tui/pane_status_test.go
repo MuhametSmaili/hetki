@@ -96,24 +96,62 @@ func TestStatusFrameScheduling(t *testing.T) {
 	}
 }
 
-func TestStatusFramesStayLocalAndCoalesced(t *testing.T) {
-	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
-	m := paneStatusModel(t, status.Working, now.Add(time.Minute))
-	reads := 0
-	m.paneStatus.options.Read = func(context.Context, uint64) StatusUpdate {
-		reads++
-		return StatusUpdate{}
-	}
-	m, scheduled := m.syncStatusFrame(now)
+func TestStatusFramesExpireWhileReadIsBlocked(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		deadline := time.Now().Add(5 * time.Second)
+		m := paneStatusModel(t, status.Blocked, deadline)
+		ctx, cancel := context.WithCancel(t.Context())
+		m.ctx = ctx
+		entered := make(chan struct{})
+		done := make(chan struct{})
+		reads := 0
+		m.paneStatus.options.Read = func(ctx context.Context, _ uint64) StatusUpdate {
+			reads++
+			close(entered)
+			<-ctx.Done()
+			return StatusUpdate{Err: ctx.Err()}
+		}
+		next, read := m.readPaneStatus()
+		m = next.(model)
+		go func() {
+			read()
+			close(done)
+		}()
+		t.Cleanup(func() {
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Error("status read did not stop")
+			}
+		})
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatal("status read did not start")
+		}
+		selected := selectedNodeID(m)
+		m, scheduled := m.syncStatusFrame(time.Now())
+		require.NotNil(t, scheduled)
+		_, duplicate := m.syncStatusFrame(time.Now())
+		require.Nil(t, duplicate)
 
-	_, duplicate := m.syncStatusFrame(now)
-	next, effect := m.update(statusFrameMsg{generation: m.paneStatus.frameGeneration})
+		next, effect := m.Update(scheduled())
+		m = next.(model)
 
-	require.NotNil(t, scheduled)
-	require.Nil(t, duplicate)
-	require.Nil(t, effect, "a frame must not schedule a status read")
-	require.Zero(t, reads)
-	require.True(t, next.(model).paneStatus.frameDue.IsZero())
+		require.Equal(t, deadline, time.Now())
+		require.Equal(t, status.Unknown, m.paneStatus.rowValue(list.ItemID{ID: "window"}, time.Now()).State)
+		require.Equal(t, selected, selectedNodeID(m))
+		require.True(t, m.paneStatus.reading)
+		require.Equal(t, 1, reads)
+		require.True(t, m.paneStatus.frameDue.IsZero())
+		require.Nil(t, effect, "expiry must not schedule another read")
+		select {
+		case <-done:
+			t.Fatal("expiry completed the blocked read")
+		default:
+		}
+	})
 }
 
 func TestStatusPollingWithoutProvider(t *testing.T) {

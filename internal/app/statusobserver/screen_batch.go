@@ -117,6 +117,7 @@ func (s *Screens) runBatch(ctx context.Context) error {
 		}
 		result = errors.Join(result, s.applyScreen(job, screen, captureErr))
 	}
+	s.service.PublishRenewals()
 	return result
 }
 

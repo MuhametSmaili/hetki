@@ -40,6 +40,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 		require.NotNil(t, options.Read)
 		idle := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
 		require.Len(t, idle.Bindings, 2, "linked window occurrences share one pane")
+		assertNativeScreenRenewals(t, ctx, client, options, idle)
 		before := firstPaneRef(t, idle.Values)
 		for _, id := range []list.ItemID{destinationItemID("$0", "@0", "%0"), windowItemID("$0", "@0")} {
 			result, err := dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})
@@ -69,6 +70,53 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	second, err := client.Ping(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, first, second)
+}
+
+func assertNativeScreenRenewals(t *testing.T, ctx context.Context, client *daemon.Client, options ui.StatusOptions, initial ui.StatusUpdate) {
+	t.Helper()
+	pane := firstPaneRef(t, initial.Values)
+	deadline := initial.Values.Lookup(pane).ValidUntil
+	require.True(t, time.Now().Before(deadline))
+	setupCtx, cancelSetup := context.WithTimeout(ctx, 3*time.Second)
+	defer cancelSetup()
+	peer, err := client.Subscribe(setupCtx)
+	require.NoError(t, err)
+	defer peer.Close()
+	stopSetup := context.AfterFunc(setupCtx, func() { _ = peer.Close() })
+	defer stopSetup()
+	peerInitial, err := peer.Next()
+	require.NoError(t, err)
+	require.True(t, stopSetup(), "peer setup expired before the first view")
+	cancelSetup()
+	peerDeadline := peerInitial.Values.Lookup(pane).ValidUntil
+	require.Equal(t, status.Idle, peerInitial.Values.At(pane, time.Now()))
+	primaryCtx, cancelPrimary := context.WithDeadline(ctx, deadline)
+	defer cancelPrimary()
+	peerCtx, cancelPeer := context.WithDeadline(ctx, peerDeadline)
+	defer cancelPeer()
+	stopPeer := context.AfterFunc(peerCtx, func() { _ = peer.Close() })
+	defer stopPeer()
+
+	next := initial
+	for !next.Values.Lookup(pane).ValidUntil.After(deadline) {
+		after := next.Sequence
+		next = options.Read(primaryCtx, after)
+		require.NoError(t, next.Err)
+		require.Greater(t, next.Sequence, after)
+		require.True(t, time.Now().Before(deadline), "first reader renewed after cached expiry")
+	}
+	peerNext := peerInitial
+	for !peerNext.Values.Lookup(pane).ValidUntil.After(peerDeadline) {
+		peerNext, err = peer.Next()
+		require.NoError(t, err)
+		require.True(t, time.Now().Before(peerDeadline), "second reader renewed after cached expiry")
+	}
+
+	require.Equal(t, initial.Bindings, next.Bindings)
+	require.Equal(t, status.Unknown, initial.Values.At(pane, deadline))
+	require.Equal(t, status.Idle, next.Values.At(pane, deadline))
+	require.Equal(t, status.Unknown, peerInitial.Values.At(pane, peerDeadline))
+	require.Equal(t, status.Idle, peerNext.Values.At(pane, peerDeadline))
 }
 
 // pickerStatusSource serves a fixed view and signals a change on notify.

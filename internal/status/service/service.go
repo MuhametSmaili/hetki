@@ -20,18 +20,19 @@ var (
 
 // Service is concurrency-safe and owns no workers or I/O resources.
 type Service struct {
-	mu         sync.Mutex
-	server     string
-	panes      map[string]record
-	revision   uint64
-	generation uint64
-	validUntil time.Time
-	evidence   status.Snapshot
-	snapshot   status.Snapshot
-	dirty      bool
-	closed     bool
-	version    uint64
-	changes    chan struct{}
+	mu             sync.Mutex
+	server         string
+	panes          map[string]record
+	revision       uint64
+	generation     uint64
+	validUntil     time.Time
+	evidence       status.Snapshot
+	snapshot       status.Snapshot
+	dirty          bool
+	renewalPending bool
+	closed         bool
+	version        uint64
+	changes        chan struct{}
 }
 
 type record struct {
@@ -113,7 +114,22 @@ func (s *Service) refreshSnapshot() error {
 	return nil
 }
 
+// PublishRenewals broadcasts pending capture-deadline extensions once. Collection
+// owners call it after a batch of Apply calls. Activity and inventory changes
+// already publish pending evidence; repeated calls and closed services are no-ops.
+func (s *Service) PublishRenewals() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed || !s.renewalPending {
+		return
+	}
+
+	s.changed()
+}
+
 func (s *Service) changed() {
+	s.renewalPending = false
 	s.invalidateSnapshot()
 	s.version++
 	close(s.changes)
@@ -126,9 +142,9 @@ func (s *Service) invalidateSnapshot() {
 	s.dirty = true
 }
 
-// Changes returns an atomic revision and broadcast signal. Inventory renewals
-// wake readers to refresh deadlines; identical reports and capture-deadline-only
-// extensions do not. Callers must read again after wakeup, not replay events.
+// Changes returns an atomic revision and broadcast signal. Inventory renewals and
+// PublishRenewals wake readers to refresh deadlines; identical reports do not.
+// Callers must read again after wakeup, not replay events.
 func (s *Service) Changes() (uint64, <-chan struct{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

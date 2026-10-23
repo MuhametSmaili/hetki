@@ -49,6 +49,7 @@ func (s *Service) Target(pane status.PaneRef, source Source) (Target, bool) {
 // and is assigned before acquisition, not when asynchronous work finishes.
 // Protocol values have no lease; screen activity carries a capture deadline.
 // Sources timestamp outcome transitions before coalescing observations.
+// Deadline-only extensions are retained until PublishRenewals or another change.
 func (s *Service) Apply(target Target, sequence uint64, value status.Value) error {
 	if err := validateEvidence(target.Source, sequence, value); err != nil {
 		return err
@@ -80,6 +81,7 @@ func (s *Service) Apply(target Target, sequence uint64, value status.Value) erro
 			s.changed()
 		} else {
 			s.invalidateSnapshot()
+			s.renewalPending = true
 		}
 		row.value = value
 	}
