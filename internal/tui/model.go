@@ -126,6 +126,7 @@ type layoutMetrics struct {
 	innerWidth   int
 	listWidth    int
 	previewWidth int
+	headerHeight int
 	middleHeight int
 	compact      bool
 	frameStyle   lipgloss.Style
@@ -149,12 +150,19 @@ func (m model) layout() layoutMetrics {
 		previewWidth = min(max(available*m.preview.width/100, minColumnWidth), available-minColumnWidth)
 		listWidth = available - previewWidth
 	}
+	contentHeight := height - frameStyle.GetVerticalFrameSize()
+	headerRows := headerHeight
+	if previewWidth > 0 && contentHeight > headerHeight+1 {
+		headerRows++
+	}
+
 	return layoutMetrics{
 		lineWidth:    lineWidth,
 		innerWidth:   innerWidth,
 		listWidth:    listWidth,
 		previewWidth: previewWidth,
-		middleHeight: max(1, height-frameStyle.GetVerticalFrameSize()-headerHeight),
+		headerHeight: headerRows,
+		middleHeight: max(1, contentHeight-headerRows),
 		compact:      listWidth < narrowListWidth,
 		frameStyle:   frameStyle,
 	}

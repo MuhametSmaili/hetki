@@ -13,14 +13,16 @@ func TestScopeHeaderKeepsLabelsFixedAndEmphasizesActiveScope(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		previewWidth int
+		headerHeight int
 		metaRow      int
 	}{
-		{name: "full-width"},
-		{name: "preview", previewWidth: 20, metaRow: 1},
+		{name: "full-width", headerHeight: 2},
+		{name: "preview", previewWidth: 20, headerHeight: 3, metaRow: 2},
+		{name: "short preview", previewWidth: 20, headerHeight: 2, metaRow: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, now := scopeFixture(t, "flat")
-			layout := layoutMetrics{listWidth: 80, previewWidth: tc.previewWidth}
+			layout := layoutMetrics{listWidth: 80, previewWidth: tc.previewWidth, headerHeight: tc.headerHeight}
 			m.mode = modeFilter
 			all := strings.Split(m.viewHeader(layout), "\n")[tc.metaRow]
 			m.scope.tracked = true
@@ -29,11 +31,12 @@ func TestScopeHeaderKeepsLabelsFixedAndEmphasizesActiveScope(t *testing.T) {
 
 			lines := strings.Split(m.viewHeader(layout), "\n")
 			tracked := lines[tc.metaRow]
+			require.Contains(t, tracked, m.theme.scopeActive.Render("Tracked"))
 			screen := uv.NewScreenBuffer(80, 1)
 			uv.NewStyledString(tracked).Draw(screen, screen.Bounds())
 
 			allText, trackedText := terminal.Sanitize(all), terminal.Sanitize(tracked)
-			require.Contains(t, terminal.Sanitize(lines[0]), "NORMAL")
+			require.NotContains(t, terminal.Sanitize(lines[0]), "press ")
 			require.Contains(t, terminal.Sanitize(lines[0]), "idle")
 			require.NotContains(t, trackedText, "Flat")
 			require.NotContains(t, trackedText, "Tree")
@@ -59,7 +62,7 @@ func TestScopeHeaderFitsNarrowWidths(t *testing.T) {
 	m.applyScope("a-very-long-project-name-to-filter", now)
 	for _, previewWidth := range []int{0, 20} {
 		for _, width := range []int{1, 10, 20, 24, 40, 80} {
-			layout := layoutMetrics{listWidth: width, previewWidth: previewWidth}
+			layout := layoutMetrics{listWidth: width, previewWidth: previewWidth, headerHeight: 3}
 
 			lines := strings.Split(m.viewHeader(layout), "\n")
 

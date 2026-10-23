@@ -9,38 +9,86 @@ import (
 )
 
 func TestSearchBarRendersModeAppropriateContent(t *testing.T) {
-	prompt := lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("2"))
+	hintStyle := lipgloss.NewStyle().Italic(true)
 	query := lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
-	got := renderSearchBar(searchBarProps{
-		Width: 32, Prompt: " / ", Meta: renderHeaderMeta(headerMetaProps{Right: "3/3"}),
-		Theme: theme{searchBox: query, searchPrompt: prompt},
+	styles := defaultTheme()
+	styles.headerHint = hintStyle
+	browse := renderSearchBar(searchBarProps{
+		Width: 32, Prompt: ">", Hint: "press / to filter", Meta: renderHeaderMeta(headerMetaProps{Right: "3/3"}),
+		Theme: styles,
 	})
-	if !strings.Contains(got, prompt.Render(" / ")) || terminal.Width(got) != 32 {
-		t.Fatalf("search shortcut header = %q", got)
+
+	if !strings.HasPrefix(browse, styles.filterPrompt.Render(">")) {
+		t.Fatalf("browse header should keep the accent prompt: %q", browse)
+	}
+	if !strings.Contains(browse, hintStyle.Render(" press / to filter")) {
+		t.Fatalf("browse hint should follow the prompt with its muted style: %q", browse)
+	}
+	if terminal.Width(browse) != 32 || !strings.HasSuffix(terminal.Sanitize(browse), "3/3") {
+		t.Fatalf("browse metadata should remain right-aligned: %q", browse)
 	}
 
 	active := renderSearchBar(searchBarProps{
-		Width: 20, Prompt: " / ", Filter: "dev", Active: true,
-		Theme: theme{searchBox: query, filterPrompt: prompt},
+		Width: 20, Prompt: ">", Filter: "dev", Active: true,
+		Theme: theme{searchBox: query, filterPrompt: defaultTheme().filterPrompt},
 	})
+
 	if !strings.Contains(active, query.Render(" dev█")) {
 		t.Fatalf("active query used the wrong styling: %q", active)
 	}
-	if plain := strings.TrimRight(terminal.Sanitize(active), " "); plain != " /  dev█" {
+	if plain := strings.TrimRight(terminal.Sanitize(active), " "); plain != "> dev█" {
 		t.Fatalf("active search header = %q", plain)
 	}
 
-	hintStyle := lipgloss.NewStyle().Italic(true)
-	centered := renderSearchBar(searchBarProps{
-		Width: 32, Hint: "press / to filter", Meta: renderHeaderMeta(headerMetaProps{Right: "3/3"}),
-		Theme: theme{headerHint: hintStyle},
+	retained := renderSearchBar(searchBarProps{
+		Width: 20, Prompt: ">", Filter: "dev", Theme: defaultTheme(),
 	})
-	if !strings.Contains(centered, hintStyle.Render("press / to filter")) {
-		t.Fatalf("centered hint did not use its style: %q", centered)
+
+	if plain := strings.TrimRight(terminal.Sanitize(retained), " "); plain != "> dev" {
+		t.Fatalf("retained query should keep its prompt without a cursor: %q", plain)
 	}
-	plain := terminal.Sanitize(centered)
-	if strings.HasPrefix(strings.TrimLeft(plain, " "), "/") || strings.Index(plain, "press / to filter") != (32-len("press / to filter"))/2 {
-		t.Fatalf("normal header = %q", plain)
+
+	emptyFilter := renderSearchBar(searchBarProps{
+		Width: 20, Prompt: ">", Hint: "press / to filter", Active: true, Theme: styles,
+	})
+
+	if plain := terminal.Sanitize(emptyFilter); plain != "> █" {
+		t.Fatalf("empty filter should show its cursor, not the hint: %q", plain)
+	}
+}
+
+func TestHeaderRulePadsItsLabelByOneCell(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		width int
+		label string
+		want  string
+	}{
+		{name: "count", width: 8, label: "6", want: "6 ──────"},
+		{name: "filtered count", width: 8, label: "2/6", want: "2/6 ────"},
+		{name: "padded label", width: 8, label: " 6 ", want: "6 ──────"},
+		{name: "clip ends on whitespace", width: 4, label: "a long notice", want: "a ──"},
+		{name: "empty count", width: 8, want: "────────"},
+		{name: "wide label", width: 8, label: "中", want: "中 ─────"},
+		{name: "label fills width", width: 4, label: "1234", want: "12 ─"},
+		{name: "clipped label", width: 3, label: "a long notice", want: "a ─"},
+		{name: "wide label clipped at glyph boundary", width: 4, label: "中x", want: "中 ─"},
+		{name: "one cell", width: 1, label: "6", want: "─"},
+		{name: "two cells", width: 2, label: "6", want: "──"},
+		{name: "glyph cannot fit beside separator", width: 3, label: "中", want: "───"},
+		{name: "sanitized label", width: 8, label: "6\x1b]0;owned\a", want: "6 ──────"},
+		{name: "zero width"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			line := renderHeaderRule(tc.width, tc.label, defaultTheme())
+
+			if plain := terminal.Sanitize(line); plain != tc.want {
+				t.Fatalf("header rule = %q, want %q", plain, tc.want)
+			}
+			if actual := terminal.Width(line); actual != tc.width {
+				t.Fatalf("header rule width = %d, want %d", actual, tc.width)
+			}
+		})
 	}
 }
 
@@ -69,8 +117,10 @@ func TestHeadersAndModalsSanitizeAndFit(t *testing.T) {
 
 	for width := range 21 {
 		rendered := []string{
+			renderHeaderRule(width, unsafe, defaultTheme()),
+			renderSearchBar(searchBarProps{Width: width, Prompt: ">", Hint: unsafe, Theme: defaultTheme()}),
 			renderSearchBar(searchBarProps{
-				Width: width, Filter: unsafe, Meta: renderHeaderMeta(headerMetaProps{Right: unsafe}),
+				Width: width, Filter: unsafe, Hint: unsafe, Meta: renderHeaderMeta(headerMetaProps{Right: unsafe}),
 			}),
 			renderInputModal(inputModalProps{LineWidth: width, Title: "INPUT", Prompt: unsafe, Value: unsafe, Theme: theme{modal: border}}),
 			renderConfirmModal(confirmModalProps{LineWidth: width, Title: "CONFIRM", Body: unsafe, Theme: theme{modal: border}}),

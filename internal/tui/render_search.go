@@ -28,14 +28,19 @@ func renderSearchBar(props searchBarProps) string {
 	if props.Width <= 0 {
 		return ""
 	}
-	search := strings.TrimSpace(terminal.Sanitize(props.Filter))
+	content := strings.TrimSpace(terminal.Sanitize(props.Filter))
+	textStyle := props.Theme.searchBox
+	if !props.Active && content == "" {
+		content = strings.TrimSpace(terminal.Sanitize(props.Hint))
+		textStyle = props.Theme.headerHint
+	}
 	text := ""
-	if search != "" {
-		text = " " + search
+	if content != "" {
+		text = " " + content
 	}
 	if props.Active {
 		text += "█"
-		if search == "" {
+		if content == "" {
 			text = " " + text
 		}
 	}
@@ -49,26 +54,13 @@ func renderSearchBar(props searchBarProps) string {
 	if rightW > 0 {
 		leftW -= rightW + 1
 	}
-	promptStyle := props.Theme.searchPrompt
-	if props.Active {
-		promptStyle = props.Theme.filterPrompt
-	}
-	prompt := promptStyle.Render(terminal.Sanitize(props.Prompt))
+	prompt := props.Theme.filterPrompt.Render(terminal.Sanitize(props.Prompt))
 	left := terminal.Cut(prompt, 0, leftW)
 	if promptW := terminal.Width(prompt); leftW > promptW {
 		text = truncateWidth(text, leftW-promptW)
-		left = prompt + props.Theme.searchBox.Render(text)
+		left = prompt + textStyle.Render(text)
 	}
 	leftW = terminal.Width(left)
-	rightX := props.Width - rightW
-	hintText := strings.TrimSpace(terminal.Sanitize(props.Hint))
-	hint := props.Theme.headerHint.Render(hintText)
-	hintW := terminal.Width(hint)
-	hintX := (props.Width - hintW) / 2
-	if hintW > 0 && hintX > leftW && hintX+hintW < rightX {
-		return left + strings.Repeat(" ", hintX-leftW) + hint +
-			strings.Repeat(" ", rightX-hintX-hintW) + right
-	}
 	if rightW == 0 {
 		return left
 	}
@@ -79,13 +71,26 @@ func renderSearchBar(props searchBarProps) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
+func renderHeaderRule(width int, label string, styles theme) string {
+	if width <= 0 {
+		return ""
+	}
+	label = strings.TrimSpace(truncateWidth(terminal.Sanitize(label), max(0, width-2)))
+	if label == "" {
+		return styles.sectionLine.Render(strings.Repeat("─", width))
+	}
+
+	labelWidth := terminal.Width(label)
+	return styles.meta.Render(label) + " " + styles.sectionLine.Render(strings.Repeat("─", width-labelWidth-1))
+}
+
 func renderHeaderMeta(props headerMetaProps) string {
 	var parts []string
 	if props.Scope != "" {
 		for _, scope := range []string{"All", "Tracked"} {
 			style := props.Theme.meta
 			if props.Scope == scope {
-				style = props.Theme.searchBox.Underline(true)
+				style = props.Theme.scopeActive
 			}
 			parts = append(parts, style.Render(scope))
 		}

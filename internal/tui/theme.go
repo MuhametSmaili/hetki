@@ -3,25 +3,24 @@ package tui
 import "charm.land/lipgloss/v2"
 
 const (
-	colorText             = "252" // #d0d0d0 — primary text
-	colorMuted            = "245" // #8a8a8a — counts and modal hints
-	colorHeaderHint       = "238" // #444444 — low-priority header instructions
-	colorSecondary        = "245" // #8a8a8a — readable paths
-	colorEmphasis         = "255" // #eeeeee — focused text
-	colorActive           = "217" // #ffafaf — warm pink
-	colorAccent           = "110" // #87afd7 — soft blue
-	colorBlocked          = "214"
-	colorIdle             = "114"
-	colorSuccess          = "78"
-	colorError            = "203"
-	colorSelection        = "238" // #444444 — quiet selection
-	colorPromptText       = "235" // #262626 — dark prompt text
-	colorPromptBackground = "181" // #d7afaf — dusty rose
-	colorDivider          = "237" // #3a3a3a — subtle separators
+	colorText       = "252" // #d0d0d0 — primary text
+	colorMuted      = "245" // #8a8a8a — counts and modal hints
+	colorHeaderHint = "238" // #444444 — low-priority header instructions
+	colorSecondary  = "245" // #8a8a8a — readable paths
+	colorEmphasis   = "255" // #eeeeee — focused text
+	colorActive     = "217" // #ffafaf — warm pink
+	colorAccent     = "110" // #87afd7 — soft blue
+	colorBlocked    = "214"
+	colorIdle       = "114"
+	colorSuccess    = "78"
+	colorError      = "203"
+	colorSelection  = "238" // #444444 — quiet selection
+	colorDivider    = "237" // #3a3a3a — subtle separators
 )
 
 type theme struct {
 	meta              lipgloss.Style
+	scopeActive       lipgloss.Style
 	searchBox         lipgloss.Style
 	headerHint        lipgloss.Style
 	row               lipgloss.Style
@@ -29,7 +28,6 @@ type theme struct {
 	secondarySelected lipgloss.Style
 	activeRow         lipgloss.Style
 	selectedRow       lipgloss.Style
-	searchPrompt      lipgloss.Style
 	filterPrompt      lipgloss.Style
 	menuKey           lipgloss.Style
 	sectionLine       lipgloss.Style
@@ -60,6 +58,7 @@ func defaultTheme() theme {
 	border := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(colorAccent))
 	return theme{
 		meta:              muted,
+		scopeActive:       lipgloss.NewStyle().Foreground(lipgloss.Color(colorActive)).Underline(true),
 		searchBox:         emphasis,
 		headerHint:        lipgloss.NewStyle().Foreground(lipgloss.Color(colorHeaderHint)).Italic(true),
 		row:               text,
@@ -67,7 +66,6 @@ func defaultTheme() theme {
 		secondarySelected: emphasis.Inherit(selection).Italic(true),
 		activeRow:         lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorActive)),
 		selectedRow:       selection,
-		searchPrompt:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorPromptText)).Background(lipgloss.Color(colorPromptBackground)),
 		filterPrompt:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorActive)),
 		menuKey:           accent,
 		sectionLine:       lipgloss.NewStyle().Foreground(lipgloss.Color(colorDivider)),

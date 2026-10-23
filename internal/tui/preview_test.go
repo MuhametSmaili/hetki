@@ -90,8 +90,8 @@ func TestPreviewReflowsStackedFlatList(t *testing.T) {
 
 			m, _ = updateModel(t, m, previewKey())
 
-			require.Equal(t, 10, m.items.Height())
-			require.Len(t, m.items.VisibleRows(), 10)
+			require.Equal(t, 9, m.items.Height())
+			require.Len(t, m.items.VisibleRows(), 9)
 			require.Equal(t, snapshot.Items[15].ID, selectedNodeID(m))
 			require.Contains(t, visibleIDs(m), selectedNodeID(m))
 			require.LessOrEqual(t, lipgloss.Height(m.View().Content), m.height)
@@ -99,14 +99,14 @@ func TestPreviewReflowsStackedFlatList(t *testing.T) {
 
 			m, _ = updateModel(t, m, specialKey(tea.KeyPgDown))
 
-			require.Equal(t, snapshot.Items[25].ID, selectedNodeID(m))
+			require.Equal(t, snapshot.Items[24].ID, selectedNodeID(m))
 			require.Contains(t, visibleIDs(m), selectedNodeID(m))
 
 			m, _ = updateModel(t, m, previewKey())
 
 			require.Equal(t, 20, m.items.Height())
 			require.Len(t, m.items.VisibleRows(), 20)
-			require.Equal(t, snapshot.Items[25].ID, selectedNodeID(m))
+			require.Equal(t, snapshot.Items[24].ID, selectedNodeID(m))
 			require.LessOrEqual(t, lipgloss.Height(m.View().Content), m.height)
 		})
 	}
@@ -320,35 +320,49 @@ func TestPreviewEndsAtLastNonblankRow(t *testing.T) {
 	}
 }
 
-func TestPreviewLayoutFitsAndKeepsListHeight(t *testing.T) {
+func checkPreviewLayout(t *testing.T, m model) {
+	t.Helper()
+	m = m.reflow()
+	listHeight := m.items.Height()
+	m.readPreview = func(context.Context, list.ItemID) (string, error) {
+		return strings.Repeat("\x1b[41m中👨‍👩‍👧é "+strings.Repeat("x", 300)+"\n", 100), nil
+	}
+
+	m, cmd := updateModel(t, m, previewKey())
+	if cmd != nil {
+		m, _ = updateModel(t, m, cmd())
+	}
+
+	layout := m.layout()
+	expectedHeight := listHeight
+	if layout.previewWidth > 0 && m.height >= 4 {
+		expectedHeight = max(1, listHeight-1)
+	}
+	require.Equal(t, expectedHeight, m.items.Height())
+	if layout.previewWidth > 0 {
+		require.Equal(t, layout.innerWidth, layout.listWidth+3+layout.previewWidth)
+		require.GreaterOrEqual(t, layout.previewWidth, 20)
+		require.GreaterOrEqual(t, layout.listWidth, 20)
+	} else {
+		require.Nil(t, cmd)
+	}
+	content := m.View().Content
+	require.LessOrEqual(t, lipgloss.Height(content), max(3, m.height))
+	for _, line := range strings.Split(content, "\n") {
+		require.LessOrEqual(t, terminal.Width(line), m.width)
+	}
+}
+
+func TestPreviewLayoutFitsAndReservesHeaderRule(t *testing.T) {
 	for _, width := range []int{1, 2, 3, 20, 48, 60, 120, 200} {
 		for _, height := range []int{1, 4, 12} {
 			for _, percent := range []int{1, 50, DefaultPreviewWidth, 99} {
-				m := previewModel(t)
-				m.width, m.height, m.preview.width = width, height, percent
-				m = m.reflow()
-				listHeight := m.items.Height()
-				m.readPreview = func(context.Context, list.ItemID) (string, error) {
-					return strings.Repeat("\x1b[41m中👨‍👩‍👧é "+strings.Repeat("x", 300)+"\n", 100), nil
-				}
-				m, cmd := updateModel(t, m, previewKey())
-				if cmd != nil {
-					m, _ = updateModel(t, m, cmd())
-				}
-				require.Equal(t, listHeight, m.items.Height())
-				layout := m.layout()
-				if layout.previewWidth > 0 {
-					require.Equal(t, layout.innerWidth, layout.listWidth+3+layout.previewWidth)
-					require.GreaterOrEqual(t, layout.previewWidth, 20)
-					require.GreaterOrEqual(t, layout.listWidth, 20)
-				} else {
-					require.Nil(t, cmd)
-				}
-				content := m.View().Content
-				require.LessOrEqual(t, lipgloss.Height(content), max(3, height))
-				for _, line := range strings.Split(content, "\n") {
-					require.LessOrEqual(t, terminal.Width(line), width, "width %d height %d: %q", width, height, line)
-				}
+				t.Run(fmt.Sprintf("width %d/height %d/share %d", width, height, percent), func(t *testing.T) {
+					m := previewModel(t)
+					m.width, m.height, m.preview.width = width, height, percent
+
+					checkPreviewLayout(t, m)
+				})
 			}
 		}
 	}

@@ -17,10 +17,9 @@ func (m model) View() tea.View {
 	content := lipgloss.JoinVertical(lipgloss.Left, header, body)
 
 	if layout.previewWidth > 0 {
-		height := layout.middleHeight + headerHeight
+		height := layout.middleHeight + layout.headerHeight
 		left := lipgloss.NewStyle().Width(layout.listWidth).Render(content)
-		divider := m.theme.sectionLine.Render(strings.TrimSuffix(strings.Repeat(" │ \n", height), "\n"))
-		content = lipgloss.JoinHorizontal(lipgloss.Top, left, divider, m.viewPreview(layout.previewWidth, height))
+		content = lipgloss.JoinHorizontal(lipgloss.Top, left, m.viewDivider(layout), m.viewPreview(layout.previewWidth, height))
 	}
 	rendered := layout.frameStyle.Width(layout.lineWidth).Render(content)
 
@@ -46,12 +45,12 @@ func (m model) viewHeader(layout layoutMetrics) string {
 	}
 
 	total := len(m.items.Snapshot().Items)
-	meta := renderHeaderMeta(headerMetaProps{
+	meta := headerMetaProps{
 		Scope:      scope,
 		Right:      headerRight(m),
 		RightWidth: len(fmt.Sprintf("%d/%d", total, total)),
 		Theme:      m.theme,
-	})
+	}
 	query := searchBarProps{
 		Width:  width,
 		Filter: m.items.Query(),
@@ -61,12 +60,27 @@ func (m model) viewHeader(layout layoutMetrics) string {
 		Theme:  m.theme,
 	}
 	if layout.previewWidth == 0 {
-		query.Meta = meta
-		return renderSearchBar(query) + "\n" + m.theme.sectionLine.Render(strings.Repeat("─", width))
+		query.Meta = renderHeaderMeta(meta)
+		return renderSearchBar(query) + "\n" + renderHeaderRule(width, "", m.theme)
 	}
 
-	metaLine := lipgloss.PlaceHorizontal(width, lipgloss.Right, truncateWidth(meta, width))
+	if layout.headerHeight > headerHeight {
+		scopes := renderHeaderMeta(headerMetaProps{Scope: scope, Theme: m.theme})
+		scopeLine := lipgloss.PlaceHorizontal(width, lipgloss.Right, truncateWidth(scopes, width))
+		return renderSearchBar(query) + "\n" + renderHeaderRule(width, meta.Right, m.theme) + "\n" + scopeLine
+	}
+
+	metaLine := lipgloss.PlaceHorizontal(width, lipgloss.Right, truncateWidth(renderHeaderMeta(meta), width))
 	return renderSearchBar(query) + "\n" + metaLine
+}
+
+func (m model) viewDivider(layout layoutMetrics) string {
+	divider := strings.Repeat(" │ \n", headerHeight)
+	if layout.headerHeight > headerHeight {
+		divider = " │ \n─┤ \n │ \n"
+	}
+	divider += strings.Repeat(" │ \n", layout.middleHeight)
+	return m.theme.sectionLine.Render(strings.TrimSuffix(divider, "\n"))
 }
 
 func (m model) viewList(layout layoutMetrics) string {
@@ -144,18 +158,14 @@ func menuControls(keys KeyMap) string {
 }
 
 func headerPrompt(m model) string {
-	switch m.mode {
-	case modeBrowse:
-		return " NORMAL "
-	case modeFilter:
+	if m.mode == modeBrowse || m.mode == modeFilter {
 		return ">"
-	default:
-		return ""
 	}
+	return ""
 }
 
 func headerHint(m model) string {
-	if m.mode != modeBrowse {
+	if m.mode != modeBrowse || strings.TrimSpace(m.items.Query()) != "" {
 		return ""
 	}
 	if bound := m.keys.Keys(KeyModeNormal, ActionFilter); len(bound) > 0 {

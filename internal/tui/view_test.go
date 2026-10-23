@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +26,7 @@ func TestHeaderTracksMode(t *testing.T) {
 		wantPrompt string
 		wantHint   string
 	}{
-		{mode: modeBrowse, wantPrompt: " NORMAL ", wantHint: "press / to filter"},
+		{mode: modeBrowse, wantPrompt: ">", wantHint: "press / to filter"},
 		{mode: modeFilter, wantPrompt: ">"},
 		{mode: modeMenu},
 	} {
@@ -34,9 +36,66 @@ func TestHeaderTracksMode(t *testing.T) {
 	}
 
 	m = newModel(viewSnapshot(), nil)
-	m.mode = modeFilter
+	m.mode = modeBrowse
 	m.items.SetQuery("dev")
 	require.Empty(t, headerHint(m))
+	require.Equal(t, ">", headerPrompt(m))
+}
+
+func TestBrowseHeaderShowsHintOnlyWithoutQuery(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		previewWidth int
+		query        string
+		wantPrefix   string
+	}{
+		{name: "full-width empty", wantPrefix: "> press / to filter"},
+		{name: "preview empty", previewWidth: 20, wantPrefix: "> press / to filter"},
+		{name: "full-width retained query", query: "editor", wantPrefix: "> editor"},
+		{name: "preview retained query", previewWidth: 20, query: "editor", wantPrefix: "> editor"},
+		{name: "whitespace query", query: "  ", wantPrefix: "> press / to filter"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := browseModel(newModel(viewSnapshot(), nil))
+			m.items.SetQuery(tc.query)
+			layout := layoutMetrics{listWidth: 80, previewWidth: tc.previewWidth, headerHeight: 3}
+
+			header := m.viewHeader(layout)
+
+			first := strings.Split(header, "\n")[0]
+			plain := strings.TrimSpace(terminal.Sanitize(first))
+			require.True(t, strings.HasPrefix(plain, tc.wantPrefix))
+			require.NotContains(t, plain, "NORMAL")
+			if strings.TrimSpace(tc.query) != "" {
+				require.NotContains(t, plain, "press ")
+			}
+		})
+	}
+}
+
+func TestLeavingFilterModeKeepsNarrowQueryWithoutHint(t *testing.T) {
+	for _, key := range []string{"/", "ctrl+f"} {
+		t.Run(key, func(t *testing.T) {
+			keys, err := ResolveKeyMap(map[KeyMode][]Binding{
+				KeyModeNormal: {{Action: ActionFilter, Keys: []string{key}}},
+				KeyModeFilter: {{Action: ActionCancel, Keys: []string{"esc"}}},
+			})
+			require.NoError(t, err)
+			m, err := newModelWithKeys(viewSnapshot(), nil, keys)
+			require.NoError(t, err)
+			m.width, m.height, m.preview.visible = 48, 12, true
+			m.items.SetQuery("editor")
+			m = m.reflow()
+
+			m, _ = updateModel(t, m, specialKey(tea.KeyEscape))
+
+			require.Equal(t, modeBrowse, m.mode)
+			require.Equal(t, "editor", m.items.Query())
+			require.Equal(t, 20, m.layout().listWidth)
+			first := strings.Split(m.viewHeader(m.layout()), "\n")[0]
+			require.Equal(t, "> editor", strings.TrimSpace(terminal.Sanitize(first)))
+		})
+	}
 }
 
 func TestFilterHeaderUsesDedicatedPromptStyle(t *testing.T) {
