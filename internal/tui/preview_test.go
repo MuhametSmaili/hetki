@@ -90,7 +90,7 @@ func TestPreviewReflowsStackedFlatList(t *testing.T) {
 
 			m, _ = updateModel(t, m, previewKey())
 
-			require.Equal(t, 9, m.items.Height())
+			require.Equal(t, 19, m.items.Height())
 			require.Len(t, m.items.VisibleRows(), 9)
 			require.Equal(t, snapshot.Items[15].ID, selectedNodeID(m))
 			require.Contains(t, visibleIDs(m), selectedNodeID(m))

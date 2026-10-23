@@ -37,6 +37,9 @@ func renderList(props listProps) []string {
 	if len(props.Rows) == 0 {
 		return []string{props.Theme.meta.Render(truncateWidth(props.EmptyText, props.Width))}
 	}
+	if usesStackedRows(props) {
+		return renderStackedList(props)
+	}
 	if props.Rows[0].Context != "" {
 		return renderColumnList(props)
 	}

@@ -25,6 +25,7 @@ type Model struct {
 	cursor    int
 	offset    int
 	height    int
+	rowHeight func(Row) int
 	shownRoot int
 	query     string
 	included  map[ItemID]struct{}
@@ -63,7 +64,7 @@ func (m Model) Selected() (Row, bool) {
 
 func (m Model) VisibleRows() []Row {
 	start := m.offset
-	end := min(len(m.rows), start+m.height)
+	end := start + m.rowsThatFit(start, 1)
 	if start < 0 || start >= end {
 		return nil
 	}
@@ -116,8 +117,7 @@ func (m *Model) SetFilter(query string, included map[ItemID]struct{}) {
 }
 
 func (m *Model) Resize(height int) {
-	m.height = max(0, height)
-	m.reflow()
+	m.ResizeRows(height, nil)
 }
 
 func (m *Model) Move(delta int) {
@@ -136,7 +136,16 @@ func (m *Model) Bottom() {
 }
 
 func (m *Model) Page(delta int) {
-	m.Move(delta * m.height)
+	if m.rowHeight == nil {
+		m.Move(delta * m.height)
+		return
+	}
+
+	direction := 1
+	if delta < 0 {
+		direction = -1
+	}
+	m.Move(delta * m.rowsThatFit(m.cursor, direction))
 }
 
 func (m *Model) Select(id ItemID) bool {
@@ -266,6 +275,11 @@ func (m *Model) applyFilter() {
 
 func (m *Model) reflow() {
 	m.cursor = clampCursor(m.cursor, len(m.rows))
+	if m.rowHeight != nil {
+		m.reflowRows()
+		return
+	}
+
 	m.offset = clampOffset(m.offset, len(m.rows), m.height)
 	m.offset = ensureCursorVisible(m.offset, m.cursor, len(m.rows), m.height)
 }

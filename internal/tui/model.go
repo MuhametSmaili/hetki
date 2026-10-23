@@ -115,8 +115,20 @@ func newModelWithStartMode(snapshot list.Snapshot, dispatch DispatchFunc, keys K
 }
 
 func (m model) reflow() model {
-	m.items.Resize(m.availableListHeight())
+	layout := m.layout()
+	if layout.listWidth < narrowListWidth && layout.middleHeight > 1 {
+		m.items.ResizeRows(layout.middleHeight, stackedRowHeight)
+	} else {
+		m.items.Resize(layout.middleHeight)
+	}
 	return m
+}
+
+func stackedRowHeight(row list.Row) int {
+	if row.Item.Context != "" || row.Depth > 0 {
+		return 2
+	}
+	return 1
 }
 
 const headerHeight = 2
@@ -166,23 +178,6 @@ func (m model) layout() layoutMetrics {
 		compact:      listWidth < narrowListWidth,
 		frameStyle:   frameStyle,
 	}
-}
-
-func (m model) availableListHeight() int {
-	layout := m.layout()
-	if !m.stackedList(layout) {
-		return layout.middleHeight
-	}
-	return layout.middleHeight / 2
-}
-
-// stackedList reports whether the current snapshot renders as a flat list of
-// two-line rows. Flat projection items carry a session context; tree rows do
-// not, so the first root item distinguishes the two layouts.
-func (m model) stackedList(layout layoutMetrics) bool {
-	snapshot := m.items.Snapshot()
-	return len(snapshot.Items) > 0 && snapshot.Items[0].Context != "" &&
-		layout.listWidth < narrowListWidth && layout.middleHeight != 1
 }
 
 func (m model) selectedRow() (list.Row, bool) { return m.items.Selected() }

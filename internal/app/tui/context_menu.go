@@ -7,14 +7,12 @@ import (
 )
 
 func contextualMenu(item liveItem) (ui.ItemMenu, error) {
-	var title, openLabel string
+	var openLabel string
 	switch item.Kind {
 	case liveSession:
-		title, openLabel = "SESSION ACTIONS", "Open session"
-	case liveWindow:
-		title, openLabel = "WINDOW ACTIONS", "Open window"
-	case liveDestination:
-		title, openLabel = "PANE ACTIONS", "Open pane"
+		openLabel = "Open session"
+	case liveWindow, liveDestination:
+		openLabel = "Open pane"
 	default:
 		return ui.ItemMenu{}, fmt.Errorf("item %q has an unknown kind", item.ID)
 	}
@@ -43,5 +41,5 @@ func contextualMenu(item liveItem) (ui.ItemMenu, error) {
 		ui.MenuEntry{Action: ui.ActionRefresh, Label: "Refresh"},
 		ui.MenuEntry{Action: ui.ActionToggleProjection, Label: "Toggle projection"},
 	)
-	return ui.ItemMenu{Title: title, Entries: entries}, nil
+	return ui.ItemMenu{Title: "ACTIONS", Entries: entries}, nil
 }

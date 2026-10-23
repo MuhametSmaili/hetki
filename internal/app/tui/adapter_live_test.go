@@ -291,12 +291,11 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		id         list.ItemID
-		title      string
 		projection projectionKind
 		entries    []ui.MenuEntry
 	}{
 		{
-			name: "tree session", id: sessionItemID("$1"), title: "SESSION ACTIONS", projection: projectionTree,
+			name: "tree session", id: sessionItemID("$1"), projection: projectionTree,
 			entries: []ui.MenuEntry{
 				{Action: ui.ActionOpen, Label: "Open session"},
 				{Action: ui.ActionRenameSession, Label: "Rename session"},
@@ -308,9 +307,9 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 			},
 		},
 		{
-			name: "tree window", id: windowItemID("$1", "@1"), title: "WINDOW ACTIONS", projection: projectionTree,
+			name: "tree window", id: windowItemID("$1", "@1"), projection: projectionTree,
 			entries: []ui.MenuEntry{
-				{Action: ui.ActionOpen, Label: "Open window"},
+				{Action: ui.ActionOpen, Label: "Open pane"},
 				{Action: ui.ActionRename, Label: "Rename window"},
 				{Action: ui.ActionRenameSession, Label: "Rename session"},
 				{Action: ui.ActionCreateWindow, Label: "New window"},
@@ -322,7 +321,7 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 			},
 		},
 		{
-			name: "flat destination", id: destinationID, title: "PANE ACTIONS", projection: projectionFlat,
+			name: "flat destination", id: destinationID, projection: projectionFlat,
 			entries: []ui.MenuEntry{
 				{Action: ui.ActionOpen, Label: "Open pane"},
 				{Action: ui.ActionRename, Label: "Rename window"},
@@ -343,7 +342,7 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 			result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionContextMenu, ItemID: test.id})
 			require.NoError(t, err)
 			require.NotNil(t, result.Menu)
-			assert.Equal(t, test.title, result.Menu.Title)
+			assert.Equal(t, "ACTIONS", result.Menu.Title)
 			assert.Equal(t, test.entries, result.Menu.Entries)
 		})
 	}

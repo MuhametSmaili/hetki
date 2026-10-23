@@ -86,9 +86,8 @@ func TestViewAlignsColumnsAcrossStatusAndFilterChanges(t *testing.T) {
 
 			lines := strings.Split(m.viewList(layoutMetrics{listWidth: test.width}), "\n")
 
-			// Narrow flat rows stack; the second row's detail line is line 3.
-			detail := terminal.Sanitize(lines[3])
-			require.Equal(t, test.want, terminal.Cut(detail, test.width-terminal.Width(test.want), test.width))
+			identity := terminal.Sanitize(lines[2])
+			require.Equal(t, test.want, terminal.Cut(identity, test.width-terminal.Width(test.want), test.width))
 		})
 	}
 }
@@ -111,21 +110,15 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 			}
 
 			if width > 0 {
-				last := terminal.Sanitize(lines[len(lines)-1])
-				require.Equal(t, "?", terminal.Cut(last, width-1, width))
+				identity := terminal.Sanitize(lines[0])
+				require.Equal(t, "?", terminal.Cut(identity, width-1, width))
 			}
 
 			for _, line := range lines {
 				require.Equal(t, width, terminal.Width(line))
 				require.NotContains(t, line, "\x1b]")
 				require.False(t, strings.ContainsAny(line, "\n\r\t"))
-				screen := lipgloss.NewCanvas(width, 1)
-				uv.NewStyledString(line).Draw(screen, screen.Bounds())
-				for x := 0; x < width; {
-					cell := screen.CellAt(x, 0)
-					require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg, "cell %d", x)
-					x += max(1, cell.Width)
-				}
+				requireSelectedBackground(t, line, width, styles)
 			}
 		})
 	}
@@ -159,12 +152,12 @@ func TestFlatListKeepsStatusAtNarrowWidths(t *testing.T) {
 
 				lines := renderList(listProps{Width: width, Height: test.height, Rows: []rowProps{row}, Theme: defaultTheme()})
 
-				last := terminal.Sanitize(lines[len(lines)-1])
-				require.Equal(t, width, terminal.Width(last))
-				require.Equal(t, "?", terminal.Cut(last, width-1, width))
+				identity := terminal.Sanitize(lines[0])
+				require.Equal(t, width, terminal.Width(identity))
+				require.Equal(t, "?", terminal.Cut(identity, width-1, width))
 				if test.height == 2 {
 					prefix := terminal.Cut("│ ", 0, width)
-					require.True(t, strings.HasPrefix(terminal.Sanitize(lines[0]), prefix))
+					require.True(t, strings.HasPrefix(terminal.Sanitize(lines[1]), prefix))
 				} else if width >= 8 {
 					require.Equal(t, "│ ", terminal.Cut(terminal.Sanitize(lines[0]), 0, 2))
 				}
@@ -184,17 +177,19 @@ func TestStackedListKeepsIdentityAndDetailLines(t *testing.T) {
 	require.Len(t, stacked, 4)
 
 	identity, detail := terminal.Sanitize(stacked[0]), terminal.Sanitize(stacked[1])
-	require.Equal(t, "│ hetki › tui  ·1", identity)
+	require.True(t, strings.HasPrefix(identity, "│ hetki › tui  ·1"))
+	require.True(t, strings.HasSuffix(identity, "opencode  "))
+	require.NotContains(t, identity, "~/Projects")
 	require.Equal(t, "│ ", terminal.Cut(detail, 0, 2))
 	require.Contains(t, detail, "~/Projects/hetki/internal/tui")
-	require.True(t, strings.HasSuffix(detail, "opencode  "))
+	require.NotContains(t, detail, "opencode")
 
-	selected := terminal.Sanitize(stacked[3])
+	selected := terminal.Sanitize(stacked[2])
 	require.True(t, strings.HasSuffix(selected, "go test ?"))
 	require.Equal(t, narrowListWidth-1, terminal.Width(selected))
 
 	tight := renderList(listProps{Width: 30, Rows: rows, Theme: styles})
-	require.Contains(t, terminal.Sanitize(tight[1]), "~/.../tui")
+	require.Contains(t, terminal.Sanitize(tight[1]), "~/.../hetki/internal/tui")
 
 	wide := renderList(listProps{Width: narrowListWidth, Rows: rows, Theme: styles})
 	require.Len(t, wide, 2)
@@ -216,7 +211,7 @@ func TestFlatListFitsShortViewport(t *testing.T) {
 			layout := m.layout()
 			require.LessOrEqual(t, lipgloss.Height(m.View().Content), height)
 			require.LessOrEqual(t, lipgloss.Height(m.viewList(layout)), layout.middleHeight)
-			require.Equal(t, m.availableListHeight(), m.items.Cursor())
+			require.Equal(t, max(1, layout.middleHeight/2), m.items.Cursor())
 			require.Contains(t, visibleIDs(m), selectedNodeID(m))
 			if layout.middleHeight == 1 {
 				require.Contains(t, terminal.Sanitize(m.viewList(layout)), "hetki")
@@ -240,8 +235,7 @@ func TestStackedFlatListHalvesVisibleRows(t *testing.T) {
 	m = m.reflow()
 
 	layout := m.layout()
-	require.True(t, m.stackedList(layout))
-	require.Equal(t, 10, m.availableListHeight())
+	require.Equal(t, 20, m.items.Height())
 	require.Len(t, m.items.VisibleRows(), 10)
 	require.Len(t, strings.Split(m.viewList(layout), "\n"), 20)
 
@@ -249,7 +243,6 @@ func TestStackedFlatListHalvesVisibleRows(t *testing.T) {
 	tree.width, tree.height = 40, 24
 	tree = tree.reflow()
 
-	require.False(t, tree.stackedList(tree.layout()))
-	require.Equal(t, 20, tree.availableListHeight())
+	require.Equal(t, 20, tree.items.Height())
 	require.Len(t, tree.items.VisibleRows(), 12)
 }

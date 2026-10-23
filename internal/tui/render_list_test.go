@@ -124,18 +124,18 @@ func TestRenderListDefaultThemeStylesEveryRowShapeTheSame(t *testing.T) {
 	}
 	for _, shape := range shapes {
 		t.Run(shape.name, func(t *testing.T) {
-			if got := renderList(listProps{Width: width, Rows: []rowProps{shape.row}, Theme: theme})[0]; got != theme.row.Render(shape.normal) {
+			if got := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{shape.row}, Theme: theme})[0]; got != theme.row.Render(shape.normal) {
 				t.Fatalf("normal row style = %q", got)
 			}
 			active := shape.row
 			active.Active = true
-			if got := renderList(listProps{Width: width, Rows: []rowProps{active}, Theme: theme})[0]; got != theme.activeRow.Render(shape.active) {
+			if got := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{active}, Theme: theme})[0]; got != theme.activeRow.Render(shape.active) {
 				t.Fatalf("active row style = %q", got)
 			}
 			selected := shape.row
 			selected.Selected = true
 			want := theme.selectedRow.Inherit(theme.row).Width(width).Render(shape.selected)
-			if got := renderList(listProps{Width: width, Rows: []rowProps{selected}, Theme: theme})[0]; got != want {
+			if got := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{selected}, Theme: theme})[0]; got != want {
 				t.Fatalf("selected row style = %q, want %q", got, want)
 			}
 		})
