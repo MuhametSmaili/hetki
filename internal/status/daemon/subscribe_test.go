@@ -245,6 +245,34 @@ func TestSubscriptionAppliesRenewalsToTheLastView(t *testing.T) {
 	require.Equal(t, view.Locations, second.Locations)
 }
 
+func TestSubscriptionViewsOwnTheirLocations(t *testing.T) {
+	c := fixtureClient(t, "subscription-locations")
+	view := testView(t, c.server, status.Working)
+	view.Locations = append(view.Locations, Location{Session: "$2", Window: "@1", Pane: "%1"})
+	source := newChangingSource(view, nil)
+	startFixture(t, c, liveBinding(c.server), source.factory())
+	subscription := subscribe(t, c)
+	first, err := subscription.Next()
+	require.NoError(t, err)
+
+	first.Locations[0].Window = "@caller"
+	renewed := view
+	renewed.Lease = view.Lease.Add(time.Minute)
+	source.set(renewed, nil)
+	second, err := subscription.Next()
+
+	require.NoError(t, err)
+	require.Equal(t, view.Locations, second.Locations)
+
+	second.Locations[1].Session = "$caller"
+	renewed.Lease = renewed.Lease.Add(time.Minute)
+	source.set(renewed, nil)
+	third, err := subscription.Next()
+
+	require.NoError(t, err)
+	require.Equal(t, view.Locations, third.Locations)
+}
+
 func TestSubscriptionRejectsInvalidRenewals(t *testing.T) {
 	cases := map[string][]reply{
 		"renewal before a full view": {{Renewal: true}},

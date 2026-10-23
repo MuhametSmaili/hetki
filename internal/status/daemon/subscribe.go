@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"syscall"
 	"time"
 )
@@ -82,6 +83,7 @@ func (s *Subscription) Next() (View, error) {
 
 	s.last, s.hasLast = view, true
 	view.Values = view.Values.Leased(view.Lease)
+	view.Locations = slices.Clone(view.Locations)
 	return view, nil
 }
 
