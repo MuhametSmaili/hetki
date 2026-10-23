@@ -28,6 +28,7 @@ type liveItem struct {
 	WindowActive bool
 	PaneActive   bool
 	PaneIndex    int
+	OpenPaneID   string
 	Last         bool
 }
 

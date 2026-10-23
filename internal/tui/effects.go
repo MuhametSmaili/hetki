@@ -179,7 +179,12 @@ func (m model) startAction(action ActionID, itemID list.ItemID) (tea.Model, tea.
 	case ActionRefresh:
 		status = statusRefreshing
 	}
-	return m.startRequest(ActionRequest{ActionID: action, ItemID: itemID}, status)
+
+	request := ActionRequest{ActionID: action, ItemID: itemID}
+	if action == ActionOpen && len(m.paneStatus.windows[itemID]) > 0 {
+		request.PaneID = m.paneStatus.representatives[itemID].paneID
+	}
+	return m.startRequest(request, status)
 }
 
 func (m model) startRequest(request ActionRequest, status string) (tea.Model, tea.Cmd) {

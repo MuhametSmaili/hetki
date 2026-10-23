@@ -209,7 +209,7 @@ func TestLiveAdapterNavigatesWithoutARecordablePath(t *testing.T) {
 		target     backend.Target
 	}{
 		{name: "session", projection: projectionTree, id: sessionItemID("$1"), target: backend.Target{SessionID: "$1"}},
-		{name: "window", projection: projectionTree, id: windowItemID("$1", "@1"), target: backend.Target{SessionID: "$1", WindowID: "@1"}},
+		{name: "window", projection: projectionTree, id: windowItemID("$1", "@1"), target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
 		{name: "pane", projection: projectionFlat, id: destinationItemID("$1", "@1", "%1"), target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -507,7 +507,7 @@ func TestLiveAdapterResolvesOpenFromCurrentItemIndex(t *testing.T) {
 	assert.Empty(t, stub.switchCalls)
 	assert.Equal(t, windowItemID("$1", "@1"), result.Navigation)
 	require.NoError(t, adapter.Navigate(context.Background(), result.Navigation))
-	assert.Equal(t, []backend.Target{{SessionID: "$1", WindowID: "@1"}}, stub.switchCalls)
+	assert.Equal(t, []backend.Target{{SessionID: "$1", WindowID: "@1", PaneID: "%1"}}, stub.switchCalls)
 
 	_, err = adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: list.ItemID{ID: "missing"}})
 	require.ErrorContains(t, err, "stale")
@@ -548,8 +548,8 @@ func TestLiveAdapterValidatesFlatPaneIdentityNotItsDirectory(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				assert.Equal(t, destinationItemID("$1", "@1", "%1"), result.Navigation)
-				require.NotNil(t, adapter.pendingRecord)
-				assert.Equal(t, "/work/other", adapter.pendingRecord.path)
+				require.NotNil(t, adapter.pendingNavigation)
+				assert.Equal(t, "/work/other", adapter.pendingNavigation.path)
 			}
 		})
 	}
@@ -669,8 +669,8 @@ func TestLiveAdapterTogglesOwnedStateUntilRefresh(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, destinationID, opened.Navigation)
 	require.Equal(t, 2, stub.queryCalls, "navigation still validates fresh inventory")
-	require.NotNil(t, adapter.pendingRecord)
-	assert.Equal(t, "/changed/path", adapter.pendingRecord.path)
+	require.NotNil(t, adapter.pendingNavigation)
+	assert.Equal(t, "/changed/path", adapter.pendingNavigation.path)
 
 	tree, err := adapter.Execute(t.Context(), ui.ActionRequest{
 		ActionID: ui.ActionToggleProjection, ItemID: destinationID,

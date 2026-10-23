@@ -9,71 +9,91 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
-type navigationRecord struct {
+type preparedNavigation struct {
 	itemID  list.ItemID
+	target  backend.Target
 	path    string
 	session string
 }
 
+func (item liveItem) openTarget(paneID string) backend.Target {
+	target := item.Target
+	if item.Kind != liveWindow {
+		return target
+	}
+
+	target.PaneID = item.OpenPaneID
+	if paneID != "" {
+		target.PaneID = paneID
+	}
+	return target
+}
+
 func (a *LiveAdapter) openItem(ctx context.Context, item liveItem) (ui.ActionResult, error) {
-	a.pendingRecord = nil
+	a.pendingNavigation = nil
+
 	if item.Target.SessionID == "" {
 		return ui.ActionResult{}, fmt.Errorf("item %q has no navigation target", item.ID)
 	}
+
 	b, err := a.detectBackend()
 	if err != nil {
 		return ui.ActionResult{}, fmt.Errorf("failed to detect backend: %w", err)
 	}
+
 	state, err := b.QueryState(ctx)
 	if err != nil {
 		return ui.ActionResult{}, fmt.Errorf("validate selected item %q: %w", item.ID, err)
 	}
-	record, exists := prepareNavigation(state, item)
-	if !exists {
+
+	navigation := prepareNavigation(state, item)
+	if navigation == nil {
 		return ui.ActionResult{}, fmt.Errorf("selected item %q is stale", item.ID)
 	}
-	a.pendingRecord = record
+
+	a.pendingNavigation = navigation
 	return ui.ActionResult{Message: "switching to " + item.Label, Navigation: item.ID}, nil
 }
 
-// prepareNavigation reports target membership independently of record availability.
-// A nil record with true membership permits navigation without frecency data.
-func prepareNavigation(state backend.StateResult, item liveItem) (*navigationRecord, bool) {
+func prepareNavigation(state backend.StateResult, item liveItem) *preparedNavigation {
 	session, found := findSession(state.Sessions, item.Target.SessionID)
 	if !found {
-		return nil, false
+		return nil
 	}
 
 	if item.Kind == liveSession {
 		pane, _ := activeWindowPane(session.Windows)
-		return navigationRecordForPane(item.ID, session.Name, pane), true
+		return navigationForPane(item, session.Name, pane)
 	}
 	if item.Kind != liveWindow && item.Kind != liveDestination {
-		return nil, false
+		return nil
 	}
 
 	window, found := findWindow(session, item.Target.WindowID)
 	if !found {
-		return nil, false
+		return nil
 	}
-	if item.Kind == liveWindow {
+
+	if item.Kind == liveWindow && item.Target.PaneID == "" {
 		pane, _ := activePane(window.Panes)
-		return navigationRecordForPane(item.ID, session.Name, pane), true
+		return navigationForPane(item, session.Name, pane)
 	}
 
 	for _, pane := range window.Panes {
 		if pane.ID == item.Target.PaneID {
-			return navigationRecordForPane(item.ID, session.Name, pane), true
+			return navigationForPane(item, session.Name, pane)
 		}
 	}
-	return nil, false
+	return nil
 }
 
-func navigationRecordForPane(id list.ItemID, session string, pane backend.Pane) *navigationRecord {
-	if pane.Path == "" {
-		return nil
+func navigationForPane(item liveItem, session string, pane backend.Pane) *preparedNavigation {
+	return &preparedNavigation{
+		itemID:  item.ID,
+		target:  item.Target,
+		path:    pane.Path,
+		session: session,
 	}
-	return &navigationRecord{itemID: id, path: pane.Path, session: session}
 }
 
 func findSession(sessions []backend.Session, target string) (backend.Session, bool) {
@@ -115,27 +135,30 @@ func activePane(panes []backend.Pane) (backend.Pane, bool) {
 	return backend.Pane{}, false
 }
 
+// Navigate consumes the prepared Open or LastSession target after terminal restoration.
 func (a *LiveAdapter) Navigate(ctx context.Context, navigation list.ItemID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	record := a.pendingRecord
-	a.pendingRecord = nil
-	item, err := a.resolveItem(navigation)
-	if err != nil {
-		return err
+
+	prepared := a.pendingNavigation
+	a.pendingNavigation = nil
+	if prepared == nil || prepared.itemID != navigation {
+		return fmt.Errorf("navigation to item %q was not prepared", navigation)
 	}
 
 	b, err := a.detectBackend()
 	if err != nil {
 		return fmt.Errorf("failed to detect backend: %w", err)
 	}
-	if err := b.Switch(ctx, item.Target); err != nil {
-		return fmt.Errorf("switch to item %q: %w", item.ID, err)
+
+	if err := b.Switch(ctx, prepared.target); err != nil {
+		return fmt.Errorf("switch to item %q: %w", navigation, err)
 	}
-	if record != nil && record.itemID == item.ID && a.frecency != nil {
-		if err := a.frecency.Record(ctx, record.path, record.session); err != nil {
-			return fmt.Errorf("record navigation to item %q: %w", item.ID, err)
+
+	if prepared.path != "" && a.frecency != nil {
+		if err := a.frecency.Record(ctx, prepared.path, prepared.session); err != nil {
+			return fmt.Errorf("record navigation to item %q: %w", navigation, err)
 		}
 	}
 	return nil

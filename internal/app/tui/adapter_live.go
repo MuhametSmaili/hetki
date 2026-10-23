@@ -23,17 +23,17 @@ type Backend interface {
 // LiveAdapter projects backend state and owns picker actions.
 // Callers must serialize Load, Execute and Navigate; preview and status reads may run concurrently.
 type LiveAdapter struct {
-	DetectBackend func() (Backend, error)
-	mu            sync.RWMutex // Protects published projection state and the cached backend; never held during capture.
-	cached        Backend
-	index         itemIndex
-	input         *projectionInput // Owned and immutable between successful loads.
-	statusServer  observe.Server
-	statusErr     error
-	projection    projectionKind
-	frecency      *frecency.Store
-	frecencyErr   error
-	pendingRecord *navigationRecord
+	DetectBackend     func() (Backend, error)
+	mu                sync.RWMutex // Protects published projection state and the cached backend; never held during capture.
+	cached            Backend
+	index             itemIndex
+	input             *projectionInput // Owned and immutable between successful loads.
+	statusServer      observe.Server
+	statusErr         error
+	projection        projectionKind
+	frecency          *frecency.Store
+	frecencyErr       error
+	pendingNavigation *preparedNavigation
 }
 
 func NewLiveAdapter(detectBackend func() (Backend, error)) *LiveAdapter {
@@ -105,6 +105,7 @@ func (a *LiveAdapter) executeItem(ctx context.Context, request ui.ActionRequest,
 		}
 		return ui.ActionResult{Menu: &menu}, nil
 	case ui.ActionOpen:
+		item.Target = item.openTarget(request.PaneID)
 		return a.openItem(ctx, item)
 	case ui.ActionCreateWindow:
 		return a.createWindow(ctx, request, item)

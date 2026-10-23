@@ -40,7 +40,7 @@ func TestPreviewResolvesOnlyTheSelectedTarget(t *testing.T) {
 	require.Equal(t, 1, stub.queryCalls, "preview must not reload state")
 	require.Empty(t, stub.applyCalls)
 	require.Empty(t, stub.switchCalls)
-	require.Nil(t, adapter.pendingRecord)
+	require.Nil(t, adapter.pendingNavigation)
 
 	// Same-path panes must preview precisely the selected pane.
 	state := liveState()

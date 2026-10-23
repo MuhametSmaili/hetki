@@ -72,11 +72,12 @@ func TestLastSessionMarkerAndShortcutUseTheSameDestination(t *testing.T) {
 		ordinary, err := adapter.Execute(ctx, ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: lastID})
 		require.NoError(t, err)
 		require.Equal(t, 1, stub.queryCalls)
-		record := *adapter.pendingRecord
+		record := *adapter.pendingNavigation
 		shortcut, err := adapter.Execute(ctx, ui.ActionRequest{ActionID: ui.ActionLastSession})
 		require.NoError(t, err)
 		require.Equal(t, ordinary, shortcut)
-		require.Equal(t, record, *adapter.pendingRecord)
+		require.Equal(t, record.path, adapter.pendingNavigation.path)
+		require.Equal(t, record.session, adapter.pendingNavigation.session)
 		require.Equal(t, 2, stub.queryCalls, "shortcut must use only ordinary open validation")
 		require.Empty(t, stub.switchCalls, "opening must not switch before terminal restoration")
 		require.NoError(t, adapter.Navigate(ctx, shortcut.Navigation))
@@ -87,7 +88,7 @@ func TestLastSessionMarkerAndShortcutUseTheSameDestination(t *testing.T) {
 		shortcut, err = adapter.Execute(ctx, ui.ActionRequest{ActionID: ui.ActionLastSession})
 		require.ErrorContains(t, err, "stale")
 		require.Empty(t, shortcut.Navigation)
-		require.Nil(t, adapter.pendingRecord)
+		require.Nil(t, adapter.pendingNavigation)
 		require.Equal(t, 3, stub.queryCalls)
 		stub.state = liveState()
 		_, err = adapter.Load(ctx)

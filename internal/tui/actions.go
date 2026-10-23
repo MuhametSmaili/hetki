@@ -138,6 +138,9 @@ type ActionRequest struct {
 	ItemID    list.ItemID
 	Value     *string
 	Confirmed bool
+
+	// PaneID overrides a window's Open target, never its mutation target.
+	PaneID string
 }
 
 type InputPrompt struct {

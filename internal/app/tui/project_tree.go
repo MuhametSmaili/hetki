@@ -104,6 +104,7 @@ func appendTreeWindow(
 		Target:       backend.Target{SessionID: session.ID, WindowID: window.ID},
 		WindowIndex:  window.Index,
 		WindowActive: window.Active,
+		OpenPaneID:   pane.ID,
 		Last:         last,
 	}
 	return nil

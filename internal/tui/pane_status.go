@@ -89,7 +89,7 @@ type paneStatusState struct {
 	readErr           error
 	sequence          uint64
 	windows           map[list.ItemID][]WindowPane
-	representatives   map[list.ItemID]status.PaneRef
+	representatives   map[list.ItemID]windowRepresentative
 	windowChangeDue   time.Time
 }
 

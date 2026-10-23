@@ -271,7 +271,9 @@ func (a *LiveAdapter) bindStatusUpdate(view daemon.View, update *ui.StatusUpdate
 			for _, pane := range window.Panes {
 				paneID := destinationItemID(session.ID, window.ID, pane.ID)
 				panes = append(panes, ui.WindowPane{
-					Ref: occurrences[paneID], Active: pane.Active,
+					PaneID:  pane.ID,
+					Ref:     occurrences[paneID],
+					Active:  pane.Active,
 					Details: treePaneDetails(session, a.index[id].Label, pane, home),
 				})
 			}

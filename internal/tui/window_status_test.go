@@ -15,11 +15,11 @@ import (
 func windowStatusFixture(t *testing.T) (model, []WindowPane) {
 	t.Helper()
 	panes := []WindowPane{
-		{Ref: status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}, Active: true,
+		{PaneID: "%1", Ref: status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}, Active: true,
 			Details: list.Details{Secondary: "/shell"}},
-		{Ref: status.PaneRef{Server: "server", ID: "%2", Generation: "birth"},
+		{PaneID: "%2", Ref: status.PaneRef{Server: "server", ID: "%2", Generation: "birth"},
 			Details: list.Details{Secondary: "/agent", Trailing: "opencode", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "opencode"}}}},
-		{Ref: status.PaneRef{Server: "server", ID: "%3", Generation: "birth"},
+		{PaneID: "%3", Ref: status.PaneRef{Server: "server", ID: "%3", Generation: "birth"},
 			Details: list.Details{Secondary: "/editor", Trailing: "pi", SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "pi"}}}},
 	}
 	m := newModel(list.Snapshot{Items: []list.Item{{ID: list.ItemID{ID: "session"}, Primary: "session", Children: []list.Item{
@@ -48,7 +48,7 @@ func TestTreeRowFollowsOnePaneAcrossStatusChanges(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, panes := windowStatusFixture(t)
-			m.paneStatus.representatives = map[list.ItemID]status.PaneRef{id: panes[tc.previous].Ref}
+			m.paneStatus.representatives = map[list.ItemID]windowRepresentative{id: {ref: panes[tc.previous].Ref}}
 			require.True(t, m.items.Select(id))
 			values := make(map[status.PaneRef]status.Value)
 			for i, state := range tc.states {
@@ -140,7 +140,7 @@ func TestTreeRepresentativeSurvivesRefreshAndViewToggle(t *testing.T) {
 	require.NoError(t, err)
 	m.applyStatusUpdate(StatusUpdate{Values: values})
 	m.applyStatusPresentation(now)
-	require.Equal(t, panes[1].Ref, m.paneStatus.representatives[id])
+	require.Equal(t, panes[1].Ref, m.paneStatus.representatives[id].ref)
 	tree := m.items.Snapshot()
 	reversed := slices.Clone(panes)
 	slices.Reverse(reversed)
@@ -150,7 +150,7 @@ func TestTreeRepresentativeSurvivesRefreshAndViewToggle(t *testing.T) {
 	next, _ := m.handleActionResult(actionResultMsg{result: ActionResult{Snapshot: &tree, Status: &updated}})
 	m = next.(model)
 
-	require.Equal(t, panes[1].Ref, m.paneStatus.representatives[id], "reordered equal-priority panes keep their representative")
+	require.Equal(t, panes[1].Ref, m.paneStatus.representatives[id].ref, "reordered equal-priority panes keep their representative")
 	require.Equal(t, "renamed-agent", m.items.Rows()[1].Item.Trailing)
 	m.items.CollapseAll()
 	m.applyScope("", now)
@@ -161,7 +161,7 @@ func TestTreeRepresentativeSurvivesRefreshAndViewToggle(t *testing.T) {
 	next, _ = m.handleActionResult(actionResultMsg{result: ActionResult{Snapshot: &tree, Status: &updated}})
 	m = next.(model)
 
-	require.Equal(t, panes[1].Ref, m.paneStatus.representatives[id])
+	require.Equal(t, panes[1].Ref, m.paneStatus.representatives[id].ref)
 	require.Equal(t, status.Working, m.paneStatus.rowValue(id, now).State)
 }
 

@@ -46,9 +46,11 @@ func TestTreeBindsPaneDetailsToTheirOwnStatus(t *testing.T) {
 	panes := update.Windows[id]
 	require.Len(t, panes, 2)
 	require.Equal(t, inactive, panes[0].Ref)
+	require.Equal(t, "%2", panes[0].PaneID)
 	require.Equal(t, "opencode", panes[0].Details.Trailing)
 	require.Equal(t, "/agent", panes[0].Details.Secondary)
 	require.Equal(t, active, panes[1].Ref)
+	require.Equal(t, "%1", panes[1].PaneID)
 	require.True(t, panes[1].Active)
 	require.Empty(t, panes[1].Details.Trailing)
 
@@ -64,6 +66,11 @@ func TestTreeBindsPaneDetailsToTheirOwnStatus(t *testing.T) {
 	item, err := adapter.resolveItem(id)
 	require.NoError(t, err)
 	require.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1"}, item.Target)
+
+	adapter.bindStatusUpdate(daemon.View{}, &update)
+
+	require.Empty(t, update.Windows[id][1].Ref)
+	require.Equal(t, "%1", update.Windows[id][1].PaneID, "untracked panes still have an exact navigation target")
 }
 
 func TestTreeDoesNotInventAnActivePaneProgram(t *testing.T) {
