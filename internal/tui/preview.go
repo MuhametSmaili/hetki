@@ -63,7 +63,7 @@ func (m model) syncPreview() (model, tea.Cmd) {
 	}
 
 	var request PreviewRequest
-	if m.layout().previewWidth > 0 && !m.quitting && m.navigation.IsZero() {
+	if m.width > 0 && m.height > 0 && m.layout().previewWidth > 0 && !m.quitting && m.navigation.IsZero() {
 		if row, ok := m.selectedRow(); ok {
 			request = PreviewRequest{ItemID: row.Item.ID, PaneID: m.paneStatus.displayedPaneID(row.Item.ID)}
 		}

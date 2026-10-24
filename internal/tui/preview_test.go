@@ -41,7 +41,7 @@ func previewModel(t *testing.T) model {
 
 func previewKey() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt} }
 
-func TestInitialPreviewCapturesAndRetainsRequestAcrossNarrowLayout(t *testing.T) {
+func TestInitialPreviewWaitsForUsableDimensions(t *testing.T) {
 	options := DefaultOptions()
 	options.Initial.Preview = PreviewOn
 	snapshot := flatSnapshot(1)
@@ -53,14 +53,23 @@ func TestInitialPreviewCapturesAndRetainsRequestAcrossNarrowLayout(t *testing.T)
 		},
 	})
 	require.NoError(t, err)
-	require.Positive(t, m.layout().previewWidth)
 
-	m, cmd := updateModel(t, m, tea.WindowSizeMsg{Width: 30, Height: 20})
+	for _, msg := range []tea.Msg{
+		tea.EnvMsg{},
+		tea.ColorProfileMsg{},
+		tea.WindowSizeMsg{Width: 100, Height: 0},
+		tea.WindowSizeMsg{Width: 0, Height: 20},
+		tea.WindowSizeMsg{Width: 30, Height: 20},
+	} {
+		var cmd tea.Cmd
+		m, cmd = updateModel(t, m, msg)
 
-	require.Nil(t, cmd)
-	require.Zero(t, m.layout().previewWidth)
-	require.Equal(t, PreviewOn, m.result().State.Preview)
-	m, cmd = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 20})
+		require.Nil(t, cmd, "must not capture after %T: %+v", msg, msg)
+		require.Equal(t, PreviewOn, m.result().State.Preview)
+	}
+	require.Empty(t, captured)
+
+	m, cmd := updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 20})
 	require.NotNil(t, cmd)
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, []PreviewRequest{{ItemID: snapshot.Items[0].ID}}, captured)
@@ -151,6 +160,8 @@ func TestPreviewDistinguishesEqualLocalIDs(t *testing.T) {
 		{ID: third, Primary: "third row"},
 	}}, nil, DefaultKeyMap(), StartModeNormal)
 	require.NoError(t, err)
+	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
+
 	var captured []list.ItemID
 	m.readPreview = func(_ context.Context, request PreviewRequest) (string, error) {
 		captured = append(captured, request.ItemID)

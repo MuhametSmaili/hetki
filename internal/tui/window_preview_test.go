@@ -16,6 +16,8 @@ import (
 func windowPreviewModel(t *testing.T, value status.Value) model {
 	t.Helper()
 	m, panes := windowStatusFixture(t)
+	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 24})
+
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{panes[1].Ref: value})
 	require.NoError(t, err)
 	m, _ = updateModel(t, m, statusResultMsg{update: StatusUpdate{Values: values}})
