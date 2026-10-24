@@ -12,6 +12,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/frecency"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
@@ -53,7 +54,7 @@ func BenchmarkThousandSessions(b *testing.B) {
 			scores := frecency.NewScores(records, time.Unix(2_000_000, 0))
 			b.Run("parse", func(b *testing.B) { benchmarkStateParsing(b, wire) })
 			b.Run("history_load", func(b *testing.B) { benchmarkHistoryLoad(b, records) })
-			for _, projection := range []projectionKind{projectionFlat, projectionTree} {
+			for _, projection := range []ui.ViewMode{ui.ViewFlat, ui.ViewTree} {
 				benchmarkProjection(b, state, scores, projection, windows)
 			}
 		})
@@ -91,15 +92,15 @@ func benchmarkHistoryLoad(b *testing.B, records []frecency.Record) {
 	}
 }
 
-func benchmarkProjection(b *testing.B, state backend.StateResult, scores frecency.Scores, projection projectionKind, windows int) {
+func benchmarkProjection(b *testing.B, state backend.StateResult, scores frecency.Scores, projection ui.ViewMode, windows int) {
 	name, wantRows := "flat", 1_000*windows
-	if projection == projectionTree {
+	if projection == ui.ViewTree {
 		name, wantRows = "tree", wantRows+1_000
 	}
 	project := func(b *testing.B) list.Snapshot {
 		var snapshot list.Snapshot
 		var err error
-		if projection == projectionFlat {
+		if projection == ui.ViewFlat {
 			snapshot, _, err = projectFlatRanked(state, "/home/bench", scores)
 		} else {
 			snapshot, _, err = projectTree(state, "/home/bench")

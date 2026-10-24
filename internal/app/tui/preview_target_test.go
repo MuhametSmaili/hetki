@@ -35,13 +35,13 @@ func TestWindowPreviewKeepsTheProjectedPaneAfterActivePaneChanges(t *testing.T) 
 func TestServicePreviewAndOpenResolveTheSameTarget(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
-		projection projectionKind
+		projection ui.ViewMode
 		id         list.ItemID
 		want       backend.Target
 	}{
-		{"displayed tree pane", projectionTree, windowItemID("$1", "@1"), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%2"}},
-		{"flat ignores override", projectionFlat, destinationItemID("$1", "@1", "%1"), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
-		{"session ignores override", projectionTree, sessionItemID("$1"), backend.Target{SessionID: "$1"}},
+		{"displayed tree pane", ui.ViewTree, windowItemID("$1", "@1"), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%2"}},
+		{"flat ignores override", ui.ViewFlat, destinationItemID("$1", "@1", "%1"), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
+		{"session ignores override", ui.ViewTree, sessionItemID("$1"), backend.Target{SessionID: "$1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &stubBackend{state: liveState()}
@@ -53,14 +53,15 @@ func TestServicePreviewAndOpenResolveTheSameTarget(t *testing.T) {
 				return "screen", nil
 			}
 			adapter := testAdapter(stub)
-			adapter.projection = tc.projection
-			service := Service{Driver: adapter,
-				RunUI: func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, preview ui.PreviewOptions, _ ui.StatusOptions) (list.ItemID, error) {
-					screen, err := preview.Read(ctx, ui.PreviewRequest{ItemID: tc.id, PaneID: "%2"})
+			options := ui.DefaultOptions()
+			options.Initial.View = tc.projection
+			service := Service{Options: options, Driver: adapter,
+				RunUI: func(ctx context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+					screen, err := runtime.Preview(ctx, ui.PreviewRequest{ItemID: tc.id, PaneID: "%2"})
 					require.NoError(t, err)
 					require.Equal(t, "screen", screen)
-					opened, err := dispatch(ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: tc.id, PaneID: "%2"})
-					return opened.Navigation, err
+					opened, err := runtime.Dispatch(ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: tc.id, PaneID: "%2"})
+					return ui.Result{Navigation: opened.Navigation}, err
 				},
 			}
 

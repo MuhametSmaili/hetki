@@ -34,28 +34,29 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 	first, err := client.Ping(t.Context())
 	require.NoError(t, err, "daemon must survive picker exit")
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
-	adapter.projection = projectionTree
-	service := Service{Driver: adapter}
-	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		require.NotNil(t, options.Read)
-		idle := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, nil)
+
+	service := Service{Options: ui.DefaultOptions(), Driver: adapter}
+	service.Options.Initial.View = ui.ViewTree
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+		require.NotNil(t, runtime.Status.Read)
+		idle := awaitPickerValue(t, ctx, runtime.Status, status.Value{State: status.Idle}, nil)
 		require.Len(t, idle.Bindings, 2, "linked window occurrences share one pane")
-		assertNativeScreenRenewals(t, ctx, client, options, idle)
+		assertNativeScreenRenewals(t, ctx, client, runtime.Status, idle)
 		before := firstPaneRef(t, idle.Values)
 		for _, id := range []list.ItemID{destinationItemID("$0", "@0", "%0"), windowItemID("$0", "@0")} {
-			result, err := dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+			result, err := runtime.Dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})
 			require.NoError(t, err)
 			require.NotNil(t, result.Status)
 			require.Len(t, result.Status.Bindings, 2)
 			require.Equal(t, status.Idle, result.Status.Bindings.StateAt(id, result.Status.Values, time.Now()), "replacement must carry status before another read")
 		}
 		run("send-keys", "-t", "%0", "-l", "--", "\x1b[2J\x1b[HAPPROVAL\n")
-		awaitPickerValue(t, ctx, options, status.Value{State: status.Blocked}, nil)
+		awaitPickerValue(t, ctx, runtime.Status, status.Value{State: status.Blocked}, nil)
 		run("respawn-pane", "-k", "-t", "%0", "stty -echo; printf 'READY\n'; exec cat")
 		require.Eventually(t, func() bool {
 			readCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 			defer cancel()
-			update := options.Read(readCtx, 0)
+			update := runtime.Status.Read(readCtx, 0)
 			for ref := range update.Values.All() {
 				if ref.ID == before.ID && ref.Generation != before.Generation && update.Values.At(ref, time.Now()) == status.Idle {
 					return update.Bindings.StateAt(windowItemID("$0", "@0"), update.Values, time.Now()) == status.Idle
@@ -63,7 +64,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 			}
 			return false
 		}, 5*time.Second, 20*time.Millisecond)
-		return list.ItemID{}, nil
+		return ui.Result{}, nil
 	}
 
 	require.NoError(t, service.Run(t.Context()))
@@ -194,11 +195,12 @@ func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "hetki", "status.d", "cat.yaml")))
 	runPickerPTY(t, executable, client)
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
-	adapter.projection = projectionTree
-	service := Service{Driver: adapter}
-	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+
+	service := Service{Options: ui.DefaultOptions(), Driver: adapter}
+	service.Options.Initial.View = ui.ViewTree
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
 		// Only the readiness probe repeats; every transition below is sent once.
-		ready := awaitPickerValue(t, ctx, options, status.Value{State: status.Idle}, func() {
+		ready := awaitPickerValue(t, ctx, runtime.Status, status.Value{State: status.Idle}, func() {
 			run("send-keys", "-t", "%0", "-l", "--", "\x1b]7501;state=idle\a\n")
 		})
 		require.Len(t, ready.Bindings, 2, "both linked occurrences must receive the report")
@@ -214,12 +216,12 @@ func TestNativePickerDeliversProtocolOutcomes(t *testing.T) {
 			{"clear", status.Value{}},
 		} {
 			run("send-keys", "-t", "%0", "-l", "--", "\x1b]7501;state="+tc.report+"\a\n")
-			update := awaitPickerValue(t, ctx, options, tc.want, nil)
+			update := awaitPickerValue(t, ctx, runtime.Status, tc.want, nil)
 			if tc.report == "done" {
-				assertPickerSuccessAges(t, ctx, options, update, run)
+				assertPickerSuccessAges(t, ctx, runtime.Status, update, run)
 			}
 		}
-		return list.ItemID{}, nil
+		return ui.Result{}, nil
 	}
 
 	require.NoError(t, service.Run(t.Context()))

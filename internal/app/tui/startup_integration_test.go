@@ -38,8 +38,8 @@ func BenchmarkNativePickerOpening(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			adapter := newLiveAdapter(func() (Backend, error) { return tc.backend, nil }, nil, nil)
-			service := Service{Driver: adapter, RunUI: func(context.Context, list.Snapshot, ui.KeyMap, ui.StartMode, ui.DispatchFunc, ui.PreviewOptions, ui.StatusOptions) (list.ItemID, error) {
-				return list.ItemID{}, nil
+			service := Service{Options: ui.DefaultOptions(), Driver: adapter, RunUI: func(context.Context, list.Snapshot, ui.Options, ui.Runtime) (ui.Result, error) {
+				return ui.Result{}, nil
 			}}
 			b.ReportAllocs()
 			for b.Loop() {

@@ -167,6 +167,8 @@ type ItemMenu struct {
 }
 
 type ActionResult struct {
+	// View is committed only with an accepted Snapshot; empty leaves it unchanged.
+	View         ViewMode
 	Message      string
 	Snapshot     *list.Snapshot
 	Status       *StatusUpdate

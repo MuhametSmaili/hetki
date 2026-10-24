@@ -62,8 +62,8 @@ func TestTreeOpenKeepsTheDisplayedPaneWithoutStatus(t *testing.T) {
 	stub.state.Sessions[0].Windows[0].Panes = append(stub.state.Sessions[0].Windows[0].Panes,
 		backend.Pane{ID: "%2", Path: "/other", Command: "pi"})
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
-	adapter.projection = projectionTree
-	snapshot, err := adapter.Load(t.Context())
+
+	snapshot, err := adapter.Load(t.Context(), ui.ViewTree)
 	require.NoError(t, err)
 	row := snapshot.Items[0].Children[0]
 	require.Equal(t, "/work/editor", row.Secondary)
@@ -72,7 +72,7 @@ func TestTreeOpenKeepsTheDisplayedPaneWithoutStatus(t *testing.T) {
 
 	opened, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: row.ID})
 	require.NoError(t, err)
-	_, err = adapter.Load(t.Context())
+	_, err = adapter.Load(t.Context(), ui.ViewTree)
 	require.NoError(t, err)
 	delete(adapter.index, row.ID)
 	err = adapter.Navigate(t.Context(), opened.Navigation)

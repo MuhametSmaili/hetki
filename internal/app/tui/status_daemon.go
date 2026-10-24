@@ -256,7 +256,7 @@ func (a *LiveAdapter) bindStatusUpdate(view daemon.View, update *ui.StatusUpdate
 
 	bindings, occurrences := a.bindStatusViewLocked(view)
 	update.Bindings = bindings
-	if a.projection != projectionTree || a.input == nil {
+	if a.projection != ui.ViewTree || a.input == nil {
 		update.Windows = make(map[list.ItemID][]ui.WindowPane)
 		return
 	}

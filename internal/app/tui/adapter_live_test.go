@@ -71,15 +71,13 @@ func liveState() backend.StateResult {
 }
 
 func testAdapter(stub *stubBackend) *LiveAdapter {
-	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
-	adapter.projection = projectionTree
-	return adapter
+	return newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
 }
 
 func loadedAdapter(t *testing.T, stub *stubBackend) *LiveAdapter {
 	t.Helper()
 	adapter := testAdapter(stub)
-	_, err := adapter.Load(context.Background())
+	_, err := adapter.Load(context.Background(), ui.ViewTree)
 	require.NoError(t, err)
 	return adapter
 }
@@ -90,7 +88,7 @@ func TestLiveAdapterProjectsPresentationAndKeepsTargetsInOwnerIndex(t *testing.T
 	stub := &stubBackend{state: liveState()}
 	adapter := testAdapter(stub)
 
-	snapshot, err := adapter.Load(context.Background())
+	snapshot, err := adapter.Load(context.Background(), ui.ViewTree)
 	require.NoError(t, err)
 	require.NoError(t, validateProjection(snapshot, adapter.index))
 	require.Len(t, snapshot.Items, 1)
@@ -108,7 +106,7 @@ func TestLiveAdapterStartsWithTheFlatProjection(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
 
-	snapshot, err := adapter.Load(context.Background())
+	snapshot, err := adapter.Load(context.Background(), ui.ViewFlat)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Items, 1)
 	assert.Empty(t, snapshot.Items[0].Children)
@@ -126,7 +124,7 @@ func TestLiveAdapterKeepsLoadedFrecencyUntilRefresh(t *testing.T) {
 	stub := &stubBackend{state: state}
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
 
-	snapshot, err := adapter.Load(context.Background())
+	snapshot, err := adapter.Load(context.Background(), ui.ViewFlat)
 	require.NoError(t, err)
 	require.Len(t, snapshot.Items, 2)
 	assert.Equal(t, destinationItemID("$2", "@2", "%2"), snapshot.Items[0].ID)
@@ -153,7 +151,7 @@ func TestLiveAdapterRecordsOnlyAfterSuccessfulNavigation(t *testing.T) {
 	store := frecency.NewStore(path)
 	stub := &stubBackend{state: liveState()}
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
-	snapshot, err := adapter.Load(context.Background())
+	snapshot, err := adapter.Load(context.Background(), ui.ViewFlat)
 	require.NoError(t, err)
 	id := snapshot.Items[0].ID
 	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: id})
@@ -174,7 +172,7 @@ func TestLiveAdapterRecordsOnlyAfterSuccessfulNavigation(t *testing.T) {
 	failedStore := frecency.NewStore(failedPath)
 	failedBackend := &stubBackend{state: liveState(), switchErr: errors.New("switch failed")}
 	failed := newLiveAdapter(func() (Backend, error) { return failedBackend, nil }, failedStore, nil)
-	failedSnapshot, err := failed.Load(context.Background())
+	failedSnapshot, err := failed.Load(context.Background(), ui.ViewFlat)
 	require.NoError(t, err)
 	result, err = failed.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: failedSnapshot.Items[0].ID})
 	require.NoError(t, err)
@@ -187,8 +185,8 @@ func TestLiveAdapterRecordsTreeNavigationAtTheActivePanePath(t *testing.T) {
 	store := frecency.NewStore(filepath.Join(t.TempDir(), "frecency.json"))
 	stub := &stubBackend{state: liveState()}
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
-	adapter.projection = projectionTree
-	snapshot, err := adapter.Load(context.Background())
+
+	snapshot, err := adapter.Load(context.Background(), ui.ViewTree)
 	require.NoError(t, err)
 	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: snapshot.Items[0].Children[0].ID})
 	require.NoError(t, err)
@@ -204,20 +202,20 @@ func TestLiveAdapterRecordsTreeNavigationAtTheActivePanePath(t *testing.T) {
 func TestLiveAdapterNavigatesWithoutARecordablePath(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
-		projection projectionKind
+		projection ui.ViewMode
 		id         list.ItemID
 		target     backend.Target
 	}{
-		{name: "session", projection: projectionTree, id: sessionItemID("$1"), target: backend.Target{SessionID: "$1"}},
-		{name: "window", projection: projectionTree, id: windowItemID("$1", "@1"), target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
-		{name: "pane", projection: projectionFlat, id: destinationItemID("$1", "@1", "%1"), target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
+		{name: "session", projection: ui.ViewTree, id: sessionItemID("$1"), target: backend.Target{SessionID: "$1"}},
+		{name: "window", projection: ui.ViewTree, id: windowItemID("$1", "@1"), target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
+		{name: "pane", projection: ui.ViewFlat, id: destinationItemID("$1", "@1", "%1"), target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "frecency.json")
 			stub := &stubBackend{state: liveState()}
 			adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, frecency.NewStore(path), nil)
-			adapter.projection = tc.projection
-			_, err := adapter.Load(t.Context())
+
+			_, err := adapter.Load(t.Context(), tc.projection)
 			require.NoError(t, err)
 			stub.state.Sessions[0].Windows[0].Panes[0].Path = ""
 
@@ -240,7 +238,7 @@ func TestLiveAdapterShowsInvalidFrecencyAndPreservesItBeforeRecording(t *testing
 	stub := &stubBackend{state: liveState()}
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, store, nil)
 
-	snapshot, err := adapter.Load(context.Background())
+	snapshot, err := adapter.Load(context.Background(), ui.ViewFlat)
 	require.NoError(t, err)
 	assert.Contains(t, snapshot.Notice, "frecency state")
 	require.NoError(t, os.Remove(path))
@@ -277,7 +275,7 @@ func TestLiveAdapterSurfacesUnavailableFrecencyWithoutBlockingLoad(t *testing.T)
 	stub := &stubBackend{state: liveState()}
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, errors.New("home is unavailable"))
 
-	snapshot, err := adapter.Load(context.Background())
+	snapshot, err := adapter.Load(context.Background(), ui.ViewFlat)
 	require.NoError(t, err)
 	assert.Contains(t, snapshot.Notice, "home is unavailable")
 	require.Len(t, snapshot.Items, 1)
@@ -291,11 +289,11 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		id         list.ItemID
-		projection projectionKind
+		projection ui.ViewMode
 		entries    []ui.MenuEntry
 	}{
 		{
-			name: "tree session", id: sessionItemID("$1"), projection: projectionTree,
+			name: "tree session", id: sessionItemID("$1"), projection: ui.ViewTree,
 			entries: []ui.MenuEntry{
 				{Action: ui.ActionOpen, Label: "Open session"},
 				{Action: ui.ActionRenameSession, Label: "Rename session"},
@@ -307,7 +305,7 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 			},
 		},
 		{
-			name: "tree window", id: windowItemID("$1", "@1"), projection: projectionTree,
+			name: "tree window", id: windowItemID("$1", "@1"), projection: ui.ViewTree,
 			entries: []ui.MenuEntry{
 				{Action: ui.ActionOpen, Label: "Open pane"},
 				{Action: ui.ActionRename, Label: "Rename window"},
@@ -321,7 +319,7 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 			},
 		},
 		{
-			name: "flat destination", id: destinationID, projection: projectionFlat,
+			name: "flat destination", id: destinationID, projection: ui.ViewFlat,
 			entries: []ui.MenuEntry{
 				{Action: ui.ActionOpen, Label: "Open pane"},
 				{Action: ui.ActionRename, Label: "Rename window"},
@@ -336,8 +334,7 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			adapter.projection = test.projection
-			_, err := adapter.Load(context.Background())
+			_, err := adapter.Load(context.Background(), test.projection)
 			require.NoError(t, err)
 			result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionContextMenu, ItemID: test.id})
 			require.NoError(t, err)
@@ -351,18 +348,18 @@ func TestLiveAdapterBuildsOrderedContextMenusForEachItemKind(t *testing.T) {
 func TestSessionActionsUseTheOwningStableSessionForEveryRowKind(t *testing.T) {
 	for _, test := range []struct {
 		name       string
-		projection projectionKind
+		projection ui.ViewMode
 		id         list.ItemID
 	}{
-		{name: "tree session", projection: projectionTree, id: sessionItemID("$1")},
-		{name: "tree window", projection: projectionTree, id: windowItemID("$1", "@1")},
-		{name: "flat destination", projection: projectionFlat, id: destinationItemID("$1", "@1", "%1")},
+		{name: "tree session", projection: ui.ViewTree, id: sessionItemID("$1")},
+		{name: "tree window", projection: ui.ViewTree, id: windowItemID("$1", "@1")},
+		{name: "flat destination", projection: ui.ViewFlat, id: destinationItemID("$1", "@1", "%1")},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stub := &stubBackend{state: liveState()}
 			adapter := testAdapter(stub)
-			adapter.projection = test.projection
-			_, err := adapter.Load(context.Background())
+
+			_, err := adapter.Load(context.Background(), test.projection)
 			require.NoError(t, err)
 
 			rename := ui.ActionRequest{ActionID: ui.ActionRenameSession, ItemID: test.id}
@@ -403,19 +400,19 @@ func TestSessionActionsUseTheOwningStableSessionForEveryRowKind(t *testing.T) {
 func TestSessionActionsRejectOriginsReplacedDuringRefresh(t *testing.T) {
 	for _, row := range []struct {
 		name       string
-		projection projectionKind
+		projection ui.ViewMode
 		id         list.ItemID
 	}{
-		{name: "tree session", projection: projectionTree, id: sessionItemID("$1")},
-		{name: "tree window", projection: projectionTree, id: windowItemID("$1", "@1")},
-		{name: "flat destination", projection: projectionFlat, id: destinationItemID("$1", "@1", "%1")},
+		{name: "tree session", projection: ui.ViewTree, id: sessionItemID("$1")},
+		{name: "tree window", projection: ui.ViewTree, id: windowItemID("$1", "@1")},
+		{name: "flat destination", projection: ui.ViewFlat, id: destinationItemID("$1", "@1", "%1")},
 	} {
 		for _, action := range []ui.ActionID{ui.ActionRenameSession, ui.ActionDeleteSession} {
 			t.Run(row.name+"/"+string(action), func(t *testing.T) {
 				stub := &stubBackend{state: liveState()}
 				adapter := testAdapter(stub)
-				adapter.projection = row.projection
-				_, err := adapter.Load(context.Background())
+
+				_, err := adapter.Load(context.Background(), row.projection)
 				require.NoError(t, err)
 				request := ui.ActionRequest{ActionID: action, ItemID: row.id}
 				result, err := adapter.Execute(context.Background(), request)
@@ -431,7 +428,7 @@ func TestSessionActionsRejectOriginsReplacedDuringRefresh(t *testing.T) {
 				stub.state.Sessions[0].ID = "$2"
 				stub.state.Sessions[0].Windows[0].ID = "@2"
 				stub.state.Sessions[0].Windows[0].Panes[0].ID = "%2"
-				_, err = adapter.Load(context.Background())
+				_, err = adapter.Load(context.Background(), row.projection)
 				require.NoError(t, err)
 				_, err = adapter.Execute(context.Background(), request)
 				require.ErrorContains(t, err, "stale")
@@ -632,8 +629,9 @@ func TestInvalidProjectionRetainsPreviousOwnerIndex(t *testing.T) {
 	adapter := loadedAdapter(t, stub)
 	stub.state.Sessions = append(stub.state.Sessions, stub.state.Sessions[0])
 
-	_, err := adapter.Load(context.Background())
+	_, err := adapter.Load(context.Background(), ui.ViewFlat)
 	require.ErrorContains(t, err, "duplicate item ID")
+	require.Equal(t, ui.ViewTree, adapter.projection)
 	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionOpen, ItemID: windowItemID("$1", "@1")})
 	require.NoError(t, err)
 	assert.Equal(t, windowItemID("$1", "@1"), result.Navigation)
@@ -764,7 +762,7 @@ func TestInvalidFlatProjectionRetainsTreeAndOwnerIndex(t *testing.T) {
 		ActionID: ui.ActionToggleProjection, ItemID: windowItemID("$1", "@1"),
 	})
 	require.ErrorContains(t, err, "pane is missing its ID")
-	assert.Equal(t, projectionTree, adapter.projection)
+	assert.Equal(t, ui.ViewTree, adapter.projection)
 	assert.Contains(t, adapter.index, windowItemID("$1", "@1"))
 }
 
@@ -783,7 +781,7 @@ func TestLiveAdapterRejectsMissingStableSessionAndWindowIDsDuringProjection(t *t
 			stub := &stubBackend{state: state}
 			adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
 
-			_, err := adapter.Load(context.Background())
+			_, err := adapter.Load(context.Background(), ui.ViewFlat)
 			require.ErrorContains(t, err, test.want)
 			assert.Empty(t, adapter.index)
 			assert.Empty(t, stub.applyCalls)

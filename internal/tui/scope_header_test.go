@@ -25,7 +25,7 @@ func TestScopeHeaderKeepsLabelsFixedAndEmphasizesActiveScope(t *testing.T) {
 			layout := layoutMetrics{listWidth: 80, previewWidth: tc.previewWidth, headerHeight: tc.headerHeight}
 			m.mode = modeFilter
 			all := strings.Split(m.viewHeader(layout), "\n")[tc.metaRow]
-			m.scope.tracked = true
+			m.scope.mode = ScopeTracked
 			m.applyScope("idle", now)
 			m.mode = modeBrowse
 
@@ -58,7 +58,7 @@ func TestScopeHeaderKeepsLabelsFixedAndEmphasizesActiveScope(t *testing.T) {
 
 func TestScopeHeaderFitsNarrowWidths(t *testing.T) {
 	m, now := scopeFixture(t, "tree")
-	m.scope.tracked = true
+	m.scope.mode = ScopeTracked
 	m.applyScope("a-very-long-project-name-to-filter", now)
 	for _, previewWidth := range []int{0, 20} {
 		for _, width := range []int{1, 10, 20, 24, 40, 80} {

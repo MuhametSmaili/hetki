@@ -91,7 +91,7 @@ func TestLastSessionMarkerAndShortcutUseTheSameDestination(t *testing.T) {
 		require.Nil(t, adapter.pendingNavigation)
 		require.Equal(t, 3, stub.queryCalls)
 		stub.state = liveState()
-		_, err = adapter.Load(ctx)
+		_, err = adapter.Load(ctx, ui.ViewTree)
 		require.NoError(t, err)
 		shortcut, err = adapter.Execute(ctx, ui.ActionRequest{ActionID: ui.ActionLastSession})
 		require.ErrorContains(t, err, "no previous session available")

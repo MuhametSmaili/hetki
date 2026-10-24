@@ -23,8 +23,8 @@ func TestCachedLocationsRebindLinkedRowsAndRespawns(t *testing.T) {
 	server := observe.Server{PID: 123, Birth: "fixture", Started: 1}
 	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
-	adapter.projection = projectionTree
-	_, err := adapter.Load(t.Context())
+
+	_, err := adapter.Load(t.Context(), ui.ViewTree)
 	require.NoError(t, err)
 	ref := status.PaneRef{Server: server.Identity(), ID: "%1", Generation: "respawned"}
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{ref: {State: status.Blocked, ValidUntil: time.Now().Add(time.Minute)}})
@@ -98,10 +98,10 @@ func TestStatusAvailabilityKeepsPickerUsable(t *testing.T) {
 		{"opening fails", &openingStatusDriver{err: errors.New("invalid profile fixture.yaml")}, "status unavailable: invalid profile fixture.yaml"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			service := Service{Driver: tc.driver, RunUI: func(_ context.Context, snapshot list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+			service := Service{Options: ui.DefaultOptions(), Driver: tc.driver, RunUI: func(_ context.Context, snapshot list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
 				require.Equal(t, tc.notice, snapshot.Notice)
-				require.Nil(t, options.Read)
-				return list.ItemID{}, nil
+				require.Nil(t, runtime.Status.Read)
+				return ui.Result{}, nil
 			}}
 
 			err := service.Run(t.Context())
@@ -160,7 +160,7 @@ func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {
 	b := &replacedServerBackend{stubBackend: stubBackend{state: liveState()}}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
-	_, loadErr := adapter.Load(t.Context())
+	_, loadErr := adapter.Load(t.Context(), ui.ViewFlat)
 	reader, statusErr := adapter.OpenStatus(t.Context())
 
 	require.NoError(t, loadErr, "browsing does not depend on status startup")

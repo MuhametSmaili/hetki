@@ -8,8 +8,8 @@ import (
 )
 
 type scopeState struct {
-	tracked bool
-	views   [2]scopeView
+	mode  Scope
+	views [2]scopeView
 }
 
 type scopeView struct {
@@ -23,7 +23,7 @@ func (m *model) setQuery(query string) {
 
 func (m *model) applyScope(query string, now time.Time) {
 	var included map[list.ItemID]struct{}
-	if m.scope.tracked {
+	if m.scope.mode == ScopeTracked {
 		included = m.trackedItems(now)
 	}
 	m.items.SetFilter(query, included)
@@ -45,12 +45,16 @@ func handleToggleScope(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 		return m.actionUnavailable(ActionToggleScope)
 	}
 	current, next := 0, 1
-	if m.scope.tracked {
+	if m.scope.mode == ScopeTracked {
 		current, next = 1, 0
 	}
 	selected, _ := m.items.Selected()
 	m.scope.views[current] = scopeView{selected: selected.Item.ID, expanded: m.items.Expansion()}
-	m.scope.tracked = !m.scope.tracked
+	if m.scope.mode == ScopeTracked {
+		m.scope.mode = ScopeAll
+	} else {
+		m.scope.mode = ScopeTracked
+	}
 	m.applyScope(m.items.Query(), time.Now())
 	view := m.scope.views[next]
 	m.items.RestoreExpansion(view.expanded)

@@ -16,23 +16,11 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
-type projectionKind uint8
-
-const (
-	projectionTree projectionKind = iota
-	projectionFlat
-)
-
-func (a *LiveAdapter) Load(ctx context.Context) (list.Snapshot, error) {
-	return a.loadSnapshot(ctx)
-}
-
-func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
-	a.mu.RLock()
-	projection := a.projection
-	a.mu.RUnlock()
-
-	prepared, err := a.loadProjection(ctx, projection)
+func (a *LiveAdapter) Load(ctx context.Context, view ui.ViewMode) (list.Snapshot, error) {
+	if err := view.Validate(); err != nil {
+		return list.Snapshot{}, err
+	}
+	prepared, err := a.loadProjection(ctx, view)
 	if err != nil {
 		return list.Snapshot{}, err
 	}
@@ -41,6 +29,13 @@ func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
 		return list.Snapshot{}, err
 	}
 	return prepared.snapshot, nil
+}
+
+func (a *LiveAdapter) loadSnapshot(ctx context.Context) (list.Snapshot, error) {
+	a.mu.RLock()
+	view := a.projection
+	a.mu.RUnlock()
+	return a.Load(ctx, view)
 }
 
 type projectionInput struct {
@@ -62,7 +57,7 @@ func newProjectionInput(state liveStateResult, scores frecency.Scores, notice st
 	return &projectionInput{state: state, scores: scores, notice: notice}
 }
 
-func (input *projectionInput) project(projection projectionKind) (preparedSnapshot, error) {
+func (input *projectionInput) project(projection ui.ViewMode) (preparedSnapshot, error) {
 	snapshot, index, err := projectState(input.state.StateResult, projection, input.scores, input.notice)
 	if err != nil {
 		return preparedSnapshot{}, err
@@ -73,11 +68,11 @@ func (input *projectionInput) project(projection projectionKind) (preparedSnapsh
 type preparedSnapshot struct {
 	snapshot   list.Snapshot
 	index      itemIndex
-	projection projectionKind
+	projection ui.ViewMode
 	input      *projectionInput
 }
 
-func (a *LiveAdapter) loadProjection(ctx context.Context, projection projectionKind) (preparedSnapshot, error) {
+func (a *LiveAdapter) loadProjection(ctx context.Context, projection ui.ViewMode) (preparedSnapshot, error) {
 	result, err := a.queryState(ctx)
 	if err != nil {
 		return preparedSnapshot{}, err
@@ -155,12 +150,12 @@ func (a *LiveAdapter) loadFrecency(ctx context.Context) (frecency.Scores, string
 	return frecency.NewScores(records, time.Now()), "", nil
 }
 
-func projectState(result backend.StateResult, projection projectionKind, scores frecency.Scores, notice string) (list.Snapshot, itemIndex, error) {
+func projectState(result backend.StateResult, projection ui.ViewMode, scores frecency.Scores, notice string) (list.Snapshot, itemIndex, error) {
 	homeDir, _ := os.UserHomeDir()
 	var snapshot list.Snapshot
 	var index itemIndex
 	var err error
-	if projection == projectionFlat {
+	if projection == ui.ViewFlat {
 		snapshot, index, err = projectFlatRanked(result, homeDir, scores)
 	} else {
 		snapshot, index, err = projectTree(result, homeDir)
@@ -188,10 +183,10 @@ func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.Item
 		return ui.ActionResult{}, fmt.Errorf("live state is not loaded")
 	}
 
-	next := projectionFlat
+	next := ui.ViewFlat
 	message := "showing panes"
-	if current == projectionFlat {
-		next = projectionTree
+	if current == ui.ViewFlat {
+		next = ui.ViewTree
 		message = "showing session tree"
 	}
 
@@ -205,16 +200,16 @@ func (a *LiveAdapter) toggleProjection(ctx context.Context, selectedID list.Item
 		return ui.ActionResult{}, err
 	}
 	snapshot := prepared.snapshot
-	return ui.ActionResult{Message: message, Snapshot: &snapshot, SelectItemID: preferred}, nil
+	return ui.ActionResult{Message: message, Snapshot: &snapshot, SelectItemID: preferred, View: next}, nil
 }
 
 func preferredProjectionItem(
 	selected liveItem,
-	projection projectionKind,
+	projection ui.ViewMode,
 	snapshot list.Snapshot,
 	index itemIndex,
 ) list.ItemID {
-	if projection == projectionTree {
+	if projection == ui.ViewTree {
 		return preferredTreeItem(selected, snapshot, index)
 	}
 	return preferredFlatItem(selected, snapshot, index)

@@ -41,23 +41,23 @@ func TestServiceReplacesStatusEvidence(t *testing.T) {
 				next.Locations = view.Locations
 			}
 			reads := 0
-			service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
+			service := Service{Options: ui.DefaultOptions(), Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
 				reads++
 				if reads == 1 {
 					return view, nil
 				}
 				return next, nil
 			}}}
-			service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-				initial := options.Read(ctx, 0)
+			service.RunUI = func(ctx context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+				initial := runtime.Status.Read(ctx, 0)
 
-				result := options.Read(ctx, initial.Sequence)
+				result := runtime.Status.Read(ctx, initial.Sequence)
 
 				require.NoError(t, result.Err)
 				require.Equal(t, tc.state, result.Values.At(pane, time.Now()))
 				require.Equal(t, status.Blocked, initial.Values.At(pane, time.Now()))
 				require.Equal(t, 2, reads)
-				return list.ItemID{}, nil
+				return ui.Result{}, nil
 			}
 
 			require.NoError(t, service.Run(t.Context()))
@@ -82,17 +82,17 @@ func TestServiceDiscardsPartialStatusOnFailure(t *testing.T) {
 	require.NoError(t, err)
 	wantErr := errors.New("source unavailable")
 	reads := 0
-	service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
+	service := Service{Options: ui.DefaultOptions(), Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
 		reads++
 		if reads == 1 {
 			return view, nil
 		}
 		return daemon.View{Values: partial, Locations: []daemon.Location{{Session: "$1", Window: "@1", Pane: "%3"}}}, wantErr
 	}}}
-	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		initial := options.Read(ctx, 0)
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+		initial := runtime.Status.Read(ctx, 0)
 
-		result := options.Read(ctx, initial.Sequence)
+		result := runtime.Status.Read(ctx, initial.Sequence)
 
 		require.ErrorIs(t, result.Err, wantErr)
 		require.Nil(t, result.Bindings)
@@ -100,7 +100,7 @@ func TestServiceDiscardsPartialStatusOnFailure(t *testing.T) {
 		require.Equal(t, status.Withdrawn, result.Values.At(cleared, time.Now()))
 		require.Equal(t, status.Unreported, result.Values.At(unseen, time.Now()))
 		require.Equal(t, status.Blocked, previous.At(active, time.Now()))
-		return list.ItemID{}, nil
+		return ui.Result{}, nil
 	}
 
 	require.NoError(t, service.Run(t.Context()))
@@ -119,12 +119,12 @@ func TestServiceCancelsStatusRead(t *testing.T) {
 			adapter, view := statusDeliveryFixture(t)
 			calls := 0
 			var cancelRead context.CancelFunc
-			service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
+			service := Service{Options: ui.DefaultOptions(), Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
 				calls++
 				cancelRead()
 				return view, nil
 			}}}
-			service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
+			service.RunUI = func(ctx context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
 				readCtx, cancel := context.WithCancel(ctx)
 				defer cancel()
 				cancelRead = cancel
@@ -132,12 +132,12 @@ func TestServiceCancelsStatusRead(t *testing.T) {
 					cancel()
 				}
 
-				result := options.Read(readCtx, 0)
+				result := runtime.Status.Read(readCtx, 0)
 
 				require.NoError(t, result.Err, "read cancellation stays quiet")
 				require.Zero(t, result.Values.Len(), "a dropped read delivers no evidence")
 				require.Equal(t, tc.wantCalls, calls)
-				return list.ItemID{}, nil
+				return ui.Result{}, nil
 			}
 
 			require.NoError(t, service.Run(t.Context()))

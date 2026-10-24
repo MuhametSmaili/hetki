@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -10,23 +11,28 @@ import (
 )
 
 // Run expects resolved options; its caller cancels and joins effects.
-func Run(ctx context.Context, initial list.Snapshot, keys KeyMap, startMode StartMode, dispatch DispatchFunc, preview PreviewOptions, paneStatus StatusOptions) (list.ItemID, error) {
-	m, err := newModelWithStartMode(initial, dispatch, keys, startMode)
+func Run(ctx context.Context, initial list.Snapshot, options Options, runtime Runtime) (Result, error) {
+	m, err := newModelWithOptions(ctx, initial, options, runtime)
 	if err != nil {
-		return list.ItemID{}, err
+		return Result{}, err
 	}
-	m.ctx, m.readPreview, m.preview.width = ctx, preview.Read, preview.Width
-	m.paneStatus.options = paneStatus
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithFPS(120))
 	final, err := p.Run()
 	if err != nil {
-		return list.ItemID{}, err
+		return Result{}, err
 	}
 	m, ok := final.(model)
 	if !ok {
-		return list.ItemID{}, fmt.Errorf("unexpected final TUI model %T", final)
+		return Result{}, fmt.Errorf("unexpected final TUI model %T", final)
 	}
-	return m.navigation, nil
+	return m.result(), nil
+}
+
+func (m model) result() Result {
+	return Result{
+		Navigation: m.navigation,
+		State:      State{View: m.view, Scope: m.scope.mode, Preview: m.preview.mode},
+	}
 }
 
 type StartMode string
@@ -50,6 +56,7 @@ const (
 
 type model struct {
 	items       list.Model
+	view        ViewMode
 	mode        uiMode
 	status      string
 	err         error
@@ -75,43 +82,32 @@ type model struct {
 	theme    theme
 }
 
-func newModel(snapshot list.Snapshot, dispatch DispatchFunc) model {
-	m, err := newModelWithKeys(snapshot, dispatch, DefaultKeyMap())
-	if err != nil {
-		return model{err: err, dispatch: dispatch, keys: DefaultKeyMap(), theme: defaultTheme()}
+func newModelWithOptions(ctx context.Context, snapshot list.Snapshot, options Options, runtime Runtime) (model, error) {
+	if err := options.Validate(); err != nil {
+		return model{}, err
 	}
-	return m
-}
-
-func newModelWithKeys(snapshot list.Snapshot, dispatch DispatchFunc, keys KeyMap) (model, error) {
-	return newModelWithStartMode(snapshot, dispatch, keys, DefaultStartMode())
-}
-
-func newModelWithStartMode(snapshot list.Snapshot, dispatch DispatchFunc, keys KeyMap, startMode StartMode) (model, error) {
 	items, err := list.New(snapshot)
 	if err != nil {
 		return model{}, err
 	}
 	m := model{
-		items:    items,
-		dispatch: dispatch,
-		keys:     keys,
-		theme:    defaultTheme(),
-		mode:     modeBrowse,
-		ctx:      context.Background(),
-		preview:  previewState{width: DefaultPreviewWidth},
+		items:       items,
+		view:        options.Initial.View,
+		dispatch:    runtime.Dispatch,
+		keys:        options.Keys,
+		theme:       defaultTheme(),
+		mode:        modeBrowse,
+		ctx:         ctx,
+		preview:     previewState{mode: options.Initial.Preview, width: options.PreviewWidth},
+		scope:       scopeState{mode: options.Initial.Scope},
+		readPreview: runtime.Preview,
+		paneStatus:  paneStatusState{options: runtime.Status},
 	}
-	m = m.reflow()
-	switch startMode {
-	case StartModeNormal:
-	case StartModeFilter:
-		if len(m.items.Rows()) > 0 {
-			m.mode = modeFilter
-		}
-	default:
-		return model{}, fmt.Errorf("invalid start mode %q", startMode)
+	m.applyScope("", time.Now())
+	if options.StartMode == StartModeFilter && (len(m.items.Rows()) > 0 || m.scope.mode == ScopeTracked) {
+		m.mode = modeFilter
 	}
-	return m, nil
+	return m.reflow(), nil
 }
 
 func (m model) reflow() model {
@@ -157,7 +153,7 @@ func (m model) layout() layoutMetrics {
 	innerWidth := max(1, lineWidth-frameStyle.GetHorizontalFrameSize())
 	listWidth, previewWidth := innerWidth, 0
 	const separatorWidth, minColumnWidth = 3, 20
-	if m.preview.visible && innerWidth >= 2*minColumnWidth+separatorWidth {
+	if m.preview.mode == PreviewOn && innerWidth >= 2*minColumnWidth+separatorWidth {
 		available := innerWidth - separatorWidth
 		previewWidth = min(max(available*m.preview.width/100, minColumnWidth), available-minColumnWidth)
 		listWidth = available - previewWidth

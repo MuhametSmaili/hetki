@@ -22,13 +22,8 @@ type PreviewRequest struct {
 
 type PreviewFunc func(context.Context, PreviewRequest) (string, error)
 
-type PreviewOptions struct {
-	Width int // Resolved percentage of content width.
-	Read  PreviewFunc
-}
-
 type previewState struct {
-	visible    bool
+	mode       PreviewMode
 	width      int
 	request    PreviewRequest
 	generation uint64
@@ -53,13 +48,17 @@ func (p *previewState) invalidate() {
 }
 
 func handleTogglePreview(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
-	m.preview.visible = !m.preview.visible
+	if m.preview.mode == PreviewOn {
+		m.preview.mode = PreviewOff
+	} else {
+		m.preview.mode = PreviewOn
+	}
 	return m.reflow(), nil
 }
 
 // syncPreview coalesces selection changes into one in-flight capture.
 func (m model) syncPreview() (model, tea.Cmd) {
-	if !m.preview.visible && m.preview.request.ItemID.IsZero() {
+	if m.preview.mode != PreviewOn && m.preview.request.ItemID.IsZero() {
 		return m, nil
 	}
 

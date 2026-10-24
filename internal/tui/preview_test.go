@@ -41,6 +41,35 @@ func previewModel(t *testing.T) model {
 
 func previewKey() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt} }
 
+func TestInitialPreviewCapturesAndRetainsRequestAcrossNarrowLayout(t *testing.T) {
+	options := DefaultOptions()
+	options.Initial.Preview = PreviewOn
+	snapshot := flatSnapshot(1)
+	var captured []PreviewRequest
+	m, err := newModelWithOptions(t.Context(), snapshot, options, Runtime{
+		Preview: func(_ context.Context, request PreviewRequest) (string, error) {
+			captured = append(captured, request)
+			return "initial preview", nil
+		},
+	})
+	require.NoError(t, err)
+	require.Positive(t, m.layout().previewWidth)
+
+	m, cmd := updateModel(t, m, tea.WindowSizeMsg{Width: 30, Height: 20})
+
+	require.Nil(t, cmd)
+	require.Zero(t, m.layout().previewWidth)
+	require.Equal(t, PreviewOn, m.result().State.Preview)
+	m, cmd = updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 20})
+	require.NotNil(t, cmd)
+	m, _ = updateModel(t, m, cmd())
+	require.Equal(t, []PreviewRequest{{ItemID: snapshot.Items[0].ID}}, captured)
+	require.Contains(t, m.View().Content, "initial preview")
+	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 30, Height: 20})
+	require.Equal(t, PreviewOn, m.result().State.Preview)
+	require.Zero(t, m.layout().previewWidth)
+}
+
 func TestPreviewToggleModeOwnership(t *testing.T) {
 	for _, mode := range []uiMode{modeBrowse, modeFilter, modeInput, modeConfirm, modeMenu} {
 		t.Run(string(mode), func(t *testing.T) {
@@ -49,7 +78,7 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 			query, selected := m.items.Query(), selectedNodeID(m)
 			m, cmd := updateModel(t, m, previewKey())
 			want := mode == modeBrowse || mode == modeFilter
-			require.Equal(t, want, m.preview.visible)
+			require.Equal(t, want, m.preview.mode == PreviewOn)
 			require.Equal(t, mode, m.mode)
 			require.Equal(t, query, m.items.Query())
 			require.Equal(t, selected, selectedNodeID(m))
@@ -60,7 +89,7 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 				require.Nil(t, cmd)
 				require.True(t, m.preview.ready)
 				m, cmd = updateModel(t, m, previewKey())
-				require.False(t, m.preview.visible)
+				require.Equal(t, PreviewOff, m.preview.mode)
 				require.Nil(t, cmd)
 				require.Empty(t, m.preview.lines)
 			} else {
@@ -71,7 +100,7 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 	m := previewModel(t)
 	m.busy = true
 	m, cmd := updateModel(t, m, previewKey())
-	require.False(t, m.preview.visible)
+	require.Equal(t, PreviewOff, m.preview.mode)
 	require.Nil(t, cmd)
 }
 

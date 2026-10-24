@@ -21,6 +21,9 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	m.pending, m.pendingRows = nil, nil
 	m.busy, m.status = false, ""
 	m.err = msg.err
+	if m.err == nil && result.View != "" {
+		m.err = result.View.Validate()
+	}
 	switch {
 	case m.err != nil:
 		return m, nil
@@ -34,6 +37,10 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	return m.applyActionSnapshot(result, pending, previousRows)
+}
+
+func (m model) applyActionSnapshot(result ActionResult, pending *ActionRequest, previousRows []list.ItemID) (tea.Model, tea.Cmd) {
 	preferred := result.SelectItemID
 	if preferred.IsZero() {
 		selected, _ := m.items.Selected()
@@ -43,6 +50,9 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	if err := m.items.Replace(*result.Snapshot, preferred); err != nil {
 		m.err = err
 		return m, nil
+	}
+	if result.View != "" {
+		m.view = result.View
 	}
 	m.preview.invalidate()
 	m.paneStatus.options.Bindings = nil

@@ -40,7 +40,7 @@ func (m model) View() tea.View {
 func (m model) viewHeader(layout layoutMetrics) string {
 	width := layout.listWidth
 	scope := "All"
-	if m.scope.tracked {
+	if m.scope.mode == ScopeTracked {
 		scope = "Tracked"
 	}
 
@@ -188,7 +188,7 @@ func headerRight(m model) string {
 		return m.paneStatus.readErr.Error()
 	}
 	query := m.items.Query()
-	if m.scope.tracked {
+	if m.scope.mode == ScopeTracked {
 		query = "tracked"
 	}
 	return rootCountLabel(m.items.Snapshot(), m.items.ShownRoots(), query)
@@ -222,7 +222,7 @@ func responsiveFrameStyle(base lipgloss.Style, width, height int) lipgloss.Style
 }
 
 func emptyStateText(m model) string {
-	if m.scope.tracked {
+	if m.scope.mode == ScopeTracked {
 		return "no matching tracked items"
 	}
 	if strings.TrimSpace(m.items.Query()) != "" {

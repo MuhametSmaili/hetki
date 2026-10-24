@@ -2,10 +2,12 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
@@ -48,10 +50,78 @@ func TestRunRejectsInvalidInitialProjectionBeforeStartingTea(t *testing.T) {
 		{ID: list.ItemID{ID: "same"}, Primary: "one"},
 		{ID: list.ItemID{ID: "same"}, Primary: "two"},
 	}}
-	_, err := Run(context.Background(), invalid, DefaultKeyMap(), DefaultStartMode(), nil, PreviewOptions{Width: DefaultPreviewWidth}, StatusOptions{})
+	result, err := Run(context.Background(), invalid, DefaultOptions(), Runtime{})
+	require.Equal(t, Result{}, result)
 	if err == nil || !strings.Contains(err.Error(), "duplicate item ID") {
 		t.Fatalf("Run error = %v, want duplicate item ID", err)
 	}
+}
+
+func TestProjectionResultCommitsOnlyAcceptedView(t *testing.T) {
+	initial := flatSnapshot(2)
+	valid := viewSnapshot()
+	invalid := list.Snapshot{Items: []list.Item{initial.Items[0], initial.Items[0]}}
+	for _, test := range []struct {
+		name      string
+		result    ActionResult
+		err       error
+		wantView  ViewMode
+		wantID    list.ItemID
+		wantError bool
+	}{
+		{"failed action", ActionResult{Snapshot: &valid, View: ViewTree}, errors.New("failed"), ViewFlat, initial.Items[0].ID, true},
+		{"rejected snapshot", ActionResult{Snapshot: &invalid, View: ViewTree}, nil, ViewFlat, initial.Items[0].ID, true},
+		{"invalid view", ActionResult{Snapshot: &valid, View: "invalid"}, nil, ViewFlat, initial.Items[0].ID, true},
+		{"invalid view without snapshot", ActionResult{View: "invalid"}, nil, ViewFlat, initial.Items[0].ID, true},
+		{"no snapshot", ActionResult{View: ViewTree}, nil, ViewFlat, initial.Items[0].ID, false},
+		{"unchanged view", ActionResult{Snapshot: &valid}, nil, ViewFlat, valid.Items[0].ID, false},
+		{"accepted snapshot", ActionResult{Snapshot: &valid, View: ViewTree}, nil, ViewTree, valid.Items[0].ID, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := newModel(initial, func(ActionRequest) (ActionResult, error) { return test.result, test.err })
+
+			pending, cmd := updateModel(t, m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+
+			require.Equal(t, ViewFlat, pending.result().State.View)
+			require.Equal(t, initial.Items[0].ID, selectedNodeID(pending))
+			require.NotNil(t, cmd)
+			finished, _ := updateModel(t, pending, cmd())
+			require.Equal(t, test.wantError, finished.err != nil)
+			require.Equal(t, test.wantView, finished.result().State.View)
+			require.Equal(t, test.wantID, selectedNodeID(finished))
+		})
+	}
+}
+
+func TestEmptyTreeRetainsIdentityOnQuit(t *testing.T) {
+	options := DefaultOptions()
+	options.Initial = State{View: ViewTree, Scope: ScopeTracked, Preview: PreviewOn}
+	m, err := newModelWithOptions(t.Context(), list.Snapshot{}, options, Runtime{})
+	require.NoError(t, err)
+
+	m, cmd := updateModel(t, m, tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+
+	require.NotNil(t, cmd)
+	require.Equal(t, Result{State: options.Initial}, m.result())
+}
+
+func TestFinalResultUsesLiveChoicesAndNavigation(t *testing.T) {
+	m := newModel(flatSnapshot(1), nil)
+	m, _ = updateModel(t, m, specialKey(tea.KeyTab))
+	m, _ = updateModel(t, m, previewKey())
+	snapshot := list.Snapshot{}
+	m, _ = updateModel(t, m, actionResultMsg{result: ActionResult{Snapshot: &snapshot, View: ViewTree}})
+	m, _ = updateModel(t, m, actionResultMsg{err: errors.New("later action failed")})
+	require.Error(t, m.err)
+	navigation := list.ItemID{ID: "destination"}
+
+	m, cmd := updateModel(t, m, actionResultMsg{result: ActionResult{Navigation: navigation}})
+
+	require.NotNil(t, cmd)
+	require.Equal(t, Result{
+		Navigation: navigation,
+		State:      State{View: ViewTree, Scope: ScopeTracked, Preview: PreviewOn},
+	}, m.result())
 }
 
 func TestModelStartMode(t *testing.T) {

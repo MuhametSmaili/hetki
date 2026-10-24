@@ -106,7 +106,7 @@ func TestPreviewReadCanRaceWithSnapshotReplacement(t *testing.T) {
 		done <- nil
 	}()
 	for range 100 {
-		_, err := adapter.Load(context.Background())
+		_, err := adapter.Load(context.Background(), ui.ViewTree)
 		require.NoError(t, err)
 	}
 	require.NoError(t, awaitChannel(t, done))
@@ -116,16 +116,18 @@ func TestServiceCancelsAndJoinsPreviewOnExit(t *testing.T) {
 	driver := &blockingDriver{started: make(chan struct{}), stopped: make(chan struct{})}
 	done := make(chan error, 1)
 	var read ui.PreviewFunc
-	service := Service{Driver: driver, PreviewWidth: 65,
-		RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, preview ui.PreviewOptions, _ ui.StatusOptions) (list.ItemID, error) {
-			require.Equal(t, 65, preview.Width)
-			read = preview.Read
+	options := ui.DefaultOptions()
+	options.PreviewWidth = 65
+	service := Service{Options: options, Driver: driver,
+		RunUI: func(_ context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+			require.Equal(t, 65, options.PreviewWidth)
+			read = runtime.Preview
 			go func() {
 				_, err := read(context.Background(), ui.PreviewRequest{ItemID: list.ItemID{ID: "pane"}})
 				done <- err
 			}()
 			awaitChannel(t, driver.started)
-			return list.ItemID{}, nil
+			return ui.Result{}, nil
 		},
 	}
 	require.NoError(t, service.Run(context.Background()))
@@ -142,18 +144,18 @@ func TestServiceCancelsAndJoinsPreviewOnExit(t *testing.T) {
 func TestServicePropagatesSelectionCancellation(t *testing.T) {
 	driver := &blockingDriver{started: make(chan struct{}), stopped: make(chan struct{})}
 	done := make(chan error, 1)
-	service := Service{Driver: driver,
-		RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, preview ui.PreviewOptions, _ ui.StatusOptions) (list.ItemID, error) {
+	service := Service{Options: ui.DefaultOptions(), Driver: driver,
+		RunUI: func(_ context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			go func() {
-				_, err := preview.Read(ctx, ui.PreviewRequest{ItemID: list.ItemID{ID: "pane"}})
+				_, err := runtime.Preview(ctx, ui.PreviewRequest{ItemID: list.ItemID{ID: "pane"}})
 				done <- err
 			}()
 			awaitChannel(t, driver.started)
 			cancel()
 			require.ErrorIs(t, awaitChannel(t, done), context.Canceled)
-			return list.ItemID{}, nil
+			return ui.Result{}, nil
 		},
 	}
 	require.NoError(t, service.Run(context.Background()))
@@ -162,7 +164,9 @@ func TestServicePropagatesSelectionCancellation(t *testing.T) {
 func TestServiceRejectsPreviewWidthBeforeLoading(t *testing.T) {
 	for _, width := range []int{-1, 100} {
 		driver := &switchDriver{}
-		err := (Service{Driver: driver, PreviewWidth: width}).Run(context.Background())
+		options := ui.DefaultOptions()
+		options.PreviewWidth = width
+		err := (Service{Options: options, Driver: driver}).Run(context.Background())
 		require.ErrorContains(t, err, "preview width")
 		require.Zero(t, driver.loads)
 	}

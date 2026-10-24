@@ -26,14 +26,14 @@ func TestTreeBindsPaneDetailsToTheirOwnStatus(t *testing.T) {
 	state.Sessions[0].DefaultShell = "/bin/zsh"
 	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
-	adapter.projection = projectionTree
+
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
 		active:   {State: status.Idle, ValidUntil: now.Add(time.Minute)},
 		inactive: {State: status.Blocked, ValidUntil: now.Add(time.Minute)},
 	})
 	require.NoError(t, err)
 
-	snapshot, err := adapter.Load(t.Context())
+	snapshot, err := adapter.Load(t.Context(), ui.ViewTree)
 
 	require.NoError(t, err)
 	require.Empty(t, snapshot.Items[0].Children[0].Trailing)
@@ -79,7 +79,7 @@ func TestTreeDoesNotInventAnActivePaneProgram(t *testing.T) {
 	state.Sessions[0].Windows[0].Panes[0].Program = "pi"
 	adapter := testAdapter(&stubBackend{state: state})
 
-	snapshot, err := adapter.Load(t.Context())
+	snapshot, err := adapter.Load(t.Context(), ui.ViewTree)
 
 	require.NoError(t, err)
 	require.Empty(t, snapshot.Items[0].Children[0].Trailing)

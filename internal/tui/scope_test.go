@@ -60,6 +60,39 @@ func scopeRowIDs(m model) []list.ItemID {
 	return ids
 }
 
+func TestInitialTrackedScopeHasNoFlashAndKeepsFilterUsable(t *testing.T) {
+	options := DefaultOptions()
+	options.Initial.Scope = ScopeTracked
+	snapshot := flatSnapshot(2)
+	pane := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+		pane: {State: status.Idle, ValidUntil: time.Now().Add(time.Hour)},
+	})
+	require.NoError(t, err)
+	m, err := newModelWithOptions(t.Context(), snapshot, options, Runtime{
+		Status: StatusOptions{Read: func(context.Context, uint64) StatusUpdate {
+			return StatusUpdate{Values: values, Bindings: StatusBindings{snapshot.Items[1].ID: {pane}}}
+		}},
+	})
+	require.NoError(t, err)
+
+	require.Empty(t, m.items.Rows())
+	require.NotContains(t, m.View().Content, "item 00")
+	require.NotContains(t, m.View().Content, "item 01")
+	require.Equal(t, modeFilter, m.mode)
+	m, _ = updateModel(t, m, tea.KeyPressMsg{Text: "01"})
+	m, cmd := updateModel(t, m, m.Init()())
+	require.NotNil(t, cmd)
+	m, _ = updateModel(t, m, cmd())
+
+	require.Equal(t, modeFilter, m.mode)
+	require.Equal(t, "01", m.items.Query())
+	require.Equal(t, []list.ItemID{snapshot.Items[1].ID}, scopeRowIDs(m))
+	require.Equal(t, ScopeTracked, m.result().State.Scope)
+	m, _ = updateModel(t, m, specialKey(tea.KeyBackspace))
+	require.Equal(t, "0", m.items.Query())
+}
+
 func TestScopeAndTextSearch(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -77,7 +110,10 @@ func TestScopeAndTextSearch(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m, now := scopeFixture(t, test.layout)
-			m.scope.tracked = test.tracked
+			m.scope.mode = ScopeAll
+			if test.tracked {
+				m.scope.mode = ScopeTracked
+			}
 
 			m.applyScope(test.query, now)
 
@@ -145,8 +181,8 @@ func TestScopeToggleIsLocalAndPreservesQueryAndSelection(t *testing.T) {
 			require.Nil(t, cmd)
 			require.Nil(t, returnCmd)
 			require.Zero(t, reads)
-			require.True(t, tracked.scope.tracked)
-			require.False(t, all.scope.tracked)
+			require.Equal(t, ScopeTracked, tracked.scope.mode)
+			require.Equal(t, ScopeAll, all.scope.mode)
 			require.Equal(t, "idle", all.items.Query())
 			require.Equal(t, list.ItemID{ID: "idle"}, selectedNodeID(all))
 			require.Equal(t, mode, all.mode)
@@ -165,7 +201,7 @@ func TestLayoutSwitchPreservesScopeAndQuery(t *testing.T) {
 			Snapshot: &replacement, Status: &StatusUpdate{Values: tree.paneStatus.values, Bindings: tree.paneStatus.options.Bindings}, SelectItemID: list.ItemID{ID: "idle"},
 		}, nil
 	}
-	m.scope.tracked = true
+	m.scope.mode = ScopeTracked
 	m.paneStatus.values = status.Snapshot{}
 	m.applyScope("idle", now)
 	m.mode = modeFilter
@@ -176,7 +212,7 @@ func TestLayoutSwitchPreservesScopeAndQuery(t *testing.T) {
 
 	require.Equal(t, ActionToggleProjection, requested)
 	require.NoError(t, m.err)
-	require.True(t, m.scope.tracked)
+	require.Equal(t, ScopeTracked, m.scope.mode)
 	require.Equal(t, modeFilter, m.mode)
 	require.Equal(t, "idle", m.items.Query())
 	require.Equal(t, []list.ItemID{{ID: "session"}, {ID: "idle"}}, scopeRowIDs(m))
@@ -185,7 +221,7 @@ func TestLayoutSwitchPreservesScopeAndQuery(t *testing.T) {
 
 func TestStatusMembershipChangePreservesFilter(t *testing.T) {
 	m, now := scopeFixture(t, "flat")
-	m.scope.tracked = true
+	m.scope.mode = ScopeTracked
 	m.applyScope("idle", now)
 
 	next, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Values: status.Snapshot{}}})
@@ -243,7 +279,7 @@ func TestScopeKeysRespectModes(t *testing.T) {
 				m = next.(model)
 
 				require.Nil(t, cmd)
-				require.False(t, m.scope.tracked)
+				require.Equal(t, ScopeAll, m.scope.mode)
 				require.Equal(t, mode, m.mode)
 				require.Equal(t, before, selectedNodeID(m))
 			})

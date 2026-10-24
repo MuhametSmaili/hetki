@@ -12,28 +12,25 @@ import (
 )
 
 type Driver interface {
-	Load(context.Context) (list.Snapshot, error)
+	Load(context.Context, ui.ViewMode) (list.Snapshot, error)
 	Execute(context.Context, ui.ActionRequest) (ui.ActionResult, error)
 	Preview(context.Context, ui.PreviewRequest) (string, error)
 	Navigate(context.Context, list.ItemID) error
 }
 
-type RunUIFunc func(context.Context, list.Snapshot, ui.KeyMap, ui.StartMode, ui.DispatchFunc, ui.PreviewOptions, ui.StatusOptions) (list.ItemID, error)
+type RunUIFunc func(context.Context, list.Snapshot, ui.Options, ui.Runtime) (ui.Result, error)
 
 type Service struct {
-	Driver       Driver
-	Keys         ui.KeyMap
-	StartMode    ui.StartMode
-	PreviewWidth int
-	RunUI        RunUIFunc
+	Driver  Driver
+	Options ui.Options
+	RunUI   RunUIFunc
 }
 
 func NewService(detectBackend func() (Backend, error)) Service {
 	return Service{
-		Driver:    NewLiveAdapter(detectBackend),
-		Keys:      ui.DefaultKeyMap(),
-		StartMode: ui.DefaultStartMode(),
-		RunUI:     ui.Run,
+		Driver:  NewLiveAdapter(detectBackend),
+		Options: ui.DefaultOptions(),
+		RunUI:   ui.Run,
 	}
 }
 
@@ -46,7 +43,7 @@ func (s Service) Run(ctx context.Context) error {
 	defer cancelEffects()
 	effects := uiEffects{ctx: effectsCtx, cancel: cancelEffects, driver: s.Driver}
 
-	initial, err := s.Driver.Load(effectsCtx)
+	initial, err := s.Driver.Load(effectsCtx, s.Options.Initial.View)
 	if err != nil {
 		return err
 	}
@@ -58,8 +55,8 @@ func (s Service) Run(ctx context.Context) error {
 	if statusErr != nil {
 		initial.Notice = strings.TrimSpace(initial.Notice + "\nstatus unavailable: " + statusErr.Error())
 	}
-	preview := ui.PreviewOptions{Width: s.PreviewWidth, Read: effects.preview}
-	navigation, err := s.RunUI(effectsCtx, initial, s.Keys, s.StartMode, effects.dispatch, preview, effects.statusOptions())
+	runtime := ui.Runtime{Dispatch: effects.dispatch, Preview: effects.preview, Status: effects.statusOptions()}
+	result, err := s.RunUI(effectsCtx, initial, s.Options, runtime)
 	effects.stop()
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -70,8 +67,8 @@ func (s Service) Run(ctx context.Context) error {
 		}
 		return err
 	}
-	if !navigation.IsZero() {
-		return s.Driver.Navigate(ctx, navigation)
+	if !result.Navigation.IsZero() {
+		return s.Driver.Navigate(ctx, result.Navigation)
 	}
 	return nil
 }
@@ -92,17 +89,5 @@ func (s Service) resolveOptions() (Service, error) {
 	if s.RunUI == nil {
 		s.RunUI = ui.Run
 	}
-	if s.Keys.IsZero() {
-		s.Keys = ui.DefaultKeyMap()
-	}
-	if s.StartMode == "" {
-		s.StartMode = ui.DefaultStartMode()
-	}
-	if s.PreviewWidth == 0 {
-		s.PreviewWidth = ui.DefaultPreviewWidth
-	}
-	if s.PreviewWidth < 1 || s.PreviewWidth > 99 {
-		return s, fmt.Errorf("preview width must be between 1 and 99 percent")
-	}
-	return s, nil
+	return s, s.Options.Validate()
 }

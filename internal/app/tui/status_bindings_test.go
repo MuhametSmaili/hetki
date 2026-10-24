@@ -42,7 +42,7 @@ func statusDeliveryFixture(t *testing.T) (*LiveAdapter, daemon.View) {
 	server := observe.Server{PID: 123, Birth: "fixture", Started: 1}
 	b := &projectionStatusBackend{stubBackend: stubBackend{state: liveState()}, server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
-	adapter.projection = projectionTree
+
 	pane := status.PaneRef{Server: server.Identity(), ID: "%1", Generation: "birth"}
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
 		pane: {State: status.Blocked, ValidUntil: now.Add(time.Minute)},
@@ -55,25 +55,26 @@ func TestServiceSuppliesBindingsOnProjectionReplacement(t *testing.T) {
 	adapter, view := statusDeliveryFixture(t)
 	now := time.Now()
 	reads := 0
-	service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
+	service := Service{Options: ui.DefaultOptions(), Driver: statusTestDriver{LiveAdapter: adapter, read: func(context.Context) (daemon.View, error) {
 		reads++
 		return view, nil
 	}}}
-	service.RunUI = func(ctx context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, dispatch ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		require.Empty(t, options.Bindings, "ordinary backend rows have no status references")
-		initial := options.Read(ctx, 0)
+	service.Options.Initial.View = ui.ViewTree
+	service.RunUI = func(ctx context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+		require.Empty(t, runtime.Status.Bindings, "ordinary backend rows have no status references")
+		initial := runtime.Status.Read(ctx, 0)
 		require.NoError(t, initial.Err)
 		require.Equal(t, status.Blocked, initial.Bindings.StateAt(windowItemID("$1", "@1"), initial.Values, now))
 
 		for _, id := range []list.ItemID{destinationItemID("$1", "@1", "%1"), windowItemID("$1", "@1")} {
-			result, err := dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})
+			result, err := runtime.Dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})
 			require.NoError(t, err)
 			require.NotNil(t, result.Snapshot)
 			require.NotNil(t, result.Status)
 			require.Equal(t, status.Blocked, result.Status.Bindings.StateAt(id, result.Status.Values, now))
 		}
 		require.Equal(t, 1, reads, "replacement must not depend on another transport read")
-		return list.ItemID{}, nil
+		return ui.Result{}, nil
 	}
 
 	err := service.Run(t.Context())
@@ -87,17 +88,17 @@ func TestServiceCancelsAndJoinsStatusOnExit(t *testing.T) {
 	adapter, _ := statusDeliveryFixture(t)
 	calls := 0
 	var read func(context.Context, uint64) ui.StatusUpdate
-	service := Service{Driver: statusTestDriver{LiveAdapter: adapter, read: func(ctx context.Context) (daemon.View, error) {
+	service := Service{Options: ui.DefaultOptions(), Driver: statusTestDriver{LiveAdapter: adapter, read: func(ctx context.Context) (daemon.View, error) {
 		calls++
 		close(started)
 		<-ctx.Done()
 		close(stopped)
 		return daemon.View{}, ctx.Err()
-	}}, RunUI: func(_ context.Context, _ list.Snapshot, _ ui.KeyMap, _ ui.StartMode, _ ui.DispatchFunc, _ ui.PreviewOptions, options ui.StatusOptions) (list.ItemID, error) {
-		read = options.Read
+	}}, RunUI: func(_ context.Context, _ list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+		read = runtime.Status.Read
 		go func() { done <- read(context.Background(), 0) }()
 		awaitChannel(t, started)
-		return list.ItemID{}, nil
+		return ui.Result{}, nil
 	}}
 
 	err := service.Run(context.Background())

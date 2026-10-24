@@ -28,10 +28,10 @@ func TestProjectionKeepsOpaqueOccurrenceIDsDistinct(t *testing.T) {
 
 	for _, test := range []struct {
 		name string
-		kind projectionKind
+		kind ui.ViewMode
 	}{
-		{name: "tree", kind: projectionTree},
-		{name: "flat", kind: projectionFlat},
+		{name: "tree", kind: ui.ViewTree},
+		{name: "flat", kind: ui.ViewFlat},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			snapshot, index, err := projectState(state, test.kind, frecency.Scores{}, "")
@@ -57,7 +57,7 @@ func TestLiveAdapterUsesOpaqueReferenceForPaneActions(t *testing.T) {
 		return "screen", nil
 	}
 	adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
-	snapshot, err := adapter.Load(context.Background())
+	snapshot, err := adapter.Load(context.Background(), ui.ViewFlat)
 	require.NoError(t, err)
 	id := snapshot.Items[0].ID
 

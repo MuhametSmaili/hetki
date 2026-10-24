@@ -26,7 +26,7 @@ type ptyDriver struct {
 	navigate func(context.Context, list.ItemID) error
 }
 
-func (ptyDriver) Load(context.Context) (list.Snapshot, error) {
+func (ptyDriver) Load(context.Context, ui.ViewMode) (list.Snapshot, error) {
 	return list.Snapshot{Items: []list.Item{{
 		ID: sessionItemID("dev"), Primary: "dev",
 		SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "dev"}},
@@ -63,7 +63,18 @@ func TestTerminalRestoredBeforeNavigation(t *testing.T) {
 			fmt.Println("RECORDED")
 			return nil
 		}}
-		require.NoError(t, (Service{Driver: driver, RunUI: ui.Run}).Run(context.Background()))
+		service := Service{Options: ui.DefaultOptions(), Driver: driver,
+			RunUI: func(ctx context.Context, snapshot list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+				result, err := ui.Run(ctx, snapshot, options, runtime)
+				require.NoError(t, err)
+				require.Equal(t, ui.Result{
+					Navigation: sessionItemID("dev"),
+					State:      ui.State{View: ui.ViewFlat, Scope: ui.ScopeAll, Preview: ui.PreviewOn},
+				}, result)
+				return result, err
+			},
+		}
+		require.NoError(t, service.Run(context.Background()))
 		return
 	}
 

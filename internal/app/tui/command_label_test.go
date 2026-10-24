@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +26,8 @@ func TestLiveAdapterHidesDefaultShellCommandsFromLabelsAndSearch(t *testing.T) {
 	} {
 		for _, projection := range []struct {
 			name string
-			kind projectionKind
-		}{{"flat", projectionFlat}, {"tree", projectionTree}} {
+			kind ui.ViewMode
+		}{{"flat", ui.ViewFlat}, {"tree", ui.ViewTree}} {
 			t.Run(test.name+"/"+projection.name, func(t *testing.T) {
 				state := liveState()
 				state.Sessions[0].DefaultShell = test.shell
@@ -40,14 +41,13 @@ func TestLiveAdapterHidesDefaultShellCommandsFromLabelsAndSearch(t *testing.T) {
 				window.Panes[0].Dead = test.dead
 				stub := &stubBackend{state: state}
 				adapter := newLiveAdapter(func() (Backend, error) { return stub, nil }, nil, nil)
-				adapter.projection = projection.kind
 
-				snapshot, err := adapter.Load(t.Context())
+				snapshot, err := adapter.Load(t.Context(), projection.kind)
 
 				require.NoError(t, err)
 				require.Len(t, snapshot.Items, 1)
 				item := snapshot.Items[0]
-				if projection.kind == projectionTree {
+				if projection.kind == ui.ViewTree {
 					require.Len(t, item.Children, 1)
 					item = item.Children[0]
 				}

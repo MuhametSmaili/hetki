@@ -30,7 +30,7 @@ type LiveAdapter struct {
 	input             *projectionInput // Owned and immutable between successful loads.
 	statusServer      observe.Server
 	statusErr         error
-	projection        projectionKind
+	projection        ui.ViewMode
 	frecency          *frecency.Store
 	frecencyErr       error
 	pendingNavigation *preparedNavigation
@@ -42,7 +42,7 @@ func NewLiveAdapter(detectBackend func() (Backend, error)) *LiveAdapter {
 }
 
 func newLiveAdapter(detectBackend func() (Backend, error), store *frecency.Store, storeErr error) *LiveAdapter {
-	return &LiveAdapter{DetectBackend: detectBackend, projection: projectionFlat, frecency: store, frecencyErr: storeErr}
+	return &LiveAdapter{DetectBackend: detectBackend, frecency: store, frecencyErr: storeErr}
 }
 
 func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui.ActionResult, error) {

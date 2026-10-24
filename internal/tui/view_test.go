@@ -83,7 +83,7 @@ func TestLeavingFilterModeKeepsNarrowQueryWithoutHint(t *testing.T) {
 			require.NoError(t, err)
 			m, err := newModelWithKeys(viewSnapshot(), nil, keys)
 			require.NoError(t, err)
-			m.width, m.height, m.preview.visible = 48, 12, true
+			m.width, m.height, m.preview.mode = 48, 12, PreviewOn
 			m.items.SetQuery("editor")
 			m = m.reflow()
 
