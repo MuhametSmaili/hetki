@@ -12,13 +12,46 @@ import (
 // ErrUnsafePruning means session pruning was refused before applying the plan.
 var ErrUnsafePruning = errors.New("unsafe session pruning")
 
+// ErrLinkedWindow means reconciliation would destroy a window shared across sessions.
+var ErrLinkedWindow = errors.New("linked window")
+
+// Removal session names must come from the same snapshot as sessions.
+func validateLinkedWindowRemoval(sessions []backend.Session, p *plan.Plan) error {
+	var removalSessions map[string]string
+	for _, action := range p.Actions {
+		removal, ok := action.(plan.KillWindowAction)
+		if !ok {
+			continue
+		}
+		if removalSessions == nil {
+			removalSessions = make(map[string]string)
+		}
+		removalSessions[removal.WindowID] = removal.Session
+	}
+	if len(removalSessions) == 0 {
+		return nil
+	}
+
+	for _, session := range sessions {
+		for _, window := range session.Windows {
+			removalSession, found := removalSessions[window.ID]
+			if found && session.Name != removalSession {
+				return appshared.WithHint(
+					fmt.Errorf("%w: cannot remove or replace window %q (%s) in session %q; it is shared across sessions",
+						ErrLinkedWindow, window.Name, window.ID, removalSession),
+					"No changes were applied. Resolve the window links before retrying, or run without --force to keep existing windows.")
+			}
+		}
+	}
+	return nil
+}
+
 func validatePruning(result backend.StateResult, p *plan.Plan) error {
 	invoking, err := invokingResources(result)
 	if err != nil {
 		return err
 	}
 
-	shared := sharedWindows(result.Sessions)
 	for _, action := range p.Actions {
 		switch action := action.(type) {
 		case plan.KillSessionAction:
@@ -32,11 +65,6 @@ func validatePruning(result backend.StateResult, p *plan.Plan) error {
 				return appshared.WithHint(
 					fmt.Errorf("%w: window %q (%s) may contain this invocation", ErrUnsafePruning, action.Window, action.WindowID),
 					"Run from a retained pane or outside tmux before replacing or removing this window.")
-			}
-			if shared[action.WindowID] {
-				return appshared.WithHint(
-					fmt.Errorf("%w: window %q (%s) is linked across sessions", ErrUnsafePruning, action.Window, action.WindowID),
-					"Remove --force to prune sessions without replacing windows, or resolve the linked windows first.")
 			}
 		}
 	}
@@ -85,18 +113,4 @@ func windowContainsInvocation(identity backend.Invocation, sessionID string, win
 		}
 	}
 	return false
-}
-
-func sharedWindows(sessions []backend.Session) map[string]bool {
-	owners := make(map[string]string)
-	shared := make(map[string]bool)
-	for _, session := range sessions {
-		for _, window := range session.Windows {
-			if owner, found := owners[window.ID]; found && owner != session.ID {
-				shared[window.ID] = true
-			}
-			owners[window.ID] = session.ID
-		}
-	}
-	return shared
 }

@@ -128,6 +128,11 @@ func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, op
 	if err := p.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid reconciliation plan: %w", err)
 	}
+	if opts.Force {
+		if err := validateLinkedWindowRemoval(result.Sessions, p); err != nil {
+			return nil, err
+		}
+	}
 	if opts.PruneSessions {
 		if err := validatePruning(result, p); err != nil {
 			return nil, err

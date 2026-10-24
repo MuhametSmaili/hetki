@@ -177,31 +177,47 @@ func TestPruningDryRunLeavesAnAttachedClientUnchanged(t *testing.T) {
 	}
 }
 
-func TestPruningPreservesLinkedWindowsUnlessForceWouldDestroyThem(t *testing.T) {
-	for _, force := range []bool{false, true} {
-		t.Run(fmt.Sprintf("force=%t", force), func(t *testing.T) {
+func TestReconciliationPreservesLinkedWindowsOnIsolatedTmux(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		force   bool
+		prune   bool
+		replace bool
+	}{
+		{name: "merge pruning", prune: true},
+		{name: "force removes extra window", force: true},
+		{name: "force replaces mismatched window", force: true, replace: true},
+		{name: "force with pruning", force: true, prune: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
-			b, service, _ := nativePruningFixture(t, ctx)
+			b, service, workspace := nativePruningFixture(t, ctx)
 			initial, err := b.QueryState(ctx)
 			require.NoError(t, err)
 			dev := findBackendSession(t, initial.Sessions, "dev")
 			old := findBackendSession(t, initial.Sessions, "old")
 			output, err := exec.CommandContext(ctx, "tmux", "link-window", "-s", old.Windows[0].ID, "-t", dev.ID+":").CombinedOutput()
 			require.NoError(t, err, "%s", output)
+			if tc.replace {
+				directory := workspace.Sessions[0].Windows[0].Path
+				workspace.Sessions[0].Windows = append(workspace.Sessions[0].Windows, manifest.Window{
+					Name: "shell", Path: directory, Panes: []manifest.Pane{{Path: directory}, {Path: directory}},
+				})
+			}
 			before, err := b.QueryState(ctx)
 			require.NoError(t, err)
 
-			err = service.Run(ctx, Options{Path: new("workspace.yaml"), Force: force, PruneSessions: true})
+			err = service.Run(ctx, Options{Path: new("workspace.yaml"), Force: tc.force, PruneSessions: tc.prune})
 
-			if force {
-				require.ErrorIs(t, err, ErrUnsafePruning)
+			if tc.force {
+				require.ErrorIs(t, err, ErrLinkedWindow)
 			} else {
 				require.NoError(t, err)
 			}
 			after, err := b.QueryState(ctx)
 			require.NoError(t, err)
-			if force {
+			if tc.force {
 				require.Equal(t, before.Sessions, after.Sessions)
 				return
 			}
