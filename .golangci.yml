@@ -14,6 +14,7 @@ linters:
     - errorlint
 
     # Bug classes with no current findings.
+    - gocritic
     - asasalint
     - bidichk
     - bodyclose
@@ -37,6 +38,17 @@ linters:
   settings:
     gocognit:
       min-complexity: 15
+    gocritic:
+      disable-all: true
+      enabled-checks:
+        - argOrder
+        - badCall
+        - badCond
+        - badLock
+        - caseOrder
+        - dupArg
+        - dupCase
+        - exitAfterDefer
     nolintlint:
       require-explanation: true
       require-specific: true
