@@ -140,7 +140,7 @@ func TestQueryStateFallsBackForOversizedDarwinProcessData(t *testing.T) {
 	}
 }
 
-func TestQueryStateIgnoresNodeScriptPathsAndAmbiguousTitles(t *testing.T) {
+func TestQueryStateNamesOnlyForegroundLeader(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
 		t.Skip("Node is required for the foreground naming fixture")
@@ -163,7 +163,7 @@ func TestQueryStateIgnoresNodeScriptPathsAndAmbiguousTitles(t *testing.T) {
 	require.Equal(t, "node", state.Sessions[0].Windows[0].Panes[0].Command)
 	require.Empty(t, state.Sessions[0].Windows[0].Panes[0].Program)
 
-	// A process-provided name is still ambiguous in a multi-process job.
+	// A helper process does not replace the foreground group's leader.
 	require.NoError(t, os.WriteFile(script, fmt.Appendf(nil, "process.title='unlisted-cli'; const child=require('child_process').spawn('sleep',['60'],{stdio:'inherit'}); child.on('spawn',()=>require('fs').writeFileSync(%q,'ready')); setInterval(()=>{},1000)", childReady), 0600))
 	_, err = b.client.Run(context.Background(), "respawn-pane", "-k", "-t", "entry:", node, script)
 	require.NoError(t, err)
@@ -173,8 +173,18 @@ func TestQueryStateIgnoresNodeScriptPathsAndAmbiguousTitles(t *testing.T) {
 	}, 3*time.Second, 20*time.Millisecond)
 	observed, err := RunQuery(context.Background(), b.client, LoadStateQuery{IncludeProgramInfo: true})
 	require.NoError(t, err)
-	require.Empty(t, foreground.Name(context.Background(), observed.Sessions[0].Windows[0].Panes[0].PID))
+	name := foreground.Name(context.Background(), observed.Sessions[0].Windows[0].Panes[0].PID)
 	state, err = b.QueryState(context.Background())
 	require.NoError(t, err)
-	require.Empty(t, state.Sessions[0].Windows[0].Panes[0].Program)
+	pane := state.Sessions[0].Windows[0].Panes[0]
+
+	if runtime.GOOS == "darwin" {
+		require.Equal(t, "unlisted-cli", name)
+		require.Equal(t, "node", pane.Command)
+		require.Equal(t, "unlisted-cli", pane.Program)
+		return
+	}
+	require.Empty(t, name)
+	require.Equal(t, "unlisted-cli", pane.Command)
+	require.Empty(t, pane.Program)
 }

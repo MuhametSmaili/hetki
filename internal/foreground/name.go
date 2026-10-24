@@ -15,12 +15,13 @@ import (
 const maxProgramBytes = 64 * 1024
 
 // Name returns an optional naming hint for the terminal foreground job of
-// anchorPID. Unavailable, unsupported or observed ambiguous evidence returns
-// an empty string. Reads are bounded and process relationships are rechecked,
-// but inspection is not atomic. Darwin is currently supported; other platforms
-// return no hint rather than approximate foreground-group membership. Context
-// cancellation is checked between native reads; it cannot interrupt an
-// in-flight syscall.
+// anchorPID. It names the foreground process-group leader; helper processes in
+// the same group do not suppress the hint. Unavailable, unsupported or changed
+// evidence returns an empty string. Reads are bounded and process relationships
+// are rechecked, but inspection is not atomic. Darwin is currently supported;
+// other platforms return no hint rather than approximate foreground-group
+// membership. Context cancellation is checked between native reads; it cannot
+// interrupt an in-flight syscall.
 func Name(ctx context.Context, anchorPID int) string {
 	if anchorPID <= 0 || anchorPID > math.MaxInt32 || ctx.Err() != nil {
 		return ""

@@ -13,7 +13,6 @@ import (
 const (
 	kernProc      = 14
 	kernProcPID   = 1
-	kernProcPGRP  = 2
 	kernProcArgs2 = 49
 	processLP64   = 0x00000004
 	processWExit  = 0x00002000
@@ -25,11 +24,12 @@ func processName(ctx context.Context, anchorPID int) string {
 		return ""
 	}
 	pgid := int(root.Eproc.Tpgid)
-	leader, ok := singleForegroundProcess(pgid)
-	if !ok || leader.Proc.P_pid != int32(pgid) || leader.Eproc.Tpgid != root.Eproc.Tpgid || leader.Eproc.Tdev != root.Eproc.Tdev || ctx.Err() != nil {
+	leader, ok := foregroundLeader(root, pgid)
+	if !ok || ctx.Err() != nil {
 		return ""
 	}
-	// Deliberately do not unwrap multi-process launchers or pipelines.
+	// tmux names the foreground group leader, so refine that same process.
+	// Helpers sharing the group do not make the leader's hint ambiguous.
 	pointerSize := 4
 	if leader.Proc.P_flag&processLP64 != 0 {
 		pointerSize = 8
@@ -42,11 +42,22 @@ func processName(ctx context.Context, anchorPID int) string {
 	if !ok || !sameDarwinProcess(root, rootAfter) || ctx.Err() != nil {
 		return ""
 	}
-	leaderAfter, ok := singleForegroundProcess(pgid)
+	leaderAfter, ok := foregroundLeader(rootAfter, pgid)
 	if !ok || !sameDarwinProcess(leader, leaderAfter) || ctx.Err() != nil {
 		return ""
 	}
 	return name
+}
+
+// foregroundLeader reads the process whose PID matches the foreground group
+// ID. A group can outlive its leader, so the PID read must still identify a
+// live member of the same foreground job on the same terminal.
+func foregroundLeader(root unix.KinfoProc, pgid int) (unix.KinfoProc, bool) {
+	leader, ok := readDarwinProcess(pgid)
+	return leader, ok &&
+		leader.Eproc.Pgid == int32(pgid) &&
+		leader.Eproc.Tpgid == root.Eproc.Tpgid &&
+		leader.Eproc.Tdev == root.Eproc.Tdev
 }
 
 func sameDarwinProcess(before, after unix.KinfoProc) bool {
@@ -85,13 +96,6 @@ func darwinProgramName(ctx context.Context, pid, pointerSize int) string {
 		return ""
 	}
 	return processProgramName(parseDarwinArgvZero(buf[:n], pointerSize))
-}
-
-func singleForegroundProcess(pgid int) (unix.KinfoProc, bool) {
-	// Fixed capacity, one attempt: ENOMEM/churn/any second member falls back.
-	var group [2]unix.KinfoProc
-	n, err := boundedSysctl([]int32{unix.CTL_KERN, kernProc, kernProcPGRP, int32(pgid)}, unsafe.Pointer(&group[0]), unsafe.Sizeof(group))
-	return group[0], err == nil && n == int(unsafe.Sizeof(group[0])) && group[0].Eproc.Pgid == int32(pgid) && group[0].Proc.P_flag&processWExit == 0
 }
 
 func boundedSysctl(mib []int32, buffer unsafe.Pointer, capacity uintptr) (int, error) {
