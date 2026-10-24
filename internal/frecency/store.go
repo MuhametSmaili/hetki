@@ -127,24 +127,43 @@ func (s *Store) Record(ctx context.Context, path, session string) error {
 		return err
 	}
 
-	records, exists, loadErr := s.load(ctx)
-	now := s.clock()()
+	records, now, err := s.loadForRecord(ctx)
+	if err != nil {
+		return err
+	}
+	records = recordVisit(records, path, session, now)
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := s.writeContext(ctx, records); err != nil {
+		return fmt.Errorf("write frecency state: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) loadForRecord(ctx context.Context) ([]Record, time.Time, error) {
+	records, exists, loadErr := s.load(ctx)
+	now := s.clock()()
+	if err := ctx.Err(); err != nil {
+		return nil, now, err
+	}
 	if loadErr != nil {
 		if !exists {
-			return loadErr
+			return nil, now, loadErr
 		}
 		if _, err := s.preserveInvalid(now); err != nil {
-			return fmt.Errorf("preserve invalid frecency state after %w: %w", loadErr, err)
+			return nil, now, fmt.Errorf("preserve invalid frecency state after %w: %w", loadErr, err)
 		}
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, now, err
 		}
 		records = nil
 	}
+	return records, now, nil
+}
 
+func recordVisit(records []Record, path, session string, now time.Time) []Record {
 	found := false
 	for i := range records {
 		if records[i].Path == path && records[i].Session == session {
@@ -172,14 +191,7 @@ func (s *Store) Record(ctx context.Context, path, session string) error {
 		}
 		records = kept
 	}
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := s.writeContext(ctx, records); err != nil {
-		return fmt.Errorf("write frecency state: %w", err)
-	}
-	return nil
+	return records
 }
 
 func (s *Store) load(ctx context.Context) ([]Record, bool, error) {
@@ -198,28 +210,9 @@ func (s *Store) load(ctx context.Context) ([]Record, bool, error) {
 	}
 	defer file.Close()
 
-	info, err := file.Stat()
+	data, err := readStateFile(ctx, file)
 	if err != nil {
-		return nil, true, fmt.Errorf("stat frecency state: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return nil, true, fmt.Errorf("frecency state is not a regular file")
-	}
-	if info.Size() > maxJSONBytes {
-		return nil, true, fmt.Errorf("frecency state exceeds %d bytes", maxJSONBytes)
-	}
-	data, err := io.ReadAll(io.LimitReader(file, maxJSONBytes+1))
-	if err != nil {
-		return nil, true, fmt.Errorf("read frecency state: %w", err)
-	}
-	if err := ctx.Err(); err != nil {
 		return nil, true, err
-	}
-	if len(data) > maxJSONBytes {
-		return nil, true, fmt.Errorf("frecency state exceeds %d bytes", maxJSONBytes)
-	}
-	if !utf8.Valid(data) {
-		return nil, true, errors.New("frecency state is not valid UTF-8")
 	}
 
 	if err := validateJSONDocument(data); err != nil {
@@ -228,38 +221,9 @@ func (s *Store) load(ctx context.Context) ([]Record, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
 	}
-	var raw rawState
-	if err := decodeJSON(data, &raw); err != nil {
-		return nil, true, fmt.Errorf("decode frecency state: %w", err)
-	}
-	if len(raw.Version) == 0 {
-		return nil, true, errors.New("decode frecency state: missing version")
-	}
-	var version int
-	if err := decodeJSON(raw.Version, &version); err != nil {
-		return nil, true, fmt.Errorf("decode frecency version: %w", err)
-	}
-	if version != Version {
-		return nil, true, fmt.Errorf("unsupported frecency version %d", version)
-	}
-	if len(raw.Records) == 0 {
-		return nil, true, errors.New("decode frecency state: missing records")
-	}
-	if bytes.Equal(bytes.TrimSpace(raw.Records), []byte("null")) {
-		return nil, true, errors.New("decode frecency state: records must be an array")
-	}
-	var input []inputRecord
-	if err := decodeJSON(raw.Records, &input); err != nil {
-		return nil, true, fmt.Errorf("decode frecency records: %w", err)
-	}
-	records := make([]Record, len(input))
-	for i, record := range input {
-		if record.LastUsed == nil {
-			return nil, true, fmt.Errorf("decode frecency records: records[%d] is missing last_used", i)
-		}
-		records[i] = Record{
-			Path: record.Path, Session: record.Session, Rank: record.Rank, LastUsed: *record.LastUsed,
-		}
+	records, err := decodeStateRecords(data)
+	if err != nil {
+		return nil, true, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
@@ -272,6 +236,70 @@ func (s *Store) load(ctx context.Context) ([]Record, bool, error) {
 	}
 	sortRecords(records)
 	return records, true, nil
+}
+
+func readStateFile(ctx context.Context, file *os.File) ([]byte, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat frecency state: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("frecency state is not a regular file")
+	}
+	if info.Size() > maxJSONBytes {
+		return nil, fmt.Errorf("frecency state exceeds %d bytes", maxJSONBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxJSONBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read frecency state: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(data) > maxJSONBytes {
+		return nil, fmt.Errorf("frecency state exceeds %d bytes", maxJSONBytes)
+	}
+	if !utf8.Valid(data) {
+		return nil, errors.New("frecency state is not valid UTF-8")
+	}
+	return data, nil
+}
+
+func decodeStateRecords(data []byte) ([]Record, error) {
+	var raw rawState
+	if err := decodeJSON(data, &raw); err != nil {
+		return nil, fmt.Errorf("decode frecency state: %w", err)
+	}
+	if len(raw.Version) == 0 {
+		return nil, errors.New("decode frecency state: missing version")
+	}
+	var version int
+	if err := decodeJSON(raw.Version, &version); err != nil {
+		return nil, fmt.Errorf("decode frecency version: %w", err)
+	}
+	if version != Version {
+		return nil, fmt.Errorf("unsupported frecency version %d", version)
+	}
+	if len(raw.Records) == 0 {
+		return nil, errors.New("decode frecency state: missing records")
+	}
+	if bytes.Equal(bytes.TrimSpace(raw.Records), []byte("null")) {
+		return nil, errors.New("decode frecency state: records must be an array")
+	}
+	var input []inputRecord
+	if err := decodeJSON(raw.Records, &input); err != nil {
+		return nil, fmt.Errorf("decode frecency records: %w", err)
+	}
+	records := make([]Record, len(input))
+	for i, record := range input {
+		if record.LastUsed == nil {
+			return nil, fmt.Errorf("decode frecency records: records[%d] is missing last_used", i)
+		}
+		records[i] = Record{
+			Path: record.Path, Session: record.Session, Rank: record.Rank, LastUsed: *record.LastUsed,
+		}
+	}
+	return records, nil
 }
 
 func decodeJSON(data []byte, dst any) error {
@@ -321,37 +349,45 @@ func validateJSONValue(decoder *json.Decoder, depth int) error {
 	}
 	switch delim {
 	case '{':
-		seen := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return errors.New("JSON object key is not a string")
-			}
-			if _, exists := seen[key]; exists {
-				return fmt.Errorf("duplicate JSON field %q", key)
-			}
-			seen[key] = struct{}{}
-			if err := validateJSONValue(decoder, depth+1); err != nil {
-				return err
-			}
-		}
-		_, err = decoder.Token()
-		return err
+		return validateJSONObject(decoder, depth)
 	case '[':
-		for decoder.More() {
-			if err := validateJSONValue(decoder, depth+1); err != nil {
-				return err
-			}
-		}
-		_, err = decoder.Token()
-		return err
+		return validateJSONArray(decoder, depth)
 	default:
 		return errors.New("unexpected JSON delimiter")
 	}
+}
+
+func validateJSONObject(decoder *json.Decoder, depth int) error {
+	seen := make(map[string]struct{})
+	for decoder.More() {
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return errors.New("JSON object key is not a string")
+		}
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate JSON field %q", key)
+		}
+		seen[key] = struct{}{}
+		if err := validateJSONValue(decoder, depth+1); err != nil {
+			return err
+		}
+	}
+	_, err := decoder.Token()
+	return err
+}
+
+func validateJSONArray(decoder *json.Decoder, depth int) error {
+	for decoder.More() {
+		if err := validateJSONValue(decoder, depth+1); err != nil {
+			return err
+		}
+	}
+	_, err := decoder.Token()
+	return err
 }
 
 func validateSurrogateEscapes(data []byte) error {
@@ -359,37 +395,59 @@ func validateSurrogateEscapes(data []byte) error {
 		if data[i] != '"' {
 			continue
 		}
-		for i++; i < len(data) && data[i] != '"'; i++ {
-			if data[i] != '\\' {
-				continue
-			}
-			i++
-			if i >= len(data) {
-				return errors.New("unterminated JSON escape")
-			}
-			if data[i] != 'u' {
-				continue
-			}
-			first, ok := hexQuad(data, i+1)
-			if !ok {
-				return errors.New("invalid JSON Unicode escape")
-			}
-			i += 4
-			if first >= 0xD800 && first <= 0xDBFF {
-				if i+6 >= len(data) || data[i+1] != '\\' || data[i+2] != 'u' {
-					return errors.New("unpaired high surrogate in JSON string")
-				}
-				second, ok := hexQuad(data, i+3)
-				if !ok || second < 0xDC00 || second > 0xDFFF {
-					return errors.New("unpaired high surrogate in JSON string")
-				}
-				i += 6
-			} else if first >= 0xDC00 && first <= 0xDFFF {
-				return errors.New("unpaired low surrogate in JSON string")
-			}
+		end, err := validateJSONStringEscapes(data, i+1)
+		if err != nil {
+			return err
 		}
+		i = end
 	}
 	return nil
+}
+
+// validateJSONStringEscapes starts after the opening quote and returns the
+// closing quote's index, or len(data). The JSON decoder checks string termination.
+func validateJSONStringEscapes(data []byte, start int) (int, error) {
+	i := start
+	for ; i < len(data) && data[i] != '"'; i++ {
+		if data[i] != '\\' {
+			continue
+		}
+		i++
+		if i >= len(data) {
+			return i, errors.New("unterminated JSON escape")
+		}
+		if data[i] != 'u' {
+			continue
+		}
+		end, err := validateUnicodeEscape(data, i)
+		if err != nil {
+			return i, err
+		}
+		i = end
+	}
+	return i, nil
+}
+
+// validateUnicodeEscape starts at 'u' and returns the last consumed byte's index.
+func validateUnicodeEscape(data []byte, i int) (int, error) {
+	first, ok := hexQuad(data, i+1)
+	if !ok {
+		return i, errors.New("invalid JSON Unicode escape")
+	}
+	i += 4
+	if first >= 0xD800 && first <= 0xDBFF {
+		if i+6 >= len(data) || data[i+1] != '\\' || data[i+2] != 'u' {
+			return i, errors.New("unpaired high surrogate in JSON string")
+		}
+		second, ok := hexQuad(data, i+3)
+		if !ok || second < 0xDC00 || second > 0xDFFF {
+			return i, errors.New("unpaired high surrogate in JSON string")
+		}
+		i += 6
+	} else if first >= 0xDC00 && first <= 0xDFFF {
+		return i, errors.New("unpaired low surrogate in JSON string")
+	}
+	return i, nil
 }
 
 func hexQuad(data []byte, start int) (uint16, bool) {
@@ -463,22 +521,9 @@ func sortRecords(records []Record) {
 }
 
 func (s *Store) lock(ctx context.Context) (*os.File, error) {
-	lock, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0600)
+	lock, err := s.openLockFile()
 	if err != nil {
-		return nil, fmt.Errorf("open frecency lock: %w", err)
-	}
-	info, err := lock.Stat()
-	if err != nil {
-		_ = lock.Close()
-		return nil, fmt.Errorf("stat frecency lock: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		_ = lock.Close()
-		return nil, errors.New("frecency lock is not a regular file")
-	}
-	if err := lock.Chmod(0600); err != nil {
-		_ = lock.Close()
-		return nil, fmt.Errorf("secure frecency lock: %w", err)
+		return nil, err
 	}
 
 	for {
@@ -505,6 +550,27 @@ func (s *Store) lock(ctx context.Context) (*os.File, error) {
 		case <-timer.C:
 		}
 	}
+}
+
+func (s *Store) openLockFile() (*os.File, error) {
+	lock, err := os.OpenFile(s.path+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("open frecency lock: %w", err)
+	}
+	info, err := lock.Stat()
+	if err != nil {
+		_ = lock.Close()
+		return nil, fmt.Errorf("stat frecency lock: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		_ = lock.Close()
+		return nil, errors.New("frecency lock is not a regular file")
+	}
+	if err := lock.Chmod(0600); err != nil {
+		_ = lock.Close()
+		return nil, fmt.Errorf("secure frecency lock: %w", err)
+	}
+	return lock, nil
 }
 
 func (s *Store) preserveInvalid(now time.Time) (string, error) {
@@ -560,6 +626,10 @@ func (s *Store) writeContext(ctx context.Context, records []Record) error {
 		return fmt.Errorf("encoded state exceeds %d bytes", maxJSONBytes)
 	}
 
+	return s.writeAtomic(ctx, data)
+}
+
+func (s *Store) writeAtomic(ctx context.Context, data []byte) error {
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create directory: %w", err)

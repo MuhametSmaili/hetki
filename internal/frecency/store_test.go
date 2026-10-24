@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultPath(t *testing.T) {
@@ -127,6 +129,9 @@ func TestStoreLoadStrictValidationAndBounds(t *testing.T) {
 		{name: "excessive JSON depth", data: `{"version":1,"records":[],"extra":` + strings.Repeat("[", maxJSONDepth+1) + `0` + strings.Repeat("]", maxJSONDepth+1) + `}`},
 		{name: "duplicate object field", data: `{"version":2,"version":1,"records":[]}`},
 		{name: "unpaired surrogate", data: `{"version":1,"records":[{"path":"\ud800","session":"work","rank":1,"last_used":1}]}`},
+		{name: "unpaired low surrogate", data: `{"version":1,"records":[{"path":"\udc00","session":"work","rank":1,"last_used":1}]}`},
+		{name: "high surrogate followed by non-surrogate", data: `{"version":1,"records":[{"path":"\ud800\u0041","session":"work","rank":1,"last_used":1}]}`},
+		{name: "invalid Unicode digits", data: `{"version":1,"records":[{"path":"\uGGGG","session":"work","rank":1,"last_used":1}]}`},
 		{name: "trailing document", data: `{"version":1,"records":[]} {}`},
 		{name: "duplicate exact key", data: `{"version":1,"records":[` + validRecord + `,` + validRecord + `]}`},
 		{name: "empty path", data: `{"version":1,"records":[{"path":"","session":"work","rank":1,"last_used":1}]}`},
@@ -168,7 +173,31 @@ func TestStoreLoadStrictValidationAndBounds(t *testing.T) {
 	})
 }
 
-func TestStoreCorruptUnknownAndUnreadableRecovery(t *testing.T) {
+func TestStoreLoadUnicodeEscapes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "BMP escape", path: `\u0041`, want: "A"},
+		{name: "surrogate pair with trailing text", path: `\uD83D\uDE00/repo`, want: "😀/repo"},
+		{name: "escaped backslash is literal", path: `\\ud800`, want: `\ud800`},
+		{name: "escaped quote before Unicode", path: `\"\u0041`, want: `"A`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "frecency.json")
+			data := `{"version":1,"records":[{"path":"` + tc.path + `","session":"work","rank":1,"last_used":1}]}`
+			require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+
+			records, err := NewStore(path).Load()
+
+			require.NoError(t, err)
+			require.Equal(t, []Record{{Path: tc.want, Session: "work", Rank: 1, LastUsed: 1}}, records)
+		})
+	}
+}
+
+func TestStoreCorruptAndUnknownRecovery(t *testing.T) {
 	tests := []struct {
 		name string
 		data []byte
@@ -180,52 +209,47 @@ func TestStoreCorruptUnknownAndUnreadableRecovery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "frecency.json")
-			if err := os.WriteFile(path, tt.data, 0600); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, os.WriteFile(path, tt.data, 0600))
 			store := NewStore(path)
 			store.now = func() time.Time { return time.Unix(123, 456) }
-			if _, err := store.Load(); err == nil {
-				t.Fatal("Load() succeeded on invalid state")
-			}
-			if err := store.Record(context.Background(), "/repo", "work"); err != nil {
-				t.Fatal(err)
-			}
+			_, err := store.Load()
+			require.Error(t, err, "Load() succeeded on invalid state")
+
+			require.NoError(t, store.Record(context.Background(), "/repo", "work"))
 
 			backups, err := filepath.Glob(path + ".corrupt-*")
-			if err != nil || len(backups) != 1 {
-				t.Fatalf("recovery copies = %v, err=%v", backups, err)
-			}
+			require.NoError(t, err)
+			require.Len(t, backups, 1)
 			got, err := os.ReadFile(backups[0])
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(got) != string(tt.data) {
-				t.Fatalf("recovery bytes = %q, want %q", got, tt.data)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.data, got, "recovery bytes")
 			records, err := store.Load()
-			if err != nil || len(records) != 1 || records[0].Rank != 1 {
-				t.Fatalf("clean records = %#v, err=%v", records, err)
+			require.NoError(t, err)
+			require.Len(t, records, 1)
+			if records[0].Rank != 1 {
+				t.Fatalf("clean records = %#v, want rank 1", records)
 			}
 		})
 	}
+}
 
-	t.Run("unreadable", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "frecency.json")
-		if err := os.WriteFile(path, []byte(`{"version":1,"records":[]}`), 0000); err != nil {
-			t.Fatal(err)
-		}
-		store := NewStore(path)
-		if _, err := store.Load(); err == nil {
-			t.Skip("current user can read mode-000 files")
-		}
-		if err := store.Record(context.Background(), "/repo", "work"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.Load(); err != nil {
-			t.Fatalf("clean state remains unreadable: %v", err)
-		}
-	})
+func TestStoreUnreadableRecovery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "frecency.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"records":[]}`), 0000); err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore(path)
+	if _, err := store.Load(); err == nil {
+		t.Skip("current user can read mode-000 files")
+	}
+
+	if err := store.Record(context.Background(), "/repo", "work"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Load(); err != nil {
+		t.Fatalf("clean state remains unreadable: %v", err)
+	}
 }
 
 func TestStoreAtomicRenameFailurePreservesValidState(t *testing.T) {

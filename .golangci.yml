@@ -7,6 +7,7 @@ linters:
     - ineffassign
     - staticcheck
     - unused
+    - gocognit
 
     # Error handling.
     - errcheck
@@ -34,6 +35,8 @@ linters:
 
     - nolintlint
   settings:
+    gocognit:
+      min-complexity: 15
     nolintlint:
       require-explanation: true
       require-specific: true

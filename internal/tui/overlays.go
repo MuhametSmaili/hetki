@@ -225,13 +225,20 @@ func validateItemMenu(menu ItemMenu, keys KeyMap) error {
 		if _, exists := actions[entry.Action]; exists {
 			return fmt.Errorf("menu action %q appears more than once", entry.Action)
 		}
-		for _, bound := range keys.Keys(keys.menuMode(entry.Action), entry.Action) {
-			if previous, exists := used[bound]; exists && previous != entry.Action {
-				return fmt.Errorf("menu key %q is assigned to %q and %q", bound, previous, entry.Action)
-			}
-			used[bound] = entry.Action
+		if err := registerMenuActionKeys(entry.Action, keys, used); err != nil {
+			return err
 		}
 		actions[entry.Action] = struct{}{}
+	}
+	return nil
+}
+
+func registerMenuActionKeys(action ActionID, keys KeyMap, used map[string]ActionID) error {
+	for _, bound := range keys.Keys(keys.menuMode(action), action) {
+		if previous, exists := used[bound]; exists && previous != action {
+			return fmt.Errorf("menu key %q is assigned to %q and %q", bound, previous, action)
+		}
+		used[bound] = action
 	}
 	return nil
 }

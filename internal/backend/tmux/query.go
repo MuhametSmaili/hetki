@@ -211,14 +211,16 @@ func parsePaneLineWithProgramInfo(line string, programInfo bool) (paneLine, erro
 	if err := format.ValidateObjectID("pane", p.paneID, '%'); err != nil {
 		return paneLine{}, err
 	}
-	if programInfo {
-		p.defaultShell = fields[16]
-		if p.panePID, err = parseIndex("pane PID", fields[14]); err != nil || p.panePID == 0 {
-			return paneLine{}, fmt.Errorf("invalid pane PID %q", fields[14])
-		}
-		if p.paneDead, err = parseFlag("pane dead", fields[15]); err != nil {
-			return paneLine{}, err
-		}
+	if !programInfo {
+		return p, nil
+	}
+
+	p.defaultShell = fields[16]
+	if p.panePID, err = parseIndex("pane PID", fields[14]); err != nil || p.panePID == 0 {
+		return paneLine{}, fmt.Errorf("invalid pane PID %q", fields[14])
+	}
+	if p.paneDead, err = parseFlag("pane dead", fields[15]); err != nil {
+		return paneLine{}, err
 	}
 	return p, nil
 }

@@ -239,10 +239,10 @@ func expandPath(p string) string {
 // Short names prefer .yaml over .yml; names needing an extension retain it.
 func ScanWorkspaces(dir string) (map[string]string, error) {
 	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return map[string]string{}, nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]string{}, nil
-		}
 		return nil, fmt.Errorf("reading directory: %w", err)
 	}
 
