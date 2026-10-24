@@ -81,6 +81,7 @@ func resetCommandGlobals() {
 	startCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
 	saveCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
 	dryRun = false
+	detach = false
 	force = false
 	pruneSessions = false
 	savePath = ""

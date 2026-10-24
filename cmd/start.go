@@ -10,6 +10,7 @@ var (
 	startName     string
 	startPath     string
 	dryRun        bool
+	detach        bool
 	force         bool
 	pruneSessions bool
 )
@@ -19,7 +20,9 @@ var startCmd = &cobra.Command{
 	Short: "Start a tmux workspace",
 	Long: `Start a workspace selected by exactly one of --name or --path.
 Names select files in Hetki's configured workspace directory, never local files.
-Session names come from YAML. Normal start adds missing resources.
+Session names come from YAML. Normal start adds missing resources and attaches.
+Use --detach (-d) to start without attaching or switching sessions.
+Migration: -d now means detach, not dry-run. Use --dry-run to preview changes.
 Force also replaces mismatched windows and removes extra windows inside declared
 sessions. Prune-sessions independently removes sessions not declared in YAML,
 including unrelated sessions, after reconciliation. Both can terminate processes.
@@ -33,7 +36,8 @@ Linked windows can make force affect other sessions; pruning refuses such plans.
 func init() {
 	startCmd.Flags().StringVarP(&startName, "name", "n", "", "Workspace name in Hetki's configured directory")
 	startCmd.Flags().StringVarP(&startPath, "path", "p", "", "Workspace YAML file to load (not a directory)")
-	startCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Print plan without executing")
+	startCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print plan without executing")
+	startCmd.Flags().BoolVarP(&detach, "detach", "d", false, "Start without attaching or switching sessions")
 	startCmd.Flags().BoolVarP(&force, "force", "f", false, "Reconcile windows inside declared sessions (can terminate processes)")
 	startCmd.Flags().BoolVar(&pruneSessions, "prune-sessions", false, "Delete sessions not declared in this workspace, including unrelated sessions; independent of --force")
 	cobra.CheckErr(startCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames))
@@ -50,6 +54,7 @@ func runStart(cmd *cobra.Command, _ []string) error {
 		Name:          selectedWorkspaceFlag(cmd, "name", startName),
 		Path:          selectedWorkspaceFlag(cmd, "path", startPath),
 		DryRun:        dryRun,
+		Detach:        detach,
 		Force:         force,
 		PruneSessions: pruneSessions,
 	})

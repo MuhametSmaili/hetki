@@ -24,13 +24,17 @@ func (a CreateSession) Args() []string {
 }
 
 type CreateWindow struct {
-	Session string
-	Name    string
-	Path    string
+	Session  string
+	Name     string
+	Path     string
+	Detached bool
 }
 
 func (a CreateWindow) Args() []string {
 	args := []string{"new-window", "-t", a.Session + ":", "-n", a.Name}
+	if a.Detached {
+		args = append(args, "-d")
+	}
 	if a.Path != "" {
 		args = append(args, "-c", a.Path)
 	}
@@ -56,12 +60,16 @@ func (a RenameWindow) Args() []string {
 }
 
 type SplitPane struct {
-	Target string
-	Path   string
+	Target   string
+	Path     string
+	Detached bool
 }
 
 func (a SplitPane) Args() []string {
 	args := []string{"split-window", "-t", a.Target}
+	if a.Detached {
+		args = append(args, "-d")
+	}
 	if a.Path != "" {
 		args = append(args, "-c", a.Path)
 	}

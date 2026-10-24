@@ -25,9 +25,10 @@ func (a CreateSessionAction) Validate() error {
 }
 
 type CreateWindowAction struct {
-	Session string
-	Name    string
-	Path    string
+	Session  string
+	Name     string
+	Path     string
+	Detached bool
 }
 
 func (a CreateWindowAction) Comment() string {
@@ -76,9 +77,10 @@ func (a RenameWindowAction) Validate() error {
 }
 
 type SplitPaneAction struct {
-	Session string
-	Window  string
-	Path    string
+	Session  string
+	Window   string
+	Path     string
+	Detached bool
 }
 
 func (a SplitPaneAction) Comment() string {

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -26,6 +27,7 @@ func TestRunStartValidatesManifestBeforeBackendDetection(t *testing.T) {
 		want  []string
 	}{
 		{"invalid layout", "sessions:\n  - name: dev\n    windows:\n      - layout: diagonal\n", nil, []string{"sessions[0].windows[0].layout", "unknown layout"}},
+		{"invalid detached workspace", "sessions: []\n", []string{"-d"}, []string{"at least one session is required"}},
 		{"empty pruning workspace", "sessions: []\n", []string{"--prune-sessions"}, []string{"at least one session is required"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -39,6 +41,55 @@ func TestRunStartValidatesManifestBeforeBackendDetection(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStartAttachmentFlags(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		flags      []string
+		wantApply  int
+		wantAttach int
+		wantDryRun int
+	}{
+		{name: "default attaches", wantApply: 2, wantAttach: 1},
+		{name: "long detach", flags: []string{"--detach"}, wantApply: 2},
+		{name: "short detach executes instead of dry-run", flags: []string{"-d"}, wantApply: 2},
+		{name: "explicit attach", flags: []string{"--detach=false"}, wantApply: 2, wantAttach: 1},
+		{name: "dry-run", flags: []string{"--dry-run"}, wantDryRun: 1},
+		{name: "dry-run with long detach", flags: []string{"--detach", "--dry-run"}, wantDryRun: 1},
+		{name: "dry-run with short detach", flags: []string{"--dry-run", "-d"}, wantDryRun: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeWorkspaceFile(t, t.TempDir(), "work.yaml", "sessions:\n  - name: dev\n    windows:\n      - name: editor\n")
+			stub := &stubBackend{}
+			withStubBackend(t, stub)
+			args := append([]string{"start", "-p", path}, tc.flags...)
+
+			err := executeWorkspaceCommand(t, args...)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantApply, stub.applyCalls)
+			assert.Equal(t, tc.wantAttach, stub.attachCalls)
+			assert.Equal(t, tc.wantDryRun, stub.dryRunCalls)
+		})
+	}
+}
+
+func TestStartHelpDocumentsDetachMigration(t *testing.T) {
+	var output bytes.Buffer
+	previous := rootCmd.OutOrStdout()
+	rootCmd.SetOut(&output)
+	t.Cleanup(func() {
+		rootCmd.SetOut(previous)
+		require.NoError(t, startCmd.Flags().Set("help", "false"))
+	})
+
+	err := executeWorkspaceCommand(t, "start", "--help")
+
+	require.NoError(t, err)
+	assert.Contains(t, output.String(), "-d, --detach")
+	assert.Contains(t, output.String(), "-d now means detach, not dry-run")
+	assert.Contains(t, output.String(), "Use --dry-run to preview changes")
 }
 
 func TestRunStartDryRunOutputsPlan(t *testing.T) {

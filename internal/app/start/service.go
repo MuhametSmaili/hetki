@@ -20,6 +20,7 @@ type Options struct {
 	Name          *string
 	Path          *string
 	DryRun        bool
+	Detach        bool
 	Force         bool
 	PruneSessions bool
 }
@@ -75,7 +76,21 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	return executePlan(ctx, b, p, workspace, workspacePath, opts.DryRun)
+	if err := executePlan(ctx, b, p, workspacePath, opts); err != nil {
+		return err
+	}
+
+	if opts.DryRun {
+		return nil
+	}
+
+	warnIfMetadataStampFails(ctx, b, workspace, workspacePath)
+
+	if opts.Detach {
+		return ctx.Err()
+	}
+
+	return attachToSession(ctx, b, workspace)
 }
 
 func (s Service) loadWorkspace(path string) (*manifest.Workspace, string, error) {
@@ -128,26 +143,21 @@ func selectStrategy(opts Options) plan.Strategy {
 	return &plan.MergeStrategy{PruneSessions: opts.PruneSessions}
 }
 
-func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspace *manifest.Workspace, workspacePath string, dryRun bool) error {
-	if dryRun && workspacePath != "" {
+func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspacePath string, opts Options) error {
+	if opts.DryRun && workspacePath != "" {
 		logger.Plain("Workspace: %s", workspacePath)
 	}
 
 	if p.IsEmpty() {
 		logger.Info("Workspace already up to date")
-		if dryRun {
-			return nil
-		}
-
-		warnIfMetadataStampFails(ctx, b, workspace, workspacePath)
-		return attachToSession(ctx, b, workspace)
+		return nil
 	}
 
-	actions, err := toBackendActions(p.Actions)
+	actions, err := toBackendActions(p.Actions, opts.Detach)
 	if err != nil {
 		return fmt.Errorf("failed to convert plan: %w", err)
 	}
-	if dryRun {
+	if opts.DryRun {
 		return printDryRun(b, actions, p)
 	}
 
@@ -155,9 +165,7 @@ func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspace *manife
 		return appshared.WithHint(fmt.Errorf("failed to execute plan: %w", err), "Earlier actions are not rolled back. Inspect tmux state and use --dry-run before retrying.")
 	}
 
-	warnIfMetadataStampFails(ctx, b, workspace, workspacePath)
-
-	return attachToSession(ctx, b, workspace)
+	return nil
 }
 
 func warnIfMetadataStampFails(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) {
@@ -214,7 +222,7 @@ func printDryRun(b Backend, actions []backend.Action, p *plan.Plan) error {
 	return nil
 }
 
-func toBackendActions(actions []plan.Action) ([]backend.Action, error) {
+func toBackendActions(actions []plan.Action, detached bool) ([]backend.Action, error) {
 	result := make([]backend.Action, len(actions))
 	for i, action := range actions {
 		if action == nil {
@@ -223,7 +231,7 @@ func toBackendActions(actions []plan.Action) ([]backend.Action, error) {
 		if err := action.Validate(); err != nil {
 			return nil, fmt.Errorf("action %d is invalid: %w", i, err)
 		}
-		converted, err := toBackendAction(action)
+		converted, err := toBackendAction(action, detached)
 		if err != nil {
 			return nil, fmt.Errorf("action %d: %w", i, err)
 		}
@@ -232,14 +240,14 @@ func toBackendActions(actions []plan.Action) ([]backend.Action, error) {
 	return result, nil
 }
 
-func toBackendAction(action plan.Action) (backend.Action, error) {
+func toBackendAction(action plan.Action, detached bool) (backend.Action, error) {
 	switch a := action.(type) {
 	case plan.CreateSessionAction:
 		return backend.CreateSessionAction{Name: a.Name, WindowName: a.WindowName, Path: a.Path}, nil
 	case plan.CreateWindowAction:
-		return backend.CreateWindowAction{Session: a.Session, Name: a.Name, Path: a.Path}, nil
+		return backend.CreateWindowAction{Session: a.Session, Name: a.Name, Path: a.Path, Detached: detached}, nil
 	case plan.SplitPaneAction:
-		return backend.SplitPaneAction{Session: a.Session, Window: a.Window, Path: a.Path}, nil
+		return backend.SplitPaneAction{Session: a.Session, Window: a.Window, Path: a.Path, Detached: detached}, nil
 	case plan.SendKeysAction:
 		return backend.SendKeysAction{Session: a.Session, Window: a.Window, Pane: a.Pane, Command: a.Command}, nil
 	case plan.KillSessionAction:

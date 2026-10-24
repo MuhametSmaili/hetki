@@ -33,6 +33,7 @@ Prebuilt binaries are available on the [releases page](https://github.com/Muhame
 | `hetki`                                   | Open the picker.                                      |
 | `hetki save -n your_workspace`            | Save the current session from inside tmux.            |
 | `hetki start -n your_workspace`           | Start a saved workspace.                              |
+| `hetki start -n your_workspace -d`        | Start without attaching or switching sessions.        |
 | `hetki start -n your_workspace --dry-run` | Preview workspace changes without applying them.      |
 | `hetki update`                            | Update to the latest stable release.                  |
 | `hetki update --head`                     | Update to the latest pushed main commit. Requires Go. |
@@ -46,6 +47,8 @@ Replace `your_workspace` with your workspace name. Named workspace files live in
 For an explicit file, use `-p ./path/to/your_workspace.yaml` instead of `-n your_workspace`.
 
 The picker starts its status service automatically. Use `hetki --help` or `hetki <command> --help` for more options.
+
+**Flag change:** `-d` now means `--detach`, not dry-run. Use `--dry-run` to preview changes without executing them.
 
 **Caution:** `--force` and `--prune-sessions` can delete windows or sessions and terminate their processes. Use `--dry-run` first.
 

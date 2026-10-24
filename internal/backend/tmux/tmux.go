@@ -201,7 +201,16 @@ func isEmptyServerError(err error) bool {
 type createdTarget struct {
 	name     string
 	windowID string
-	paneIDs  []string
+	// Creation order, always containing at least the first pane.
+	paneIDs []string
+}
+
+func (t *createdTarget) splitTarget(detached bool) string {
+	if detached {
+		// -d leaves the original pane active; splitting it again reorders panes.
+		return t.paneIDs[len(t.paneIDs)-1]
+	}
+	return t.windowID
 }
 
 func (b *TmuxBackend) applyAction(ctx context.Context, a backend.Action, created map[string]*createdTarget) error {
@@ -213,7 +222,7 @@ func (b *TmuxBackend) applyAction(ctx context.Context, a backend.Action, created
 		}
 		return err
 	case backend.CreateWindowAction:
-		target, err := b.createTarget(ctx, CreateWindow{Session: action.Session, Name: action.Name, Path: action.Path}, action.Name)
+		target, err := b.createTarget(ctx, CreateWindow{Session: action.Session, Name: action.Name, Path: action.Path, Detached: action.Detached}, action.Name)
 		if err == nil {
 			created[action.Session] = target
 		}
@@ -253,7 +262,7 @@ func (b *TmuxBackend) applySplitPane(ctx context.Context, action backend.SplitPa
 		return err
 	}
 
-	output, err := b.client.Run(ctx, printArgs(SplitPane{Target: target.windowID, Path: action.Path}, "#{pane_id}")...)
+	output, err := b.client.Run(ctx, printArgs(SplitPane{Target: target.splitTarget(action.Detached), Path: action.Path, Detached: action.Detached}, "#{pane_id}")...)
 	if err != nil {
 		return err
 	}
@@ -360,7 +369,7 @@ func dryRunActionArgs(a backend.Action, created map[string]*createdTarget) ([]st
 		created[action.Name] = dryRunTarget(action.Name, action.WindowName)
 		return args, nil
 	case backend.CreateWindowAction:
-		args := printArgs(CreateWindow{Session: action.Session, Name: action.Name, Path: action.Path}, "#{window_id}|#{pane_id}")
+		args := printArgs(CreateWindow{Session: action.Session, Name: action.Name, Path: action.Path, Detached: action.Detached}, "#{window_id}|#{pane_id}")
 		created[action.Session] = dryRunTarget(action.Session, action.Name)
 		return args, nil
 	case backend.SplitPaneAction:
@@ -369,7 +378,7 @@ func dryRunActionArgs(a backend.Action, created map[string]*createdTarget) ([]st
 			return nil, err
 		}
 
-		args := printArgs(SplitPane{Target: target.windowID, Path: action.Path}, "#{pane_id}")
+		args := printArgs(SplitPane{Target: target.splitTarget(action.Detached), Path: action.Path, Detached: action.Detached}, "#{pane_id}")
 		target.paneIDs = append(target.paneIDs, fmt.Sprintf("<new-pane:%s:%s:%d>", action.Session, action.Window, len(target.paneIDs)))
 		return args, nil
 	case backend.SendKeysAction:

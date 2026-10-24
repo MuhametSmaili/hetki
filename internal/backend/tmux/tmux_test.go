@@ -297,6 +297,26 @@ func TestDryRunUsesSymbolicCreatedIDsInsteadOfPredictedIndexes(t *testing.T) {
 	}, lines)
 }
 
+func TestDryRunDetachedCreation(t *testing.T) {
+	b := &TmuxBackend{}
+	actions := []backend.Action{
+		backend.CreateWindowAction{Session: "dev", Name: "server", Path: "~/api", Detached: true},
+		backend.SplitPaneAction{Session: "dev", Window: "server", Path: "~/tools", Detached: true},
+		backend.SplitPaneAction{Session: "dev", Window: "server", Path: "~/tests", Detached: true},
+		backend.SendKeysAction{Session: "dev", Window: "server", Pane: 2, Command: "npm test"},
+	}
+
+	lines, err := b.DryRun(actions)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"tmux new-window -t dev: -n server -d -c ~/api -P -F #{window_id}|#{pane_id}",
+		"tmux split-window -t <new-pane:dev:server:0> -d -c ~/tools -P -F #{pane_id}",
+		"tmux split-window -t <new-pane:dev:server:1> -d -c ~/tests -P -F #{pane_id}",
+		"tmux send-keys -l -t <new-pane:dev:server:2> -- npm test ; send-keys -t <new-pane:dev:server:2> Enter",
+	}, lines)
+}
+
 func BenchmarkSwitchStablePaneTenThousandPanes(b *testing.B) {
 	b.Setenv("TMUX", "")
 	var output strings.Builder

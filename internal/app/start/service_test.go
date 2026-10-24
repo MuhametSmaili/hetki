@@ -29,6 +29,7 @@ type stubBackend struct {
 	applyErr    error
 	onApply     func()
 
+	queryCalls  int
 	applyCalls  int
 	attachCalls int
 	dryRunCalls int
@@ -44,6 +45,7 @@ func (s *stubBackend) LayoutsMatch(desired, actual string) bool {
 }
 
 func (s *stubBackend) QueryState(context.Context) (backend.StateResult, error) {
+	s.queryCalls++
 	if s.queryErr != nil {
 		return backend.StateResult{}, s.queryErr
 	}
@@ -201,31 +203,42 @@ func TestServiceRunDryRunOutputsPlan(t *testing.T) {
 }
 
 func TestServiceRunDryRunIsReadOnlyWhenPlanIsEmpty(t *testing.T) {
-	workspace := &manifest.Workspace{Sessions: []manifest.Session{{
-		Name:    "dev",
-		Windows: []manifest.Window{{Name: "editor", Path: "/work/hetki"}},
-	}}}
-	stub := &stubBackend{queryResult: backend.StateResult{
-		Sessions: []backend.Session{{
-			Name:    "dev",
-			Windows: []backend.Window{{Name: "editor", Path: "/work/hetki"}},
-		}},
-	}}
-	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
-	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
-		return workspace, "/work/hetki/.hetki.yaml", nil
+	for _, tc := range []struct {
+		name   string
+		detach bool
+	}{
+		{name: "attached"},
+		{name: "detached", detach: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := &manifest.Workspace{Sessions: []manifest.Session{{
+				Name:    "dev",
+				Windows: []manifest.Window{{Name: "editor", Path: "/work/hetki"}},
+			}}}
+			stub := &stubBackend{queryResult: backend.StateResult{
+				Sessions: []backend.Session{{
+					Name:    "dev",
+					Windows: []backend.Window{{Name: "editor", Path: "/work/hetki"}},
+				}},
+			}}
+			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
+			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
+				return workspace, "/work/hetki/.hetki.yaml", nil
+			}
+			var err error
+
+			output := captureLoggerOutput(t, func() {
+				err = service.Run(t.Context(), Options{Path: new("./.hetki.yaml"), DryRun: true, Detach: tc.detach, Force: true, PruneSessions: true})
+			})
+
+			require.NoError(t, err)
+			assert.Contains(t, output, "Workspace already up to date")
+			assert.Contains(t, output, "Workspace: /work/hetki/.hetki.yaml")
+			assert.Equal(t, 1, stub.queryCalls)
+			assert.Zero(t, stub.applyCalls)
+			assert.Zero(t, stub.attachCalls)
+		})
 	}
-	var err error
-
-	output := captureLoggerOutput(t, func() {
-		err = service.Run(t.Context(), Options{Path: new("./.hetki.yaml"), DryRun: true, Force: true, PruneSessions: true})
-	})
-
-	require.NoError(t, err)
-	assert.Contains(t, output, "Workspace already up to date")
-	assert.Contains(t, output, "Workspace: /work/hetki/.hetki.yaml")
-	assert.Zero(t, stub.applyCalls)
-	assert.Zero(t, stub.attachCalls)
 }
 
 func TestServiceRunFailsWhenBackendStateQueryFails(t *testing.T) {
@@ -259,12 +272,17 @@ func TestServiceRunStampsWorkspacePathWhenPlanIsEmpty(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		stampErr    error
+		detach      bool
 		wantErr     error
 		wantWarning bool
+		wantAttach  int
 	}{
-		{"success", nil, nil, false},
-		{"cancellation", context.Canceled, context.Canceled, false},
-		{"failure during cancellation", errors.Join(context.Canceled, errors.New("metadata denied")), context.Canceled, true},
+		{name: "attached success", wantAttach: 1},
+		{name: "attached cancellation", stampErr: context.Canceled, wantErr: context.Canceled, wantAttach: 1},
+		{name: "attached failure during cancellation", stampErr: errors.Join(context.Canceled, errors.New("metadata denied")), wantErr: context.Canceled, wantWarning: true, wantAttach: 1},
+		{name: "detached success", detach: true},
+		{name: "detached cancellation", detach: true, stampErr: context.Canceled, wantErr: context.Canceled},
+		{name: "detached failure during cancellation", detach: true, stampErr: errors.Join(context.Canceled, errors.New("metadata denied")), wantErr: context.Canceled, wantWarning: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
@@ -285,13 +303,14 @@ func TestServiceRunStampsWorkspacePathWhenPlanIsEmpty(t *testing.T) {
 			var runErr error
 
 			output := captureLoggerOutput(t, func() {
-				runErr = service.Run(ctx, Options{Path: new(path)})
+				runErr = service.Run(ctx, Options{Path: new(path), Detach: test.detach})
 			})
 
 			require.ErrorIs(t, runErr, test.wantErr)
 			assert.Equal(t, test.wantWarning, strings.Contains(output, "workspace metadata not set"))
+			assert.Equal(t, 1, stub.queryCalls)
 			assert.Equal(t, 1, stub.applyCalls)
-			assert.Equal(t, 1, stub.attachCalls)
+			assert.Equal(t, test.wantAttach, stub.attachCalls)
 			require.Len(t, stub.lastActions, 1)
 			action, ok := stub.lastActions[0].(backend.SetSessionOptionAction)
 			require.True(t, ok)
@@ -394,7 +413,7 @@ func (unsupportedPlanAction) Comment() string { return "unsupported" }
 func (unsupportedPlanAction) Validate() error { return nil }
 
 func TestToBackendActionsRejectsUnsupportedActions(t *testing.T) {
-	_, err := toBackendActions([]plan.Action{unsupportedPlanAction{}})
+	_, err := toBackendActions([]plan.Action{unsupportedPlanAction{}}, false)
 	require.ErrorContains(t, err, "unsupported plan action")
 }
 
@@ -410,7 +429,7 @@ func TestToBackendActionsMapsPlannerActions(t *testing.T) {
 		plan.KillWindowAction{Session: "dev", Window: "old-window", WindowID: "@7"},
 	}
 
-	converted, err := toBackendActions(actions)
+	converted, err := toBackendActions(actions, false)
 	require.NoError(t, err)
 	assert.Equal(t, []backend.Action{
 		backend.CreateSessionAction{Name: "dev", WindowName: "editor", Path: "~/code"},
