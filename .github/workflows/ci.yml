@@ -53,12 +53,12 @@ jobs:
           go test ./...
           go test -race ./...
 
-      - name: Run isolated tmux integration tests
+      - name: Run isolated tmux integration tests with race detection
         if: runner.os == 'Linux'
         run: |
           command -v tmux
           go vet -tags=integration ./internal/backend/tmux ./internal/app/start ./internal/app/tui ./internal/app/statusobserver
-          go test -tags=integration ./internal/backend/tmux ./internal/app/start ./internal/app/tui ./internal/app/statusobserver
+          go test -race -tags=integration ./internal/backend/tmux ./internal/app/start ./internal/app/tui ./internal/app/statusobserver
 
       - name: Run installer harness
         run: |
