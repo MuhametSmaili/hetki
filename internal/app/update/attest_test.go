@@ -168,6 +168,26 @@ func TestGhExecutableGatesVersion(t *testing.T) {
 	_, err = ghExecutable(context.Background())
 	require.ErrorContains(t, err, "cannot determine gh version")
 	assert.NotContains(t, err.Error(), "version-token")
+
+	overflow := strings.Repeat("9", 40)
+	for _, tc := range []struct {
+		name    string
+		version string
+	}{
+		{name: "overflowing major", version: overflow + ".0.0"},
+		{name: "overflowing minor", version: "2." + overflow + ".0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GH_TOKEN", overflow)
+			stubGh(t, tc.version, "")
+
+			path, err := ghExecutable(t.Context())
+
+			require.ErrorContains(t, err, "cannot determine gh version")
+			assert.Empty(t, path)
+			assert.NotContains(t, err.Error(), overflow)
+		})
+	}
 }
 
 func subjectJSON(name, digest string) string {

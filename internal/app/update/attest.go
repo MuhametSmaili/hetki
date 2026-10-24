@@ -158,8 +158,17 @@ func ghExecutable(ctx context.Context) (string, error) {
 	if match == nil {
 		return "", fmt.Errorf("cannot determine gh version: %s", processDiagnostic(out, false))
 	}
-	major, _ := strconv.Atoi(string(match[1]))
-	minor, _ := strconv.Atoi(string(match[2]))
+
+	major, err := strconv.Atoi(string(match[1]))
+	if err != nil {
+		return "", fmt.Errorf("cannot determine gh version: %s", processDiagnostic(out, false))
+	}
+
+	minor, err := strconv.Atoi(string(match[2]))
+	if err != nil {
+		return "", fmt.Errorf("cannot determine gh version: %s", processDiagnostic(out, false))
+	}
+
 	if major < ghMinMajor || (major == ghMinMajor && minor < ghMinMinor) {
 		return "", fmt.Errorf("gh %d.%d is too old for attestation verification; install gh ≥ %d.%d",
 			major, minor, ghMinMajor, ghMinMinor)
