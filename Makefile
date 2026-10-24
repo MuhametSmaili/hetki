@@ -1,4 +1,4 @@
-.PHONY: build install test clean release
+.PHONY: build install test check clean release
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -15,6 +15,17 @@ install: build
 
 test:
 	go test -v ./...
+
+# Requires golangci-lint v2.14.0 on PATH, matching CI.
+check:
+	@unformatted="$$(gofmt -l .)" || exit $$?; \
+	if [ -n "$$unformatted" ]; then \
+		printf 'Go files need formatting:\n%s\n' "$$unformatted" >&2; \
+		exit 1; \
+	fi
+	go test ./...
+	go vet ./...
+	golangci-lint run --timeout=5m --build-tags=integration
 
 clean:
 	rm -f hetki
