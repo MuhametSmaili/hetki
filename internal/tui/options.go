@@ -30,19 +30,19 @@ const (
 	ScopeTracked Scope = "tracked"
 )
 
-// PreviewMode records the requested mode, independent of available layout space.
-type PreviewMode string
-
-const (
-	PreviewOff PreviewMode = "off"
-	PreviewOn  PreviewMode = "on"
-)
+// Validate rejects missing and unknown scopes.
+func (s Scope) Validate() error {
+	if s != ScopeAll && s != ScopeTracked {
+		return fmt.Errorf("invalid scope %q", s)
+	}
+	return nil
+}
 
 // State contains the user's current UI choices.
 type State struct {
 	View    ViewMode
 	Scope   Scope
-	Preview PreviewMode
+	Preview bool
 }
 
 // Options contains fully resolved startup settings, consumed once per run.
@@ -69,7 +69,7 @@ type Result struct {
 // DefaultOptions returns the complete built-in picker settings.
 func DefaultOptions() Options {
 	return Options{
-		Initial:      State{View: ViewFlat, Scope: ScopeAll, Preview: PreviewOff},
+		Initial:      State{View: ViewFlat, Scope: ScopeAll, Preview: false},
 		Keys:         DefaultKeyMap(),
 		StartMode:    DefaultStartMode(),
 		PreviewWidth: DefaultPreviewWidth,
@@ -81,11 +81,8 @@ func (o Options) Validate() error {
 	if err := o.Initial.View.Validate(); err != nil {
 		return err
 	}
-	if o.Initial.Scope != ScopeAll && o.Initial.Scope != ScopeTracked {
-		return fmt.Errorf("invalid scope %q", o.Initial.Scope)
-	}
-	if o.Initial.Preview != PreviewOff && o.Initial.Preview != PreviewOn {
-		return fmt.Errorf("invalid preview mode %q", o.Initial.Preview)
+	if err := o.Initial.Scope.Validate(); err != nil {
+		return err
 	}
 	if o.Keys.IsZero() {
 		return fmt.Errorf("keymap is not configured")

@@ -43,7 +43,7 @@ func previewKey() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'p', Mod: tea.M
 
 func TestInitialPreviewWaitsForUsableDimensions(t *testing.T) {
 	options := DefaultOptions()
-	options.Initial.Preview = PreviewOn
+	options.Initial.Preview = true
 	snapshot := flatSnapshot(1)
 	var captured []PreviewRequest
 	m, err := newModelWithOptions(t.Context(), snapshot, options, Runtime{
@@ -65,7 +65,7 @@ func TestInitialPreviewWaitsForUsableDimensions(t *testing.T) {
 		m, cmd = updateModel(t, m, msg)
 
 		require.Nil(t, cmd, "must not capture after %T: %+v", msg, msg)
-		require.Equal(t, PreviewOn, m.result().State.Preview)
+		require.True(t, m.result().State.Preview)
 	}
 	require.Empty(t, captured)
 
@@ -75,7 +75,7 @@ func TestInitialPreviewWaitsForUsableDimensions(t *testing.T) {
 	require.Equal(t, []PreviewRequest{{ItemID: snapshot.Items[0].ID}}, captured)
 	require.Contains(t, m.View().Content, "initial preview")
 	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 30, Height: 20})
-	require.Equal(t, PreviewOn, m.result().State.Preview)
+	require.True(t, m.result().State.Preview)
 	require.Zero(t, m.layout().previewWidth)
 }
 
@@ -87,7 +87,7 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 			query, selected := m.items.Query(), selectedNodeID(m)
 			m, cmd := updateModel(t, m, previewKey())
 			want := mode == modeBrowse || mode == modeFilter
-			require.Equal(t, want, m.preview.mode == PreviewOn)
+			require.Equal(t, want, m.preview.enabled)
 			require.Equal(t, mode, m.mode)
 			require.Equal(t, query, m.items.Query())
 			require.Equal(t, selected, selectedNodeID(m))
@@ -98,7 +98,7 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 				require.Nil(t, cmd)
 				require.True(t, m.preview.ready)
 				m, cmd = updateModel(t, m, previewKey())
-				require.Equal(t, PreviewOff, m.preview.mode)
+				require.False(t, m.preview.enabled)
 				require.Nil(t, cmd)
 				require.Empty(t, m.preview.lines)
 			} else {
@@ -109,7 +109,7 @@ func TestPreviewToggleModeOwnership(t *testing.T) {
 	m := previewModel(t)
 	m.busy = true
 	m, cmd := updateModel(t, m, previewKey())
-	require.Equal(t, PreviewOff, m.preview.mode)
+	require.False(t, m.preview.enabled)
 	require.Nil(t, cmd)
 }
 

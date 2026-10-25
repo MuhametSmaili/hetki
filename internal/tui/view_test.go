@@ -19,6 +19,29 @@ func TestHeaderShowsNonFatalSnapshotNotice(t *testing.T) {
 	require.Equal(t, "refreshing...", headerRight(m))
 }
 
+func TestHeaderKeepsLeadingWarningVisible(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		enabled bool
+	}{
+		{"disabled", false},
+		{"enabled", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newModel(list.Snapshot{Notice: "configuration warning: ui.view uses default flat\n" + strings.Repeat("frecency unavailable: long path/", 20)}, nil)
+			m.width, m.height, m.preview.enabled = 120, 24, tc.enabled
+			m = m.reflow()
+
+			content := terminal.Sanitize(m.View().Content)
+
+			require.Contains(t, content, "configuration warning")
+			for _, line := range strings.Split(m.View().Content, "\n") {
+				require.LessOrEqual(t, terminal.Width(line), m.width)
+			}
+		})
+	}
+}
+
 func TestHeaderTracksMode(t *testing.T) {
 	m := model{keys: DefaultKeyMap()}
 	for _, tt := range []struct {
@@ -83,7 +106,7 @@ func TestLeavingFilterModeKeepsNarrowQueryWithoutHint(t *testing.T) {
 			require.NoError(t, err)
 			m, err := newModelWithKeys(viewSnapshot(), nil, keys)
 			require.NoError(t, err)
-			m.width, m.height, m.preview.mode = 48, 12, PreviewOn
+			m.width, m.height, m.preview.enabled = 48, 12, true
 			m.items.SetQuery("editor")
 			m = m.reflow()
 

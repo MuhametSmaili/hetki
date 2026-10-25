@@ -17,7 +17,7 @@ func TestPreviewStartsBesideHeaderAndPreservesList(t *testing.T) {
 			m := previewModel(t)
 			m.theme.appBorder = lipgloss.NewStyle()
 			m.width, m.height, m.mode = 100, 12, mode
-			m.preview.mode, m.preview.ready = PreviewOn, true
+			m.preview.enabled, m.preview.ready = true, true
 			m.preview.request.ItemID = list.ItemID{ID: "a"}
 			m = m.reflow()
 			layout := m.layout()
@@ -66,7 +66,7 @@ func TestPreviewHeaderRulePreservesAnItemRowInShortViews(t *testing.T) {
 		t.Run(fmt.Sprintf("height %d", tc.height), func(t *testing.T) {
 			m := previewModel(t)
 			m.theme.appBorder = lipgloss.NewStyle()
-			m.width, m.height, m.preview.mode = 100, tc.height, PreviewOn
+			m.width, m.height, m.preview.enabled = 100, tc.height, true
 			m = m.reflow()
 
 			lines := strings.Split(m.View().Content, "\n")
@@ -86,7 +86,7 @@ func TestPreviewHeaderSeparatesQueryFromMetadata(t *testing.T) {
 	for _, width := range []int{48, 60, 120, 200} {
 		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
 			m := previewModel(t)
-			m.width, m.mode, m.preview.mode = width, modeFilter, PreviewOn
+			m.width, m.mode, m.preview.enabled = width, modeFilter, true
 			m.items.SetQuery("a-very-long-query-that-does-not-fit-in-the-list")
 			m = m.reflow()
 			layout := m.layout()
@@ -112,7 +112,7 @@ func TestPreviewHeaderSeparatesQueryFromMetadata(t *testing.T) {
 
 func TestPreviewHeaderDiagnosticsStaySanitizedAndClipped(t *testing.T) {
 	m := previewModel(t)
-	m.width, m.preview.mode = 48, PreviewOn
+	m.width, m.preview.enabled = 48, true
 	m.err = fmt.Errorf("a long failure\x1b]0;secret\a\nnext")
 	m = m.reflow()
 

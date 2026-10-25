@@ -95,7 +95,7 @@ func TestProjectionResultCommitsOnlyAcceptedView(t *testing.T) {
 
 func TestEmptyTreeRetainsIdentityOnQuit(t *testing.T) {
 	options := DefaultOptions()
-	options.Initial = State{View: ViewTree, Scope: ScopeTracked, Preview: PreviewOn}
+	options.Initial = State{View: ViewTree, Scope: ScopeTracked, Preview: true}
 	m, err := newModelWithOptions(t.Context(), list.Snapshot{}, options, Runtime{})
 	require.NoError(t, err)
 
@@ -120,7 +120,7 @@ func TestFinalResultUsesLiveChoicesAndNavigation(t *testing.T) {
 	require.NotNil(t, cmd)
 	require.Equal(t, Result{
 		Navigation: navigation,
-		State:      State{View: ViewTree, Scope: ScopeTracked, Preview: PreviewOn},
+		State:      State{View: ViewTree, Scope: ScopeTracked, Preview: true},
 	}, m.result())
 }
 

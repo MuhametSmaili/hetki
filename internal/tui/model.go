@@ -31,7 +31,7 @@ func Run(ctx context.Context, initial list.Snapshot, options Options, runtime Ru
 func (m model) result() Result {
 	return Result{
 		Navigation: m.navigation,
-		State:      State{View: m.view, Scope: m.scope.mode, Preview: m.preview.mode},
+		State:      State{View: m.view, Scope: m.scope.mode, Preview: m.preview.enabled},
 	}
 }
 
@@ -98,7 +98,7 @@ func newModelWithOptions(ctx context.Context, snapshot list.Snapshot, options Op
 		theme:       defaultTheme(),
 		mode:        modeBrowse,
 		ctx:         ctx,
-		preview:     previewState{mode: options.Initial.Preview, width: options.PreviewWidth},
+		preview:     previewState{enabled: options.Initial.Preview, width: options.PreviewWidth},
 		scope:       scopeState{mode: options.Initial.Scope},
 		readPreview: runtime.Preview,
 		paneStatus:  paneStatusState{options: runtime.Status},
@@ -153,7 +153,7 @@ func (m model) layout() layoutMetrics {
 	innerWidth := max(1, lineWidth-frameStyle.GetHorizontalFrameSize())
 	listWidth, previewWidth := innerWidth, 0
 	const separatorWidth, minColumnWidth = 3, 20
-	if m.preview.mode == PreviewOn && innerWidth >= 2*minColumnWidth+separatorWidth {
+	if m.preview.enabled && innerWidth >= 2*minColumnWidth+separatorWidth {
 		available := innerWidth - separatorWidth
 		previewWidth = min(max(available*m.preview.width/100, minColumnWidth), available-minColumnWidth)
 		listWidth = available - previewWidth

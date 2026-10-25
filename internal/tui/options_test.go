@@ -17,8 +17,6 @@ func TestRunRejectsInvalidOptionsBeforeTerminal(t *testing.T) {
 		{"unknown view", func(o *Options) { o.Initial.View = "other" }, "invalid view"},
 		{"missing scope", func(o *Options) { o.Initial.Scope = "" }, "invalid scope"},
 		{"unknown scope", func(o *Options) { o.Initial.Scope = "other" }, "invalid scope"},
-		{"missing preview", func(o *Options) { o.Initial.Preview = "" }, "invalid preview"},
-		{"unknown preview", func(o *Options) { o.Initial.Preview = "other" }, "invalid preview"},
 		{"missing keys", func(o *Options) { o.Keys = KeyMap{} }, "keymap"},
 		{"missing start mode", func(o *Options) { o.StartMode = "" }, "invalid start mode"},
 		{"unknown start mode", func(o *Options) { o.StartMode = "other" }, "invalid start mode"},
@@ -42,7 +40,7 @@ func TestDefaultOptionsPreservePickerDefaults(t *testing.T) {
 	options := DefaultOptions()
 
 	require.NoError(t, options.Validate())
-	require.Equal(t, State{View: ViewFlat, Scope: ScopeAll, Preview: PreviewOff}, options.Initial)
+	require.Equal(t, State{View: ViewFlat, Scope: ScopeAll, Preview: false}, options.Initial)
 	require.Equal(t, StartModeFilter, options.StartMode)
 	require.Equal(t, 70, options.PreviewWidth)
 	require.Equal(t, DefaultKeyMap(), options.Keys)

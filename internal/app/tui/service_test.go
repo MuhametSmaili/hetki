@@ -69,7 +69,7 @@ func (d *blockingDriver) Navigate(context.Context, list.ItemID) error { return n
 
 func TestServicePassesResolvedOptionsAndInitialView(t *testing.T) {
 	options := ui.DefaultOptions()
-	options.Initial = ui.State{View: ui.ViewTree, Scope: ui.ScopeTracked, Preview: ui.PreviewOn}
+	options.Initial = ui.State{View: ui.ViewTree, Scope: ui.ScopeTracked, Preview: true}
 	options.StartMode, options.PreviewWidth = ui.StartModeNormal, 45
 	keys, err := ui.ResolveKeyMap(map[ui.KeyMode][]ui.Binding{
 		ui.KeyModeNormal: {{Action: ui.ActionQuit, Keys: []string{"Q"}}},
@@ -100,7 +100,6 @@ func TestServiceRejectsInvalidOptionsBeforeLoadOrUI(t *testing.T) {
 		{"zero options", func(o *ui.Options) { *o = ui.Options{} }},
 		{"invalid view", func(o *ui.Options) { o.Initial.View = "invalid" }},
 		{"invalid scope", func(o *ui.Options) { o.Initial.Scope = "invalid" }},
-		{"invalid preview", func(o *ui.Options) { o.Initial.Preview = "invalid" }},
 		{"missing keys", func(o *ui.Options) { o.Keys = ui.KeyMap{} }},
 		{"invalid start mode", func(o *ui.Options) { o.StartMode = "invalid" }},
 		{"zero width", func(o *ui.Options) { o.PreviewWidth = 0 }},

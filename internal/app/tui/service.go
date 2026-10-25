@@ -24,6 +24,8 @@ type Service struct {
 	Driver  Driver
 	Options ui.Options
 	RunUI   RunUIFunc
+	// Notice is a terminal-safe application diagnostic for the initial snapshot only.
+	Notice string
 }
 
 func NewService(detectBackend func() (Backend, error)) Service {
@@ -47,6 +49,10 @@ func (s Service) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if s.Notice != "" {
+		initial.Notice = strings.TrimSpace(s.Notice + "\n" + initial.Notice)
+	}
+
 	delivery, statusErr := openStatus(effectsCtx, s.Driver)
 	if effectsCtx.Err() != nil {
 		return effectsCtx.Err()

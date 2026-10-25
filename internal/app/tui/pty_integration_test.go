@@ -69,7 +69,7 @@ func TestTerminalRestoredBeforeNavigation(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, ui.Result{
 					Navigation: sessionItemID("dev"),
-					State:      ui.State{View: ui.ViewFlat, Scope: ui.ScopeAll, Preview: ui.PreviewOn},
+					State:      ui.State{View: ui.ViewFlat, Scope: ui.ScopeAll, Preview: true},
 				}, result)
 				return result, err
 			},

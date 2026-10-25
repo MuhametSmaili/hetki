@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"syscall"
 	"testing"
@@ -71,6 +72,41 @@ func TestBareHetkiRequiresTerminalStdinAndStdout(t *testing.T) {
 				require.Contains(t, output.String(), "Usage:")
 			} else {
 				require.Empty(t, output.String())
+			}
+		})
+	}
+}
+
+func TestBareHetkiLoadsConfigOnlyForTerminal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("XDG_STATE_HOME", home)
+	path := filepath.Join(home, "hetki", "config.yaml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0700))
+	require.NoError(t, os.WriteFile(path, []byte("ui: {view: invalid}"), 0600))
+	backendFailure := errors.New("backend reached despite invalid config")
+	withStubBackend(t, &stubBackend{queryErr: backendFailure})
+	previousProbe := isTerminal
+	t.Cleanup(func() { isTerminal = previousProbe })
+
+	for _, tty := range []bool{false, true} {
+		t.Run(map[bool]string{false: "nonterminal", true: "terminal"}[tty], func(t *testing.T) {
+			isTerminal = func(uintptr) bool { return tty }
+			var output bytes.Buffer
+			command := &cobra.Command{Use: "hetki", RunE: runBareHetki}
+			command.SetContext(t.Context())
+			command.SetOut(&output)
+
+			err := runBareHetki(command, nil)
+
+			if tty {
+				require.ErrorIs(t, err, backendFailure)
+				require.Empty(t, output.String())
+			} else {
+				require.NoError(t, err)
+				require.Contains(t, output.String(), "Usage:")
+				require.NotContains(t, output.String(), "configuration")
 			}
 		})
 	}
