@@ -11,10 +11,17 @@ import (
 )
 
 func (m model) View() tea.View {
+	inline := m.inline
+	if inline && (m.quitting || m.width <= 0 || m.height <= 0) {
+		return tea.NewView("")
+	}
 	layout := m.layout()
 	header := m.viewHeader(layout)
 	body := lipgloss.PlaceVertical(layout.middleHeight, lipgloss.Top, m.viewList(layout))
-	content := lipgloss.JoinVertical(lipgloss.Left, header, body)
+	content := body
+	if header != "" {
+		content = lipgloss.JoinVertical(lipgloss.Left, header, body)
+	}
 
 	if layout.previewWidth > 0 {
 		height := layout.middleHeight + layout.headerHeight
@@ -22,6 +29,9 @@ func (m model) View() tea.View {
 		content = lipgloss.JoinHorizontal(lipgloss.Top, left, m.viewDivider(layout), m.viewPreview(layout.previewWidth, height))
 	}
 	rendered := layout.frameStyle.Width(layout.lineWidth).Render(content)
+	if inline {
+		rendered = lipgloss.NewStyle().MaxWidth(m.width).MaxHeight(m.displayHeight()).Render(rendered)
+	}
 
 	if overlay := m.viewOverlay(layout.lineWidth, lipgloss.Height(rendered)); overlay != "" {
 		x := max(0, (layout.lineWidth-lipgloss.Width(overlay))/2)
@@ -32,12 +42,18 @@ func (m model) View() tea.View {
 		).Render()
 	}
 
+	if inline {
+		rendered = lipgloss.NewStyle().MaxWidth(m.width).MaxHeight(m.displayHeight()).Render(rendered)
+	}
 	view := tea.NewView(rendered)
-	view.AltScreen = true
+	view.AltScreen = !inline
 	return view
 }
 
 func (m model) viewHeader(layout layoutMetrics) string {
+	if m.inline && layout.headerHeight == 0 {
+		return ""
+	}
 	width := layout.listWidth
 	scope := "All"
 	if m.scope.mode == ScopeTracked {
@@ -59,6 +75,10 @@ func (m model) viewHeader(layout layoutMetrics) string {
 		Active: m.mode == modeFilter,
 		Theme:  m.theme,
 	}
+	if m.inline && layout.headerHeight == 1 {
+		query.Meta = renderHeaderMeta(meta)
+		return renderSearchBar(query)
+	}
 	if layout.previewWidth == 0 {
 		query.Meta = renderHeaderMeta(meta)
 		return renderSearchBar(query) + "\n" + renderHeaderRule(width, "", m.theme)
@@ -75,7 +95,7 @@ func (m model) viewHeader(layout layoutMetrics) string {
 }
 
 func (m model) viewDivider(layout layoutMetrics) string {
-	divider := strings.Repeat(" │ \n", headerHeight)
+	divider := strings.Repeat(" │ \n", layout.headerHeight)
 	if layout.headerHeight > headerHeight {
 		divider = " │ \n─┤ \n │ \n"
 	}
@@ -117,12 +137,12 @@ func (m model) viewOverlay(width, height int) string {
 			prompt = m.err.Error()
 		}
 		return renderInputModal(inputModalProps{
-			LineWidth: width, Title: m.input.Title, Prompt: prompt, Value: m.input.Value,
+			LineWidth: width, MaxHeight: height, Title: m.input.Title, Prompt: prompt, Value: m.input.Value,
 			Hint: modalControls(m.keys, KeyModeInput, "submit"), Theme: m.theme,
 		})
 	case modeConfirm:
 		return renderConfirmModal(confirmModalProps{
-			LineWidth: width, Title: m.confirm.Title, Body: m.confirm.Body,
+			LineWidth: width, MaxHeight: height, Title: m.confirm.Title, Body: m.confirm.Body,
 			Hint: modalControls(m.keys, KeyModeConfirm, "confirm"), Theme: m.theme,
 		})
 	default:

@@ -51,6 +51,8 @@ type Options struct {
 	Keys         KeyMap
 	StartMode    StartMode
 	PreviewWidth int
+	Height       Height
+	Border       BorderMode
 }
 
 // Runtime contains effects owned, canceled and joined by the caller.
@@ -73,6 +75,8 @@ func DefaultOptions() Options {
 		Keys:         DefaultKeyMap(),
 		StartMode:    DefaultStartMode(),
 		PreviewWidth: DefaultPreviewWidth,
+		Height:       Height{Value: 100, Percent: true},
+		Border:       BorderRounded,
 	}
 }
 
@@ -89,6 +93,12 @@ func (o Options) Validate() error {
 	}
 	if o.StartMode != StartModeNormal && o.StartMode != StartModeFilter {
 		return fmt.Errorf("invalid start mode %q", o.StartMode)
+	}
+	if err := o.Height.Validate(); err != nil {
+		return err
+	}
+	if err := o.Border.Validate(); err != nil {
+		return err
 	}
 	if o.PreviewWidth < 1 || o.PreviewWidth > 99 {
 		return fmt.Errorf("preview width must be between 1 and 99 percent")

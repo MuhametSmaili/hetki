@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	apptui "github.com/MuhametSmaili/hetki/internal/app/tui"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
@@ -58,7 +59,7 @@ func TestBareHetkiRequiresTerminalStdinAndStdout(t *testing.T) {
 				}
 			}
 			runs := 0
-			openTUI = func(context.Context) error {
+			openTUI = func(context.Context, apptui.Overrides) error {
 				runs++
 				return nil
 			}
@@ -121,7 +122,7 @@ func TestBareHetkiPreservesContextAndTUIError(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	openTUI = func(got context.Context) error {
+	openTUI = func(got context.Context, _ apptui.Overrides) error {
 		require.ErrorIs(t, got.Err(), context.Canceled)
 		return errors.New("tui failed after restore")
 	}
@@ -188,7 +189,7 @@ func TestUpdateRejectsUnsupportedArguments(t *testing.T) {
 
 func TestVersionFlagsDoNotOpenPicker(t *testing.T) {
 	previousOpen := openTUI
-	openTUI = func(context.Context) error {
+	openTUI = func(context.Context, apptui.Overrides) error {
 		t.Fatal("version request opened the picker")
 		return nil
 	}

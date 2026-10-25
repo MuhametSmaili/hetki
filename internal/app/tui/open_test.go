@@ -37,7 +37,7 @@ func TestPreparedServiceUsesConfigSnapshot(t *testing.T) {
 	service, err := prepareService(t.Context(), func() (Backend, error) {
 		detections++
 		return stub, nil
-	})
+	}, Overrides{})
 	require.NoError(t, err)
 	require.Zero(t, detections)
 	require.Empty(t, service.Notice)
@@ -86,7 +86,7 @@ func TestOpenCancellationIsFatalBeforeBackend(t *testing.T) {
 			err := Open(ctx, func() (Backend, error) {
 				t.Fatal("cancellation must abort before backend detection")
 				return nil, nil
-			})
+			}, Overrides{})
 
 			require.ErrorIs(t, err, cause)
 		})
@@ -121,7 +121,7 @@ func TestPreparedServiceIgnoresBrokenConfig(t *testing.T) {
 			}
 			stub := &stubBackend{state: liveState()}
 
-			service, err := prepareService(t.Context(), func() (Backend, error) { return stub, nil })
+			service, err := prepareService(t.Context(), func() (Backend, error) { return stub, nil }, Overrides{})
 
 			require.NoError(t, err)
 			require.Equal(t, ui.DefaultOptions(), service.Options)
@@ -147,7 +147,7 @@ func TestPreparedServiceMissingAndEmptyConfigAreQuiet(t *testing.T) {
 				require.NoError(t, os.Remove(path))
 			}
 
-			service, err := prepareService(t.Context(), nil)
+			service, err := prepareService(t.Context(), nil, Overrides{})
 
 			require.NoError(t, err)
 			require.Equal(t, ui.DefaultOptions(), service.Options)
@@ -161,7 +161,7 @@ func TestOpenSanitizesBackendDiagnosticsAndPreservesCause(t *testing.T) {
 	path := "backend\x1b[31m\n/socket"
 	failure := &os.PathError{Op: "open", Path: path, Err: syscall.EACCES}
 
-	err := Open(t.Context(), func() (Backend, error) { return nil, fmt.Errorf("detect: %w", failure) })
+	err := Open(t.Context(), func() (Backend, error) { return nil, fmt.Errorf("detect: %w", failure) }, Overrides{})
 
 	require.ErrorIs(t, err, syscall.EACCES)
 	var pathError *os.PathError
@@ -187,7 +187,7 @@ func TestPreparedServiceSanitizesAndBoundsReadWarning(t *testing.T) {
 				require.NoError(t, os.Symlink(path, path))
 			}
 
-			service, err := prepareService(t.Context(), nil)
+			service, err := prepareService(t.Context(), nil, Overrides{})
 
 			require.NoError(t, err)
 			require.Equal(t, ui.DefaultOptions(), service.Options)
@@ -212,7 +212,7 @@ func (d *initialNoticeDriver) Load(ctx context.Context, view ui.ViewMode) (list.
 
 func TestPreparedServiceNoticeReachesUIAlongsideDriverAndStatus(t *testing.T) {
 	privateConfig(t, "ui: {view: wrong, scope: tracked, preview: true, preview_width: 18446744073709551616}")
-	service, err := prepareService(t.Context(), nil)
+	service, err := prepareService(t.Context(), nil, Overrides{})
 	require.NoError(t, err)
 	driver := &initialNoticeDriver{openingStatusDriver: openingStatusDriver{err: fmt.Errorf("status fixture unavailable")}}
 	service.Driver = driver

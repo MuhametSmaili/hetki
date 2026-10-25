@@ -32,6 +32,7 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 		return m.reflow(), nil
 	case !result.Navigation.IsZero():
 		m.navigation = result.Navigation
+		m.quitting = true
 		return m, tea.Quit
 	case result.Snapshot == nil:
 		return m, nil

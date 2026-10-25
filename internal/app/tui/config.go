@@ -39,5 +39,27 @@ func resolveConfig(preferences config.Config) (ui.Options, string) {
 			warnings = append(warnings, fmt.Sprintf("ui.preview_width: allowed 1–99; using default %d", options.PreviewWidth))
 		}
 	}
+	warnings = append(warnings, resolvePresentation(preferences.UI, &options)...)
 	return options, strings.Join(warnings, "; ")
+}
+
+func resolvePresentation(preferences config.UI, options *ui.Options) []string {
+	var warnings []string
+	if preferences.Height != nil {
+		height, err := ui.ParseHeight(*preferences.Height)
+		if err == nil {
+			options.Height = height
+		} else {
+			warnings = append(warnings, "ui.height: use positive rows or 1% to 100%; invalid preference ignored")
+		}
+	}
+	if preferences.Border != nil {
+		border := ui.BorderMode(*preferences.Border)
+		if border.Validate() == nil {
+			options.Border = border
+		} else {
+			warnings = append(warnings, "ui.border: allowed rounded or none; invalid preference ignored")
+		}
+	}
+	return warnings
 }

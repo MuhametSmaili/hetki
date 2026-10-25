@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -24,6 +25,8 @@ type UI struct {
 	Scope        *string
 	Preview      *bool
 	PreviewWidth *int
+	Height       *string
+	Border       *string
 }
 
 // Decode accepts one YAML document of at most 64 KiB, reading one extra byte
@@ -145,6 +148,15 @@ func decodeUIField(key string, node *yaml.Node, result *UI) error {
 		target = &result.View
 	case "scope":
 		target = &result.Scope
+	case "border":
+		target = &result.Border
+	case "height":
+		if result.Height != nil {
+			return fmt.Errorf("duplicate ui.height field")
+		}
+		value, err := decodeHeight(node)
+		result.Height = value
+		return err
 	case "preview_width":
 		if result.PreviewWidth != nil {
 			return fmt.Errorf("duplicate ui.preview_width field")
@@ -238,6 +250,28 @@ func decodeBoolean(node *yaml.Node, field string) (*bool, error) {
 	}
 	value := strings.EqualFold(node.Value, "true")
 	return &value, nil
+}
+
+func decodeHeight(node *yaml.Node) (*string, error) {
+	if node.Kind == yaml.ScalarNode && node.Tag == "!!str" {
+		if err := checkString(node, "ui.height"); err != nil {
+			return nil, err
+		}
+		return new(node.Value), nil
+	}
+	if node.Kind != yaml.ScalarNode || node.Style != 0 {
+		return nil, fmt.Errorf("ui.height must be an untagged integer or string")
+	}
+	var value int
+	if node.Tag == "!!int" && node.Decode(&value) == nil {
+		return new(strconv.Itoa(value)), nil
+	}
+	// Reuse the width decoder's integer-shape check, but retain an invalid
+	// sentinel instead of saturation: MaxInt itself is a valid row height.
+	if isPlainInteger(node.Value) {
+		return new("0"), nil
+	}
+	return nil, fmt.Errorf("ui.height must be an untagged integer or string")
 }
 
 func checkString(node *yaml.Node, field string) error {

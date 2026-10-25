@@ -110,14 +110,18 @@ ui:
   scope: tracked
   preview: false
   preview_width: 45
+  height: "40%"
+  border: none
 ```
 
-| Key                | Valid values      | Default |
-| ------------------ | ----------------- | ------- |
-| `ui.view`          | `flat`, `tree`    | `flat`  |
-| `ui.scope`         | `all`, `tracked`  | `all`   |
-| `ui.preview`       | `false`, `true`   | `false` |
-| `ui.preview_width` | Integer from 1–99 | `70`    |
+| Key                | Valid values                         | Default   |
+| ------------------ | ------------------------------------ | --------- |
+| `ui.view`          | `flat`, `tree`                       | `flat`    |
+| `ui.scope`         | `all`, `tracked`                     | `all`     |
+| `ui.preview`       | `false`, `true`                      | `false`   |
+| `ui.preview_width` | Integer from 1–99                    | `70`      |
+| `ui.height`        | Positive integer rows or `1%`–`100%` | `100%`    |
+| `ui.border`        | `rounded`, `none`                    | `rounded` |
 
 Omit keys to use their defaults. A missing or empty valid file uses defaults without a warning.
 The picker reads the file once when it opens. Runtime changes remain temporary: Hetki does not create or update this file or save picker choices.
@@ -126,7 +130,7 @@ The picker reads the file once when it opens. Runtime changes remain temporary: 
 With `preview: false`, the preview reserves no space. In this example, `Alt+P` shows the preview at 45%.
 The layout clamps both columns to their minimum widths. A narrow terminal hides the preview without changing the requested visibility or percentage.
 
-An invalid `ui.view` or `ui.scope` string choice uses the default for that field and keeps other valid choices.
+An invalid view, scope, border or height choice uses the default for that field and keeps other valid choices.
 An integer outside 1–99, including an integer too large to decode, warns and uses width 70 only. Other valid choices remain active.
 `ui.preview` requires an unquoted YAML boolean (`true` or `false`).
 `ui.preview_width` requires an unquoted YAML integer, not a quoted number, percentage string, boolean, float, or null.
@@ -137,6 +141,36 @@ These problems show a warning in the picker instead of blocking startup. Other c
 
 The format is strict: one YAML document, at most 64 KiB and 16 levels deep. Symlinks to regular files are supported.
 Unknown or duplicate keys, nulls, aliases, merge keys, explicit tags, and wrong value types are invalid.
+
+### Inline picker and command overrides
+
+The inline picker opens near the shell prompt without a separate full-screen buffer.
+Earlier shell output stays in the main buffer, but the terminal can scroll to make space.
+The height includes the header and outer border. Inline mode reserves one terminal row when possible.
+Percentages use the entire terminal height, not the empty space below the cursor. Hetki rounds down to whole rows, with at least one row.
+Percentages recompute when the terminal size changes. The renderer scrolls to make room instead of switching above or below the prompt.
+Very short pickers hide header rows to keep the selected item visible.
+The `none` border option removes the outer frame, not dialog borders.
+
+Explicit command flags override the configuration for one invocation. Omitted flags leave file preferences unchanged.
+The order is built-in defaults, then configuration, then explicit flags. Hetki does not write these choices to the configuration file.
+
+```bash
+hetki --height 12 --border none
+hetki --height 40%
+hetki --height 100%
+hetki --border rounded
+```
+
+`100%` selects fullscreen mode in a separate screen buffer. It is also the built-in default.
+Other percentages and positive row counts select inline mode. `100` rows is inline, not fullscreen.
+The file accepts an integer or string for `ui.height`, such as `12` or `"40%"`.
+Decimal rows and integer percentages are supported. Fractional percentages, negative heights and adaptive `~` heights are not supported.
+Invalid explicit flags stop startup with an error.
+These flags apply only to the picker, not other commands.
+
+Inline mode does not add shell keybindings or preserve an unfinished shell command.
+A tmux popup binding still opens a popup. Run Hetki inside the pane to use inline mode there.
 
 ## Picker default key-bindings
 

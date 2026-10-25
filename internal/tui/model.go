@@ -74,8 +74,11 @@ type model struct {
 	paneStatus  paneStatusState
 	scope       scopeState
 
-	width  int
-	height int
+	width        int
+	height       int
+	inline       bool
+	pickerHeight Height
+	border       BorderMode
 
 	dispatch DispatchFunc
 	keys     KeyMap
@@ -91,17 +94,20 @@ func newModelWithOptions(ctx context.Context, snapshot list.Snapshot, options Op
 		return model{}, err
 	}
 	m := model{
-		items:       items,
-		view:        options.Initial.View,
-		dispatch:    runtime.Dispatch,
-		keys:        options.Keys,
-		theme:       defaultTheme(),
-		mode:        modeBrowse,
-		ctx:         ctx,
-		preview:     previewState{enabled: options.Initial.Preview, width: options.PreviewWidth},
-		scope:       scopeState{mode: options.Initial.Scope},
-		readPreview: runtime.Preview,
-		paneStatus:  paneStatusState{options: runtime.Status},
+		items:        items,
+		view:         options.Initial.View,
+		dispatch:     runtime.Dispatch,
+		keys:         options.Keys,
+		theme:        defaultTheme(),
+		mode:         modeBrowse,
+		ctx:          ctx,
+		preview:      previewState{enabled: options.Initial.Preview, width: options.PreviewWidth},
+		scope:        scopeState{mode: options.Initial.Scope},
+		readPreview:  runtime.Preview,
+		inline:       !options.Height.Fullscreen(),
+		pickerHeight: options.Height,
+		border:       options.Border,
+		paneStatus:   paneStatusState{options: runtime.Status},
 	}
 	m.applyScope("", time.Now())
 	if options.StartMode == StartModeFilter && (len(m.items.Rows()) > 0 || m.scope.mode == ScopeTracked) {
@@ -145,11 +151,12 @@ func (m model) layout() layoutMetrics {
 	if lineWidth <= 0 {
 		lineWidth = 100
 	}
-	height := m.height
-	if height <= 0 {
-		height = 24
+	height := m.displayHeight()
+	frame := m.theme.appBorder
+	if m.border == BorderNone {
+		frame = lipgloss.NewStyle()
 	}
-	frameStyle := responsiveFrameStyle(m.theme.appBorder, lineWidth, height)
+	frameStyle := responsiveFrameStyle(frame, lineWidth, height)
 	innerWidth := max(1, lineWidth-frameStyle.GetHorizontalFrameSize())
 	listWidth, previewWidth := innerWidth, 0
 	const separatorWidth, minColumnWidth = 3, 20
@@ -162,6 +169,9 @@ func (m model) layout() layoutMetrics {
 	headerRows := headerHeight
 	if previewWidth > 0 && contentHeight > headerHeight+1 {
 		headerRows++
+	}
+	if m.inline {
+		headerRows = min(headerRows, max(0, contentHeight-1))
 	}
 
 	return layoutMetrics{

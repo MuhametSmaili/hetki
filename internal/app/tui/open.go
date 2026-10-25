@@ -11,8 +11,8 @@ import (
 
 // Open reads startup preferences once before constructing the picker service.
 // Direct Service users remain independent of personal configuration files.
-func Open(ctx context.Context, detectBackend func() (Backend, error)) error {
-	service, err := prepareService(ctx, detectBackend)
+func Open(ctx context.Context, detectBackend func() (Backend, error), overrides Overrides) error {
+	service, err := prepareService(ctx, detectBackend, overrides)
 	if err == nil {
 		err = service.Run(ctx)
 	}
@@ -22,8 +22,11 @@ func Open(ctx context.Context, detectBackend func() (Backend, error)) error {
 	return nil
 }
 
-func prepareService(ctx context.Context, detectBackend func() (Backend, error)) (Service, error) {
+func prepareService(ctx context.Context, detectBackend func() (Backend, error), overrides Overrides) (Service, error) {
 	if err := ctx.Err(); err != nil {
+		return Service{}, err
+	}
+	if err := overrides.Validate(); err != nil {
 		return Service{}, err
 	}
 
@@ -39,8 +42,9 @@ func prepareService(ctx context.Context, detectBackend func() (Backend, error)) 
 	}
 
 	options, warning := resolveConfig(preferences)
+	options = overrides.apply(options)
 	if loadErr != nil {
-		warning = "configuration ignored; using built-in defaults: " + loadErr.Error()
+		warning = "configuration ignored; using defaults except for explicit flags: " + loadErr.Error()
 	} else if warning != "" {
 		warning = "configuration warning: " + warning
 	}

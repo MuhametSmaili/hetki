@@ -11,16 +11,20 @@ import (
 
 var (
 	isTerminal = term.IsTerminal
-	openTUI    = func(ctx context.Context) error {
+	openTUI    = func(ctx context.Context, overrides apptui.Overrides) error {
 		return apptui.Open(ctx, func() (apptui.Backend, error) {
 			return detectBackend()
-		})
+		}, overrides)
 	}
 )
 
 func runBareHetki(cmd *cobra.Command, _ []string) error {
+	overrides, err := pickerOverrides(cmd)
+	if err != nil {
+		return err
+	}
 	if !isTerminal(os.Stdin.Fd()) || !isTerminal(os.Stdout.Fd()) {
 		return cmd.Help()
 	}
-	return openTUI(cmd.Context())
+	return openTUI(cmd.Context(), overrides)
 }
