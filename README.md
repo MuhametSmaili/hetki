@@ -160,7 +160,25 @@ hetki --height 12 --border none
 hetki --height 40%
 hetki --height 100%
 hetki --border rounded
+hetki --preview
+hetki --preview=false
+hetki --scope tracked
+hetki --scope all
+hetki --view tree --scope tracked --preview
+hetki --preview --preview-width 45
 ```
+
+`--preview` (or `--preview=true`) initially shows the pane preview. Use `--preview=false` to initially hide it, even when `ui.preview` is `true`.
+Omit the flag to use the configured value or built-in default. `Alt+P` can still toggle the preview during the run.
+The flag does not change `ui.preview_width` or force the preview to fit a narrow terminal.
+
+`--scope all` selects all items regardless of status. `--scope tracked` selects items with any current status, including idle items and non-AI commands.
+The flag overrides `ui.scope` for the initial item set. The text query matches within that set, and `Tab` still switches between All and Tracked during the run.
+This is not a working-only filter or a text query expression.
+
+`--view flat` or `--view tree` overrides `ui.view` for the initial projection. `Ctrl+T` can still switch views during the run.
+`--preview-width N` overrides `ui.preview_width`. Use an integer percentage from 1–99 without a `%` suffix.
+Setting the width does not enable the preview. Existing column minimums and narrow-terminal hiding still apply.
 
 `100%` selects fullscreen mode in a separate screen buffer. It is also the built-in default.
 Other percentages and positive row counts select inline mode. `100` rows is inline, not fullscreen.

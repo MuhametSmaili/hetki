@@ -136,11 +136,19 @@ func runInlinePTYHelper(t *testing.T, mode string) {
 		options.Height = ui.Height{Value: 12}
 	}
 	if mode == "configured" {
-		privateConfig(t, "ui: {view: tree, scope: all, preview: false, preview_width: 45, height: '40%', border: rounded}")
-		prepared, err := prepareService(ctx, nil, Overrides{Height: new(options.Height), Border: new(options.Border)})
+		privateConfig(t, "ui: {view: flat, scope: tracked, preview: true, preview_width: 70, height: '40%', border: rounded}")
+		prepared, err := prepareService(ctx, nil, Overrides{
+			Height:       new(options.Height),
+			Border:       new(options.Border),
+			Scope:        new(ui.ScopeAll),
+			Preview:      new(false),
+			View:         new(ui.ViewTree),
+			PreviewWidth: new(45),
+		})
 		require.NoError(t, err)
 		options = prepared.Options
 		require.Equal(t, ui.ViewTree, options.Initial.View)
+		require.Equal(t, ui.ScopeAll, options.Initial.Scope)
 		require.False(t, options.Initial.Preview)
 		require.Equal(t, 45, options.PreviewWidth)
 		require.Equal(t, ui.Height{Value: 80, Percent: true}, options.Height)

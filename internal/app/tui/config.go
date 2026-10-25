@@ -17,7 +17,7 @@ func resolveConfig(preferences config.Config) (ui.Options, string) {
 		if view.Validate() == nil {
 			options.Initial.View = view
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ui.view: allowed %s or %s; using default %s", ui.ViewFlat, ui.ViewTree, options.Initial.View))
+			warnings = append(warnings, fmt.Sprintf("ui.view: allowed %s or %s; invalid preference ignored", ui.ViewFlat, ui.ViewTree))
 		}
 	}
 	if preferences.UI.Scope != nil {
@@ -25,7 +25,7 @@ func resolveConfig(preferences config.Config) (ui.Options, string) {
 		if scope.Validate() == nil {
 			options.Initial.Scope = scope
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ui.scope: allowed %s or %s; using default %s", ui.ScopeAll, ui.ScopeTracked, options.Initial.Scope))
+			warnings = append(warnings, fmt.Sprintf("ui.scope: allowed %s or %s; invalid preference ignored", ui.ScopeAll, ui.ScopeTracked))
 		}
 	}
 	if preferences.UI.Preview != nil {
@@ -33,10 +33,10 @@ func resolveConfig(preferences config.Config) (ui.Options, string) {
 	}
 	if preferences.UI.PreviewWidth != nil {
 		width := *preferences.UI.PreviewWidth
-		if width >= 1 && width <= 99 {
+		if ui.ValidatePreviewWidth(width) == nil {
 			options.PreviewWidth = width
 		} else {
-			warnings = append(warnings, fmt.Sprintf("ui.preview_width: allowed 1–99; using default %d", options.PreviewWidth))
+			warnings = append(warnings, "ui.preview_width: allowed 1–99; invalid preference ignored")
 		}
 	}
 	warnings = append(warnings, resolvePresentation(preferences.UI, &options)...)

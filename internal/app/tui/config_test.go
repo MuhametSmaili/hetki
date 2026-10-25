@@ -89,7 +89,7 @@ func TestResolveConfigPreviewWidth(t *testing.T) {
 			require.Equal(t, want, got)
 			require.NoError(t, got.Validate())
 			if tt.warning {
-				require.Equal(t, "ui.preview_width: allowed 1–99; using default 70", warning)
+				require.Equal(t, "ui.preview_width: allowed 1–99; invalid preference ignored", warning)
 			} else {
 				require.Empty(t, warning)
 			}
@@ -109,7 +109,7 @@ func TestResolveConfigWarningDoesNotEchoValues(t *testing.T) {
 	require.NotContains(t, text, "secret")
 	require.NotContains(t, text, "\x1b")
 	require.Equal(t, 2, strings.Count(text, "ui."))
-	for _, choice := range []string{"flat", "tree", "all", "tracked", "default"} {
+	for _, choice := range []string{"flat", "tree", "all", "tracked", "ignored"} {
 		require.Contains(t, text, choice)
 	}
 }

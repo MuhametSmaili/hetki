@@ -100,7 +100,12 @@ func (o Options) Validate() error {
 	if err := o.Border.Validate(); err != nil {
 		return err
 	}
-	if o.PreviewWidth < 1 || o.PreviewWidth > 99 {
+	return ValidatePreviewWidth(o.PreviewWidth)
+}
+
+// ValidatePreviewWidth accepts percentages from 1 to 99.
+func ValidatePreviewWidth(width int) error {
+	if width < 1 || width > 99 {
 		return fmt.Errorf("preview width must be between 1 and 99 percent")
 	}
 	return nil

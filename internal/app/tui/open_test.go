@@ -220,7 +220,7 @@ func TestPreparedServiceNoticeReachesUIAlongsideDriverAndStatus(t *testing.T) {
 		require.Equal(t, ui.State{View: ui.ViewFlat, Scope: ui.ScopeTracked, Preview: true}, options.Initial)
 		require.Equal(t, 70, options.PreviewWidth)
 		require.True(t, strings.HasPrefix(snapshot.Notice, "configuration warning: ui.view"))
-		require.Contains(t, snapshot.Notice, "ui.preview_width: allowed 1–99; using default 70")
+		require.Contains(t, snapshot.Notice, "ui.preview_width: allowed 1–99; invalid preference ignored")
 		require.NotContains(t, snapshot.Notice, "18446744073709551616")
 		require.NotContains(t, snapshot.Notice, "wrong")
 		require.Contains(t, snapshot.Notice, "frecency state unavailable")

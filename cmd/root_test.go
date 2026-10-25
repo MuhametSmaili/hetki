@@ -149,15 +149,6 @@ func TestRootRejectsArgumentsAndRemovedCommands(t *testing.T) {
 	}
 }
 
-func TestRootDoesNotExposePreviewConfiguration(t *testing.T) {
-	require.Nil(t, rootCmd.Flags().Lookup("preview-width"))
-	require.NotContains(t, rootCmd.Flags().FlagUsages(), "preview-width")
-	t.Cleanup(func() { rootCmd.SetArgs(nil) })
-	rootCmd.SetArgs([]string{"--preview-width", "60"})
-	_, err := rootCmd.ExecuteC()
-	require.ErrorContains(t, err, "unknown flag: --preview-width")
-}
-
 func TestUpdateRejectsUnsupportedArguments(t *testing.T) {
 	require.NotNil(t, updateCmd.Flags().Lookup("head"))
 
