@@ -1,6 +1,8 @@
 # Hetki
 
-A keyboard-first tmux workspace manager for Linux and macOS.
+Navigate tmux sessions and save your setup to use again later.
+
+A keyboard-first tool for Linux and macOS.
 
 - Find sessions, windows, and panes in a searchable picker.
 - Preview panes and see activity from supported apps.
@@ -28,31 +30,33 @@ Prebuilt binaries are available on the [releases page](https://github.com/Muhame
 
 ## Commands
 
-| Command                                   | What it does                                          |
-| ----------------------------------------- | ----------------------------------------------------- |
-| `hetki`                                   | Open the picker.                                      |
-| `hetki save -n your_workspace`            | Save the current session from inside tmux.            |
-| `hetki start -n your_workspace`           | Start a saved workspace.                              |
-| `hetki start -n your_workspace -d`        | Start without attaching or switching sessions.        |
-| `hetki start -n your_workspace --dry-run` | Preview workspace changes without applying them.      |
-| `hetki update`                            | Update to the latest stable release.                  |
-| `hetki update --head`                     | Update to the latest pushed main commit. Requires Go. |
-| `hetki service status`                    | Check the status service.                             |
-| `hetki service start`                     | Start the status service.                             |
-| `hetki service stop`                      | Stop the status service, not tmux.                    |
-| `hetki service restart`                   | Restart the status service.                           |
+| Command                          | What it does                                          |
+| -------------------------------- | ----------------------------------------------------- |
+| `hetki`                          | Open the picker.                                      |
+| `hetki save work`                | Save the current session from inside tmux.            |
+| `hetki start work`               | Start a saved workspace.                              |
+| `hetki start work --detach`      | Start without attaching or switching sessions.        |
+| `hetki start work --dry-run`     | Preview workspace changes without applying them.      |
+| `hetki start --file ./work.yaml` | Start a workspace from a YAML file.                   |
+| `hetki save work --all-sessions` | Replace the saved session set with all live sessions. |
+| `hetki update`                   | Update to the latest stable release.                  |
+| `hetki update --head`            | Update to the latest pushed main commit. Requires Go. |
+| `hetki service status`           | Show status service information.                      |
+| `hetki service start`            | Start the status service.                             |
+| `hetki service stop`             | Stop the status service, not tmux.                    |
+| `hetki service restart`          | Restart the status service.                           |
 
-Replace `your_workspace` with your workspace name. Named workspace files live in `~/.config/hetki/workspaces` by default.
-
-For an explicit file, use `-p ./path/to/your_workspace.yaml` instead of `-n your_workspace`.
+Named workspace files live in `~/.config/hetki/workspaces` by default.
+Use exactly one selector: a workspace name such as `work`, or `--file ./work.yaml` (`-f ./work.yaml`).
+Names never select local files. A name combined with `--file` is an error.
 
 The picker starts its status service automatically. Use `hetki --help` or `hetki <command> --help` for more options.
 
-**Flag change:** `-d` now means `--detach`, not dry-run. Use `--dry-run` to preview changes without executing them.
+**Caution:** `--force` can replace or delete windows in sessions listed in the workspace.
+`--prune-sessions` can delete unrelated sessions on the selected tmux server.
+Both can terminate processes. Use `--dry-run` first to see result.
 
-**Caution:** `--force` and `--prune-sessions` can delete windows or sessions and terminate their processes. Use `--dry-run` first.
-
-## Picker keys
+## Picker default key-bindings
 
 Type to filter. Press `Esc` for normal mode.
 

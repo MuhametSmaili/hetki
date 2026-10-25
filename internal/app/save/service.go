@@ -43,7 +43,7 @@ func (s Service) Run(ctx context.Context, opts Options) (string, error) {
 	}
 	outputPath, err := appshared.ResolveWorkspaceTarget(opts.Name, opts.Path)
 	if err != nil {
-		return "", appshared.WithHint(err, "Use hetki save -n your_workspace or hetki save -p ./path/to/your_workspace.yaml. Replace the example name or path with your own.")
+		return "", appshared.WithHint(err, "Use hetki save work or hetki save --file ./work.yaml.")
 	}
 
 	if s.validateLayout == nil {
@@ -94,7 +94,7 @@ func getTargetSessions(ctx context.Context, b Backend, saveAll bool) ([]backend.
 
 func findCurrentSession(result backend.StateResult) ([]backend.Session, error) {
 	if result.Active.Session == "" {
-		return nil, appshared.WithHint(errors.New("not in a session"), "Run save inside tmux, or pass --all with --name or --path.")
+		return nil, appshared.WithHint(errors.New("not in a session"), "Run save inside tmux, or use --all-sessions with NAME or --file FILE to save all live sessions.")
 	}
 
 	for _, s := range result.Sessions {

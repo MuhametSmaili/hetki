@@ -14,18 +14,13 @@ var (
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update hetki to the latest release or main commit",
-	Long: `Update hetki to a verified release or build the latest main commit.
+	Short: "Update Hetki",
+	Long: `Update Hetki to the latest stable release.
 
-By default installs the newest stable release; prereleases are not supported.
-Use --version to pin or downgrade to an exact stable release.
-Downloaded binaries are verified against release attestations before replacement.
-Use --head to build the latest pushed commit on main (requires Go; unreleased code).
-The commit is pinned before building; repeated --head updates compare commits.
-GitHub API requests use nonempty GH_TOKEN, then GITHUB_TOKEN, if available.
-Tokens are not sent to release downloads or external attestation bundles.
-All source builds use the Go checksum database. Emergency-only bypass:
-HETKI_UNSAFE_SKIP_VERIFY=1.`,
+Use --version to select an exact stable release, or --head for unreleased main.
+These options cannot be combined. --head requires Go.
+Downloaded release binaries are verified before replacement.`,
+	Example:           "  hetki update\n  hetki update --dry-run",
 	Args:              cobra.NoArgs,
 	ValidArgsFunction: cobra.NoFileCompletions,
 	RunE:              runUpdate,
@@ -34,9 +29,9 @@ HETKI_UNSAFE_SKIP_VERIFY=1.`,
 func init() {
 	rootCmd.AddCommand(updateCmd)
 	updateCmd.Flags().BoolVar(&updateHead, "head", false, "Build the latest pushed commit on main (requires Go; unreleased code)")
-	updateCmd.Flags().BoolVar(&updateDryRun, "dry-run", false, "Show what would be done without updating")
+	updateCmd.Flags().BoolVarP(&updateDryRun, "dry-run", "n", false, "Preview the update without installing it")
 	updateCmd.Flags().BoolVarP(&updateVerbose, "verbose", "v", false, "Show verbose output")
-	updateCmd.Flags().StringVar(&updateTargetVer, "version", "", "Install this exact stable release tag (e.g. v1.2.3); allows downgrade or reinstall")
+	updateCmd.Flags().StringVar(&updateTargetVer, "version", "", "Install exact stable release `TAG` (allows downgrade or reinstall)")
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {

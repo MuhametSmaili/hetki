@@ -23,7 +23,7 @@ func TestRunSaveRetainsAuthoredLayoutForAnotherSession(t *testing.T) {
 		Sessions: []backend.Session{{Name: "dev", Windows: []backend.Window{{Name: "editor", Path: t.TempDir()}}}},
 		Active:   backend.ActiveContext{Session: "dev"},
 	}})
-	require.NoError(t, saveCmd.Flags().Set("path", path))
+	require.NoError(t, saveCmd.Flags().Set("file", path))
 
 	err := runSave(saveCmd, nil)
 
@@ -33,6 +33,32 @@ func TestRunSaveRetainsAuthoredLayoutForAnotherSession(t *testing.T) {
 	require.Len(t, workspace.Sessions, 2)
 	require.Equal(t, "retained", workspace.Sessions[0].Name)
 	require.Equal(t, layout, workspace.Sessions[0].Windows[0].Layout)
+}
+
+func TestSaveAllSessionsReplacesSavedSessionSet(t *testing.T) {
+	for _, flag := range []string{"--all-sessions", "-a"} {
+		t.Run(flag, func(t *testing.T) {
+			directory := t.TempDir()
+			path := writeWorkspaceFile(t, directory, "work.yaml", "sessions:\n  - name: offline\n    windows:\n      - name: editor\n")
+			stub := &stubBackend{queryResult: backend.StateResult{Sessions: []backend.Session{
+				{Name: "work", Windows: []backend.Window{{Name: "editor", Path: directory}}},
+				{Name: "personal", Windows: []backend.Window{{Name: "shell", Path: directory}}},
+			}}}
+			withStubBackend(t, stub)
+
+			captureLoggerOutput(t, func() {
+				require.NoError(t, executeWorkspaceCommand(t, "save", "--file", path, flag))
+			})
+
+			workspace, err := manifest.NewFileLoader(path, tmux.ValidateAuthoredLayout).Load()
+			require.NoError(t, err)
+			require.Len(t, workspace.Sessions, 2)
+			require.Equal(t, "work", workspace.Sessions[0].Name)
+			require.Equal(t, "personal", workspace.Sessions[1].Name)
+			require.Zero(t, stub.applyCalls)
+			require.Zero(t, stub.attachCalls)
+		})
+	}
 }
 
 func TestRunSaveWritesCurrentSessionWorkspace(t *testing.T) {
@@ -53,7 +79,7 @@ func TestRunSaveWritesCurrentSessionWorkspace(t *testing.T) {
 		Active: backend.ActiveContext{Session: "dev"},
 	}}
 	withStubBackend(t, stub)
-	require.NoError(t, saveCmd.Flags().Set("path", outputPath))
+	require.NoError(t, saveCmd.Flags().Set("file", outputPath))
 
 	logOutput := captureLoggerOutput(t, func() {
 		require.NoError(t, runSave(saveCmd, nil))

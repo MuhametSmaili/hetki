@@ -26,6 +26,10 @@ func getWorkspaceNames() ([]string, error) {
 }
 
 func completeWorkspaceNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 || cmd.Flags().Changed("file") {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
 	names, _ := getWorkspaceNames()
 	return names, cobra.ShellCompDirectiveNoFileComp
 }

@@ -150,6 +150,84 @@ func TestUpdateRejectsUnsupportedArguments(t *testing.T) {
 	}
 }
 
+func TestVersionFlagsDoNotOpenPicker(t *testing.T) {
+	previousOpen := openTUI
+	openTUI = func(context.Context) error {
+		t.Fatal("version request opened the picker")
+		return nil
+	}
+	t.Cleanup(func() { openTUI = previousOpen })
+
+	for _, flag := range []string{"--version", "-V", "-v"} {
+		t.Run(flag, func(t *testing.T) {
+			var output bytes.Buffer
+			rootCmd.SetOut(&output)
+			rootCmd.SetArgs([]string{flag})
+			t.Cleanup(func() {
+				rootCmd.SetOut(nil)
+				rootCmd.SetArgs(nil)
+				require.NoError(t, rootCmd.Flags().Set("version", "false"))
+			})
+
+			_, err := rootCmd.ExecuteC()
+
+			if flag == "-v" {
+				require.ErrorContains(t, err, "unknown shorthand flag: 'v'")
+				require.Empty(t, output.String())
+				return
+			}
+			require.NoError(t, err)
+			require.Contains(t, output.String(), "hetki version "+rootCmd.Version)
+			require.Contains(t, output.String(), "commit:")
+			require.Contains(t, output.String(), "built:")
+		})
+	}
+}
+
+func TestUpdateFlagRouting(t *testing.T) {
+	previousRun := updateCmd.RunE
+	t.Cleanup(func() {
+		updateCmd.RunE = previousRun
+		rootCmd.SetArgs(nil)
+	})
+
+	for _, test := range []struct {
+		name    string
+		args    []string
+		dryRun  bool
+		verbose bool
+		version string
+	}{
+		{name: "short dry-run", args: []string{"-n"}, dryRun: true},
+		{name: "long dry-run", args: []string{"--dry-run"}, dryRun: true},
+		{name: "short verbose", args: []string{"-v"}, verbose: true},
+		{name: "long verbose", args: []string{"--verbose"}, verbose: true},
+		{name: "exact release", args: []string{"--version", "v1.2.3", "-n", "-v"}, version: "v1.2.3", dryRun: true, verbose: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Cleanup(func() {
+				require.NoError(t, updateCmd.Flags().Set("dry-run", "false"))
+				require.NoError(t, updateCmd.Flags().Set("verbose", "false"))
+				require.NoError(t, updateCmd.Flags().Set("version", ""))
+			})
+			called := false
+			updateCmd.RunE = func(*cobra.Command, []string) error {
+				called = true
+				require.Equal(t, test.dryRun, updateDryRun)
+				require.Equal(t, test.verbose, updateVerbose)
+				require.Equal(t, test.version, updateTargetVer)
+				return nil
+			}
+			rootCmd.SetArgs(append([]string{"update"}, test.args...))
+
+			_, err := rootCmd.ExecuteC()
+
+			require.NoError(t, err)
+			require.True(t, called)
+		})
+	}
+}
+
 func TestCommandSignalContextCancelsOnTerminationSignals(t *testing.T) {
 	for _, terminationSignal := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
 		t.Run(terminationSignal.String(), func(t *testing.T) {

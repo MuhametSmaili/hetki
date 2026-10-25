@@ -7,7 +7,6 @@ import (
 )
 
 var (
-	startName     string
 	startPath     string
 	dryRun        bool
 	detach        bool
@@ -16,43 +15,47 @@ var (
 )
 
 var startCmd = &cobra.Command{
-	Use:   "start (--name <name> | --path <file>)",
-	Short: "Start a tmux workspace",
-	Long: `Start a workspace selected by exactly one of --name or --path.
-Names select files in Hetki's configured workspace directory, never local files.
-Session names come from YAML. Normal start adds missing resources and attaches.
-Use --detach (-d) to start without attaching or switching sessions.
-Migration: -d now means detach, not dry-run. Use --dry-run to preview changes.
-Force also replaces mismatched windows and removes extra windows inside declared
-sessions. Prune-sessions independently removes sessions not declared in YAML,
-including unrelated sessions, after reconciliation. Both can terminate processes.
-Linked windows can make force affect other sessions; pruning refuses such plans.`,
-	Example:           "  # Replace the example name or path with your own.\n  hetki start -n your_workspace\n  hetki start -p ./path/to/your_workspace.yaml --dry-run",
+	Use:   "start (NAME | --file FILE)",
+	Short: "Start a saved workspace",
+	Long: `Start a saved workspace.
+
+Create missing sessions and windows with their configured panes.
+Leave existing windows unchanged unless --force is used.
+
+Attach to the first session listed in the workspace. Inside tmux, switch to it instead.
+
+Choose either NAME from Hetki's workspace directory or --file FILE.
+
+Caution:
+  --force replaces mismatched windows and removes extra windows in listed sessions.
+  --prune-sessions deletes sessions absent from the workspace on the selected
+  tmux server, including unrelated sessions.
+  Both options can terminate running processes. Use --dry-run first.
+  If execution fails, earlier changes are not rolled back.`,
+	Example:           "  hetki start work\n  hetki start --file ./work.yaml --dry-run",
 	Args:              workspaceArgs,
-	ValidArgsFunction: cobra.NoFileCompletions,
+	ValidArgsFunction: completeWorkspaceNames,
 	RunE:              runStart,
 }
 
 func init() {
-	startCmd.Flags().StringVarP(&startName, "name", "n", "", "Workspace name in Hetki's configured directory")
-	startCmd.Flags().StringVarP(&startPath, "path", "p", "", "Workspace YAML file to load (not a directory)")
-	startCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print plan without executing")
-	startCmd.Flags().BoolVarP(&detach, "detach", "d", false, "Start without attaching or switching sessions")
-	startCmd.Flags().BoolVarP(&force, "force", "f", false, "Reconcile windows inside declared sessions (can terminate processes)")
-	startCmd.Flags().BoolVar(&pruneSessions, "prune-sessions", false, "Delete sessions not declared in this workspace, including unrelated sessions; independent of --force")
-	cobra.CheckErr(startCmd.RegisterFlagCompletionFunc("name", completeWorkspaceNames))
-	cobra.CheckErr(startCmd.MarkFlagFilename("path", "yaml", "yml"))
+	startCmd.Flags().StringVarP(&startPath, "file", "f", "", "Load workspace YAML `FILE`")
+	startCmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "Show planned changes without applying them")
+	startCmd.Flags().BoolVarP(&detach, "detach", "d", false, "Do not attach or switch sessions")
+	startCmd.Flags().BoolVar(&force, "force", false, "Replace mismatched windows and delete extra windows in listed sessions")
+	startCmd.Flags().BoolVar(&pruneSessions, "prune-sessions", false, "Delete sessions not listed in the workspace")
+	cobra.CheckErr(startCmd.MarkFlagFilename("file", "yaml", "yml"))
 	rootCmd.AddCommand(startCmd)
 }
 
-func runStart(cmd *cobra.Command, _ []string) error {
+func runStart(cmd *cobra.Command, args []string) error {
 	service := appstart.NewService(func() (appstart.Backend, error) {
 		return detectBackend()
 	}, tmux.ValidateAuthoredLayout)
 
 	return service.Run(cmd.Context(), appstart.Options{
-		Name:          selectedWorkspaceFlag(cmd, "name", startName),
-		Path:          selectedWorkspaceFlag(cmd, "path", startPath),
+		Name:          selectedWorkspaceName(args),
+		Path:          selectedWorkspaceFlag(cmd, "file", startPath),
 		DryRun:        dryRun,
 		Detach:        detach,
 		Force:         force,

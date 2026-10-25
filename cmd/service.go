@@ -22,8 +22,13 @@ func newServiceCommand(
 	restart func(context.Context) error,
 ) *cobra.Command {
 	command := &cobra.Command{
-		Use:               "service",
-		Short:             "Manage the status service for the selected tmux server",
+		Use:   "service",
+		Short: "Manage the background status service",
+		Long: `Manage the background service that tracks application status in tmux panes.
+
+Commands use the tmux server selected by your environment.
+The picker starts the service automatically.`,
+		Example:           "  hetki service status\n  hetki service restart",
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -32,12 +37,10 @@ func newServiceCommand(
 	}
 	command.AddCommand(&cobra.Command{
 		Use:   "status",
-		Short: "Show status without starting tmux or the service",
-		Long: `Inspect the status service for the tmux server selected by your environment.
-This command does not start tmux or a daemon, create Hetki runtime directories,
-or load status profiles. Detached tmux sessions are supported.
-A missing or refused endpoint means not listening, not confirmed process exit.
-Build and uptime are not reported by the current daemon protocol.`,
+		Short: "Show status service information",
+		Long: `Show status service information for the tmux server selected by your environment.
+
+Show the tmux socket, service state, and log path without starting tmux or the service.`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -51,11 +54,11 @@ Build and uptime are not reported by the current daemon protocol.`,
 	})
 	command.AddCommand(&cobra.Command{
 		Use:   "start",
-		Short: "Start or reuse the status service without opening the picker",
-		Long: `Start or reuse the status service for the selected, running tmux server.
-This command never starts tmux or waits for a future tmux server.
-The daemon runs independently after this command exits and stops with its server.
-An existing compatible daemon keeps its loaded profiles.`,
+		Short: "Start the status service",
+		Long: `Start the status service for the tmux server selected by your environment.
+
+Requires a running tmux server. An existing compatible service is reused.
+The service runs in the background and stops when its tmux server exits.`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -69,14 +72,12 @@ An existing compatible daemon keeps its loaded profiles.`,
 	})
 	command.AddCommand(&cobra.Command{
 		Use:   "stop",
-		Short: "Stop the observed status service instance without stopping tmux",
-		Long: `Stop the observed status service instance for the selected, running tmux server.
-This command does not load profiles, create runtime directories, or start tmux.
-Success waits for that instance's workers, source and logs to close and its lock
-to be released, not for OS process exit. The shutdown wait is bounded to five seconds.
-Cancellation or timeout after acceptance does not undo shutdown.
-Stop is not disable: a picker, including one already open, or service start can
-start another instance. Older daemons without safe-stop support are refused.`,
+		Short: "Stop the status service without stopping tmux",
+		Long: `Stop the status service for the tmux server selected by your environment.
+
+Requires a running tmux server. Tmux sessions remain running.
+An open picker can start the service again.
+Cancellation or timeout does not undo an accepted shutdown request.`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -95,13 +96,12 @@ start another instance. Older daemons without safe-stop support are refused.`,
 	})
 	command.AddCommand(&cobra.Command{
 		Use:   "restart",
-		Short: "Stop the observed status service and start or reuse a ready successor",
-		Long: `Validate profiles, then stop and start the status service for the selected tmux server.
-Invalid profiles leave the existing daemon running. If stopping fails, startup
-is not attempted. If no daemon is running, this command starts it.
-A compatible replacement started by another picker or command is reused.
-Stop and startup waits are bounded. Failure after stop acceptance can leave the
-service stopped; cancellation does not undo shutdown. This command never starts tmux.`,
+		Short: "Restart the status service",
+		Long: `Restart the status service for the tmux server selected by your environment.
+
+Requires a running tmux server. If the service is absent, this command starts it.
+Invalid profiles leave the existing service running.
+A failure after shutdown acceptance can leave the service stopped.`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {

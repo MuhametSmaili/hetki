@@ -21,8 +21,8 @@ func TestReportCommandErrorSeparatesHintsWithoutTrustingTheirContents(t *testing
 	}{
 		{
 			"structured hint",
-			fmt.Errorf("loading: %w", appshared.WithHint(cause, "Use --path ./work.yaml.\nError: forged")),
-			"Error: loading: open workspace\\nHint: forged.yaml: permission denied\nHint: Use --path ./work.yaml.\\nError: forged\n",
+			fmt.Errorf("loading: %w", appshared.WithHint(cause, "Use --file ./work.yaml.\nError: forged")),
+			"Error: loading: open workspace\\nHint: forged.yaml: permission denied\nHint: Use --file ./work.yaml.\\nError: forged\n",
 		},
 		{
 			"plain text is not a hint",
@@ -79,9 +79,9 @@ func TestRootHelpDescribesSupportedFeatures(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, output.String(), "tmux")
 	require.Contains(t, output.String(), "interactive picker")
-	require.Contains(t, output.String(), "--name or --path")
-	require.Contains(t, output.String(), "hetki start -n your_workspace")
-	require.Contains(t, output.String(), "hetki save -p ./path/to/your_workspace.yaml")
-	require.Contains(t, output.String(), "Replace the example name or path with your own.")
+	require.Contains(t, output.String(), "hetki start work")
+	require.Contains(t, output.String(), "hetki save --file ./work.yaml")
+	require.Contains(t, output.String(), "-V, --version")
+	require.NotContains(t, output.String(), "session ownership")
 	require.NotContains(t, output.String(), "Templates")
 }

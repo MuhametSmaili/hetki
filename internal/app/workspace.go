@@ -13,20 +13,20 @@ import (
 // omitted; a pointer to an empty string is an explicitly empty selector.
 func ResolveWorkspaceTarget(name, path *string) (string, error) {
 	if name == nil && path == nil {
-		return "", fmt.Errorf("choose exactly one workspace target: --name or --path")
+		return "", fmt.Errorf("choose exactly one workspace target: NAME or --file FILE")
 	}
 	if name != nil && path != nil {
-		return "", fmt.Errorf("cannot use both --name and --path")
+		return "", fmt.Errorf("cannot combine a workspace name with --file")
 	}
 
 	if name != nil {
 		if *name == "" {
-			return "", fmt.Errorf("--name must not be empty")
+			return "", fmt.Errorf("workspace name must not be empty")
 		}
 		return manifest.NewResolver().NamedPath(*name)
 	}
 	if *path == "" {
-		return "", fmt.Errorf("--path must not be empty")
+		return "", fmt.Errorf("--file must not be empty")
 	}
 	return manifest.FilePath(*path)
 }

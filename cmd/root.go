@@ -22,17 +22,16 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:           "hetki",
-	Short:         "Manage tmux workspaces from a keyboard-first picker or the CLI",
+	Short:         "Manage tmux sessions and saved workspaces",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Args:          cobra.NoArgs,
 	RunE:          runBareHetki,
-	Long: `Hetki manages tmux sessions, windows, and panes.
+	Long: `Manage tmux sessions and saved workspaces.
 
 Run hetki in a terminal to open the interactive picker.
-Use start or save with exactly one workspace selector: --name or --path.
-Workspaces use strict YAML. A workspace name selects a file, not session ownership.`,
-	Example: "  # Replace the example name or path with your own.\n  hetki\n  hetki start -n your_workspace\n  hetki save -p ./path/to/your_workspace.yaml",
+Save tmux sessions as YAML workspaces and start them again.`,
+	Example: "  hetki\n  hetki start work\n  hetki save --file ./work.yaml",
 	Version: Version,
 }
 
@@ -41,6 +40,7 @@ func init() {
 		applyBuildInfo(info)
 	}
 	rootCmd.Version = Version
+	rootCmd.Flags().BoolP("version", "V", false, "Show version information")
 	rootCmd.SetVersionTemplate(fmt.Sprintf("hetki version %s\ncommit: %s\nbuilt: %s\n", Version, GitCommit, BuildDate))
 }
 

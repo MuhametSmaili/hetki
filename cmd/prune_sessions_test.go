@@ -9,7 +9,7 @@ import (
 )
 
 func TestPruningFlagBelongsOnlyToStart(t *testing.T) {
-	err := executeWorkspaceCommand(t, "save", "-n", "work", "--prune-sessions")
+	err := executeWorkspaceCommand(t, "save", "work", "--prune-sessions")
 
 	require.ErrorContains(t, err, "unknown flag: --prune-sessions")
 }
@@ -17,14 +17,16 @@ func TestPruningFlagBelongsOnlyToStart(t *testing.T) {
 func TestStartPruningIsIndependentOfForce(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
+		fileFlag     string
 		flags        []string
 		killSessions int
 		killWindows  int
 	}{
-		{name: "additive"},
-		{name: "force only", flags: []string{"--force"}, killWindows: 1},
-		{name: "prune only", flags: []string{"--prune-sessions"}, killSessions: 1},
-		{name: "force and prune", flags: []string{"--force", "--prune-sessions"}, killSessions: 1, killWindows: 1},
+		{name: "additive", fileFlag: "--file"},
+		{name: "short file is additive", fileFlag: "-f"},
+		{name: "force only", fileFlag: "--file", flags: []string{"--force"}, killWindows: 1},
+		{name: "prune only", fileFlag: "--file", flags: []string{"--prune-sessions"}, killSessions: 1},
+		{name: "force and prune", fileFlag: "-f", flags: []string{"--force", "--prune-sessions"}, killSessions: 1, killWindows: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			directory, err := filepath.EvalSymlinks(t.TempDir())
@@ -38,7 +40,7 @@ func TestStartPruningIsIndependentOfForce(t *testing.T) {
 				{ID: "$2", Name: "old", Windows: []backend.Window{{ID: "@3", Name: "shell", Path: directory, Panes: []backend.Pane{{ID: "%3", Path: directory}}}}},
 			}}}
 			withStubBackend(t, stub)
-			args := append([]string{"start", "-p", path, "--dry-run"}, tc.flags...)
+			args := append([]string{"start", tc.fileFlag, path, "--dry-run"}, tc.flags...)
 
 			captureLoggerOutput(t, func() {
 				require.NoError(t, executeWorkspaceCommand(t, args...))

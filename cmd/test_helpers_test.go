@@ -76,7 +76,6 @@ func (s *stubBackend) Switch(context.Context, backend.Target) error {
 func resetCommandGlobals() {
 	saveCmd.SetContext(context.Background())
 	startCmd.SetContext(context.Background())
-	startName = ""
 	startPath = ""
 	startCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
 	saveCmd.Flags().VisitAll(func(flag *pflag.Flag) { flag.Changed = false })
@@ -85,7 +84,6 @@ func resetCommandGlobals() {
 	force = false
 	pruneSessions = false
 	savePath = ""
-	saveName = ""
 	saveAll = false
 }
 
