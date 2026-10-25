@@ -99,6 +99,45 @@ The picker starts its status service automatically. Use `hetki --help` or `hetki
 `--prune-sessions` can delete unrelated sessions on the selected tmux server.
 Both can terminate processes. Use `--dry-run` first to see result.
 
+## Configuration
+
+The picker reads an optional `$XDG_CONFIG_HOME/hetki/config.yaml` on Linux and macOS.
+If `XDG_CONFIG_HOME` is unset or relative, it uses `~/.config/hetki/config.yaml` instead.
+
+```yaml
+ui:
+  view: tree
+  scope: tracked
+  preview: false
+  preview_width: 45
+```
+
+| Key                | Valid values      | Default |
+| ------------------ | ----------------- | ------- |
+| `ui.view`          | `flat`, `tree`    | `flat`  |
+| `ui.scope`         | `all`, `tracked`  | `all`   |
+| `ui.preview`       | `false`, `true`   | `false` |
+| `ui.preview_width` | Integer from 1–99 | `70`    |
+
+Omit keys to use their defaults. A missing or empty valid file uses defaults without a warning.
+The picker reads the file once when it opens. Runtime changes remain temporary: Hetki does not create or update this file or save picker choices.
+
+`ui.preview_width` sets the preview percentage of the available content width, excluding the frame and separator.
+With `preview: false`, the preview reserves no space. In this example, `Alt+P` shows the preview at 45%.
+The layout clamps both columns to their minimum widths. A narrow terminal hides the preview without changing the requested visibility or percentage.
+
+An invalid `ui.view` or `ui.scope` string choice uses the default for that field and keeps other valid choices.
+An integer outside 1–99, including an integer too large to decode, warns and uses width 70 only. Other valid choices remain active.
+`ui.preview` requires an unquoted YAML boolean (`true` or `false`).
+`ui.preview_width` requires an unquoted YAML integer, not a quoted number, percentage string, boolean, float, or null.
+A wrong value type discards the entire configuration.
+Malformed YAML or an invalid file structure discards the entire configuration and uses built-in defaults.
+An unreadable or nonregular file, or a configuration-path error, also uses built-in defaults.
+These problems show a warning in the picker instead of blocking startup. Other commands and help are unaffected.
+
+The format is strict: one YAML document, at most 64 KiB and 16 levels deep. Symlinks to regular files are supported.
+Unknown or duplicate keys, nulls, aliases, merge keys, explicit tags, and wrong value types are invalid.
+
 ## Picker default key-bindings
 
 Type to filter. Press `Esc` for normal mode.

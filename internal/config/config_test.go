@@ -14,6 +14,7 @@ func TestDecodePresence(t *testing.T) {
 		name, input string
 		view, scope *string
 		preview     *bool
+		width       *int
 	}{
 		{name: "empty"},
 		{name: "comment", input: "# preferences\n"},
@@ -24,6 +25,8 @@ func TestDecodePresence(t *testing.T) {
 		{name: "empty string", input: "ui: {view: ''}", view: ptr("")},
 		{name: "explicit defaults", input: "ui: {view: flat, scope: all, preview: false}", view: ptr("flat"), scope: ptr("all"), preview: ptr(false)},
 		{name: "full", input: "ui: {view: tree, scope: tracked, preview: true}", view: ptr("tree"), scope: ptr("tracked"), preview: ptr(true)},
+		{name: "width only", input: "ui: {preview_width: 45}", width: ptr(45)},
+		{name: "explicit zero width", input: "ui: {preview_width: 0}", width: ptr(0)},
 		{name: "preview false only", input: "ui: {preview: false}", preview: ptr(false)},
 		{name: "YAML uppercase boolean", input: "ui: {preview: TRUE}", preview: ptr(true)},
 		{name: "YAML title case boolean", input: "ui: {preview: False}", preview: ptr(false)},
@@ -32,7 +35,46 @@ func TestDecodePresence(t *testing.T) {
 			got, err := config.Decode(strings.NewReader(tt.input))
 
 			require.NoError(t, err)
-			require.Equal(t, config.Config{UI: config.UI{View: tt.view, Scope: tt.scope, Preview: tt.preview}}, got)
+			require.Equal(t, config.Config{UI: config.UI{View: tt.view, Scope: tt.scope, Preview: tt.preview, PreviewWidth: tt.width}}, got)
+		})
+	}
+}
+
+func TestDecodeIntegerWidth(t *testing.T) {
+	for _, tt := range []struct {
+		input string
+		want  int
+	}{
+		{"1", 1}, {"99", 99}, {"-1", -1}, {"100", 100},
+		{"+45", 45}, {"0b101101", 45}, {"0o55", 45}, {"055", 45},
+		{"0x2d", 45}, {"0X2D", 45}, {"4_5", 45}, {"-0o55", -45},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := config.Decode(strings.NewReader("ui: {preview_width: " + tt.input + "}"))
+
+			require.NoError(t, err)
+			require.Equal(t, ptr(tt.want), got.UI.PreviewWidth)
+		})
+	}
+}
+
+func TestDecodeOverflowWidthRetainsOtherFields(t *testing.T) {
+	for _, input := range []string{
+		"9223372036854775808", "18446744073709551616", "-9223372036854775809",
+		strings.Repeat("9", 500), "+" + strings.Repeat("9", 500), "-" + strings.Repeat("9", 500),
+		"0x" + strings.Repeat("f", 100), "0b" + strings.Repeat("1", 100),
+		"0o" + strings.Repeat("7", 100), "0" + strings.Repeat("7", 100),
+		"-0x" + strings.Repeat("f", 100), "0x" + strings.Repeat("ff_", 100),
+	} {
+		t.Run(input[:min(24, len(input))], func(t *testing.T) {
+			got, err := config.Decode(strings.NewReader("ui: {view: tree, scope: tracked, preview: true, preview_width: " + input + "}"))
+
+			require.NoError(t, err)
+			require.NotNil(t, got.UI.PreviewWidth)
+			require.True(t, *got.UI.PreviewWidth < 1 || *got.UI.PreviewWidth > 99)
+			require.Equal(t, ptr("tree"), got.UI.View)
+			require.Equal(t, ptr("tracked"), got.UI.Scope)
+			require.Equal(t, ptr(true), got.UI.Preview)
 		})
 	}
 }
@@ -45,6 +87,30 @@ func TestDecodeRejectsInvalidConfiguration(t *testing.T) {
 		{"null field", "ui: {view: null}", "ui.view"},
 		{"boolean", "ui: {view: true}", "ui.view"},
 		{"number", "ui: {scope: 12}", "ui.scope"},
+		{"width quoted number", "ui: {preview_width: '45'}", "ui.preview_width"},
+		{"width string", "ui: {preview_width: secret-value}", "ui.preview_width"},
+		{"width percentage", "ui: {preview_width: 45%}", "ui.preview_width"},
+		{"width boolean", "ui: {preview_width: true}", "ui.preview_width"},
+		{"width float", "ui: {preview_width: 45.5}", "ui.preview_width"},
+		{"width integral float", "ui: {preview_width: 45.0}", "ui.preview_width"},
+		{"width exponent", "ui: {preview_width: 1e2}", "ui.preview_width"},
+		{"width null", "ui: {preview_width: null}", "ui.preview_width"},
+		{"width empty", "ui: {preview_width: }", "ui.preview_width"},
+		{"width sequence", "ui: {preview_width: [45]}", "ui.preview_width"},
+		{"width mapping", "ui: {preview_width: {}}", "ui.preview_width"},
+		{"width explicit integer tag", "ui: {preview_width: !!int 45}", "ui.preview_width"},
+		{"width explicit string tag", "ui: {preview_width: !!str 45}", "ui.preview_width"},
+		{"width custom tag", "ui: {preview_width: !secret-value 45}", "ui.preview_width"},
+		{"duplicate zero width", "ui: {preview_width: 0, preview_width: 45}", "ui.preview_width"},
+		{"width malformed hex", "ui: {preview_width: 0xGG}", "ui.preview_width"},
+		{"width malformed binary", "ui: {preview_width: 0b102}", "ui.preview_width"},
+		{"width malformed octal", "ui: {preview_width: 0o78}", "ui.preview_width"},
+		{"width leading underscore", "ui: {preview_width: _12}", "ui.preview_width"},
+		{"width oversized leading underscore", "ui: {preview_width: _" + strings.Repeat("9", 500) + "}", "ui.preview_width"},
+		{"width oversized invalid legacy octal", "ui: {preview_width: 0" + strings.Repeat("7", 100) + "8}", "ui.preview_width"},
+		{"width oversized invalid octal", "ui: {preview_width: 0o" + strings.Repeat("7", 100) + "9}", "ui.preview_width"},
+		{"width oversized invalid hex", "ui: {preview_width: 0x" + strings.Repeat("f", 100) + "g}", "ui.preview_width"},
+		{"width oversized invalid binary", "ui: {preview_width: 0b" + strings.Repeat("1", 100) + "2}", "ui.preview_width"},
 		{"preview on", "ui: {preview: on}", "ui.preview"},
 		{"preview off", "ui: {preview: off}", "ui.preview"},
 		{"preview string true", "ui: {preview: 'true'}", "ui.preview"},
@@ -95,7 +161,7 @@ func TestDecodeRejectsInvalidConfiguration(t *testing.T) {
 func TestDecodeByteLimit(t *testing.T) {
 	for _, size := range []int{65535, 65536, 65537} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
-			prefix := "ui: {view: tree, scope: tracked, preview: true}\n#"
+			prefix := "ui: {view: tree, scope: tracked, preview: true, preview_width: 45}\n#"
 			input := strings.NewReader(prefix + strings.Repeat("x", size-len(prefix)))
 
 			_, err := config.Decode(input)

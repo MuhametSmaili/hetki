@@ -62,7 +62,7 @@ func benchmarkConfigFile(b *testing.B, name, input string) string {
 }
 
 func configFixtures() []struct{ name, input string } {
-	typical := "ui:\n  view: tree\n  scope: tracked\n  preview: true\n"
+	typical := "ui:\n  view: tree\n  scope: tracked\n  preview: true\n  preview_width: 45\n"
 	return []struct{ name, input string }{
 		{"missing", ""},
 		{"typical", typical},

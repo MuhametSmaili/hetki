@@ -37,7 +37,7 @@ func BenchmarkConfigLoadResolve(b *testing.B) {
 			}
 		}
 	})
-	typical := "ui: {view: tree, scope: tracked, preview: true}\n"
+	typical := "ui: {view: tree, scope: tracked, preview: true, preview_width: 45}\n"
 	for _, fixture := range []struct{ name, input string }{
 		{"missing", ""},
 		{"typical", typical},

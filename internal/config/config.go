@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -19,9 +20,10 @@ type Config struct{ UI UI }
 
 // UI contains only explicitly configured startup choices.
 type UI struct {
-	View    *string
-	Scope   *string
-	Preview *bool
+	View         *string
+	Scope        *string
+	Preview      *bool
+	PreviewWidth *int
 }
 
 // Decode accepts one YAML document of at most 64 KiB, reading one extra byte
@@ -143,6 +145,13 @@ func decodeUIField(key string, node *yaml.Node, result *UI) error {
 		target = &result.View
 	case "scope":
 		target = &result.Scope
+	case "preview_width":
+		if result.PreviewWidth != nil {
+			return fmt.Errorf("duplicate ui.preview_width field")
+		}
+		value, err := decodeInteger(node, "ui.preview_width")
+		result.PreviewWidth = value
+		return err
 	case "preview":
 		if result.Preview != nil {
 			return fmt.Errorf("duplicate ui.preview field")
@@ -164,6 +173,63 @@ func decodeUIField(key string, node *yaml.Node, result *UI) error {
 	value := node.Value
 	*target = &value
 	return nil
+}
+
+func decodeInteger(node *yaml.Node, field string) (*int, error) {
+	if node.Kind != yaml.ScalarNode || node.Style != 0 {
+		return nil, fmt.Errorf("%s must be an untagged integer", field)
+	}
+	var value int
+	if node.Tag == "!!int" && node.Decode(&value) == nil {
+		return &value, nil
+	}
+	// yaml.v3 resolves overflowing integers as floats or strings. Saturate them
+	// for application-level range validation without discarding other fields.
+	if isPlainInteger(node.Value) {
+		value = math.MaxInt
+		if strings.HasPrefix(node.Value, "-") {
+			value = math.MinInt
+		}
+		return &value, nil
+	}
+	return nil, fmt.Errorf("%s must be an untagged integer", field)
+}
+
+func isPlainInteger(value string) bool {
+	if strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-") {
+		value = value[1:]
+	}
+	if value == "" || value[0] < '0' || value[0] > '9' {
+		return false
+	}
+	digits, alphabet := integerDigits(value)
+	foundDigit := false
+	for _, digit := range digits {
+		if digit == '_' {
+			continue
+		}
+		if !strings.ContainsRune(alphabet, digit) {
+			return false
+		}
+		foundDigit = true
+	}
+	return foundDigit
+}
+
+func integerDigits(value string) (string, string) {
+	if len(value) < 2 || value[0] != '0' {
+		return value, "0123456789"
+	}
+	switch value[1] {
+	case 'b', 'B':
+		return value[2:], "01"
+	case 'o', 'O':
+		return value[2:], "01234567"
+	case 'x', 'X':
+		return value[2:], "0123456789abcdefABCDEF"
+	default:
+		return value, "01234567"
+	}
 }
 
 func decodeBoolean(node *yaml.Node, field string) (*bool, error) {

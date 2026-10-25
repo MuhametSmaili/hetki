@@ -44,6 +44,7 @@ func previewKey() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'p', Mod: tea.M
 func TestInitialPreviewWaitsForUsableDimensions(t *testing.T) {
 	options := DefaultOptions()
 	options.Initial.Preview = true
+	options.PreviewWidth = 45
 	snapshot := flatSnapshot(1)
 	var captured []PreviewRequest
 	m, err := newModelWithOptions(t.Context(), snapshot, options, Runtime{
@@ -71,12 +72,51 @@ func TestInitialPreviewWaitsForUsableDimensions(t *testing.T) {
 
 	m, cmd := updateModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 20})
 	require.NotNil(t, cmd)
+	require.Equal(t, 40, m.layout().previewWidth)
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, []PreviewRequest{{ItemID: snapshot.Items[0].ID}}, captured)
 	require.Contains(t, m.View().Content, "initial preview")
 	m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: 30, Height: 20})
 	require.True(t, m.result().State.Preview)
 	require.Zero(t, m.layout().previewWidth)
+}
+
+func TestConfiguredPreviewWidthSurvivesToggle(t *testing.T) {
+	for _, tt := range []struct {
+		name                         string
+		percent, terminal            int
+		hidden, preview, visibleList int
+	}{
+		{"minimum clamps", 1, 100, 94, 20, 71},
+		{"custom", 45, 100, 94, 40, 51},
+		{"default", 70, 100, 94, 63, 28},
+		{"maximum clamps", 99, 100, 94, 71, 20},
+		{"narrow suppression", 45, 46, 42, 0, 42},
+		{"narrow minimum split", 99, 47, 43, 20, 20},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			options := DefaultOptions()
+			options.PreviewWidth = tt.percent
+			m, err := newModelWithOptions(t.Context(), flatSnapshot(1), options, Runtime{})
+			require.NoError(t, err)
+			m, _ = updateModel(t, m, tea.WindowSizeMsg{Width: tt.terminal, Height: 20})
+			require.False(t, m.result().State.Preview)
+			require.Zero(t, m.layout().previewWidth)
+			require.Equal(t, tt.hidden, m.layout().listWidth)
+
+			m, _ = updateModel(t, m, previewKey())
+
+			require.True(t, m.result().State.Preview)
+			require.Equal(t, tt.preview, m.layout().previewWidth)
+			require.Equal(t, tt.visibleList, m.layout().listWidth)
+			m, _ = updateModel(t, m, previewKey())
+			require.False(t, m.result().State.Preview)
+			require.Zero(t, m.layout().previewWidth)
+			require.Equal(t, tt.hidden, m.layout().listWidth)
+			m, _ = updateModel(t, m, previewKey())
+			require.Equal(t, tt.preview, m.layout().previewWidth)
+		})
+	}
 }
 
 func TestPreviewToggleModeOwnership(t *testing.T) {

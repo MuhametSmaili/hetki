@@ -62,6 +62,41 @@ func TestResolveConfigFallsBackPerField(t *testing.T) {
 	}
 }
 
+func TestResolveConfigPreviewWidth(t *testing.T) {
+	for _, tt := range []struct {
+		name, width string
+		want        int
+		warning     bool
+	}{
+		{"minimum", "1", 1, false},
+		{"custom", "45", 45, false},
+		{"maximum", "99", 99, false},
+		{"zero", "0", 70, true},
+		{"negative", "-8", 70, true},
+		{"too large", "100", 70, true},
+		{"overflow", "18446744073709551616", 70, true},
+		{"large overflow", strings.Repeat("9", 500), 70, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			preferences, err := config.Decode(strings.NewReader("ui: {view: tree, scope: tracked, preview: true, preview_width: " + tt.width + "}"))
+			require.NoError(t, err)
+			want := ui.DefaultOptions()
+			want.Initial = ui.State{View: ui.ViewTree, Scope: ui.ScopeTracked, Preview: true}
+			want.PreviewWidth = tt.want
+
+			got, warning := resolveConfig(preferences)
+
+			require.Equal(t, want, got)
+			require.NoError(t, got.Validate())
+			if tt.warning {
+				require.Equal(t, "ui.preview_width: allowed 1–99; using default 70", warning)
+			} else {
+				require.Empty(t, warning)
+			}
+		})
+	}
+}
+
 func TestResolveConfigWarningDoesNotEchoValues(t *testing.T) {
 	malicious := "secret\x1b[31m\n" + strings.Repeat("x", 65536-len("secret\x1b[31m\n"))
 	preferences := config.Config{UI: config.UI{View: &malicious, Scope: &malicious}}

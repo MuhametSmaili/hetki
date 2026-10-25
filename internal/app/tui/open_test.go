@@ -31,7 +31,7 @@ func privateConfig(t testing.TB, contents string) string {
 }
 
 func TestPreparedServiceUsesConfigSnapshot(t *testing.T) {
-	path := privateConfig(t, "ui: {view: tree, scope: tracked, preview: true}")
+	path := privateConfig(t, "ui: {view: tree, scope: tracked, preview: false, preview_width: 45}")
 	stub := &stubBackend{state: liveState()}
 	detections := 0
 	service, err := prepareService(t.Context(), func() (Backend, error) {
@@ -44,7 +44,8 @@ func TestPreparedServiceUsesConfigSnapshot(t *testing.T) {
 	runs := 0
 	service.RunUI = func(_ context.Context, snapshot list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
 		runs++
-		require.Equal(t, ui.State{View: ui.ViewTree, Scope: ui.ScopeTracked, Preview: true}, options.Initial)
+		require.Equal(t, ui.State{View: ui.ViewTree, Scope: ui.ScopeTracked, Preview: false}, options.Initial)
+		require.Equal(t, 45, options.PreviewWidth)
 		require.Len(t, snapshot.Items, 1)
 		require.Len(t, snapshot.Items[0].Children, 1)
 		require.Equal(t, 1, stub.queryCalls, "initial tree needs one inventory query")
@@ -99,6 +100,10 @@ func TestPreparedServiceIgnoresBrokenConfig(t *testing.T) {
 	}{
 		{name: "malformed YAML", contents: "ui: [malformed"},
 		{name: "wrong preview type discards valid fields", contents: "ui: {view: tree, scope: tracked, preview: \"secret\\e[31m\"}"},
+		{name: "wrong width type discards valid fields", contents: "ui: {view: tree, scope: tracked, preview: true, preview_width: \"secret\\e[31m\"}"},
+		{name: "malformed overflow width discards valid fields", contents: "ui: {view: tree, preview: true, preview_width: 0" + strings.Repeat("7", 100) + "9}"},
+		{name: "duplicate width discards valid fields", contents: "ui: {view: tree, preview: true, preview_width: 0, preview_width: 45}"},
+		{name: "remembering remains unsupported", contents: "ui: {preview_width: 45, remember_state: true}"},
 		{name: "wrong type discards valid fields", contents: "ui: {view: tree, scope: null, preview: true}"},
 		{name: "nonregular file", setup: func(t *testing.T, path string) {
 			require.NoError(t, os.Remove(path))
@@ -206,14 +211,18 @@ func (d *initialNoticeDriver) Load(ctx context.Context, view ui.ViewMode) (list.
 }
 
 func TestPreparedServiceNoticeReachesUIAlongsideDriverAndStatus(t *testing.T) {
-	privateConfig(t, "ui: {view: wrong, scope: tracked, preview: true}")
+	privateConfig(t, "ui: {view: wrong, scope: tracked, preview: true, preview_width: 18446744073709551616}")
 	service, err := prepareService(t.Context(), nil)
 	require.NoError(t, err)
 	driver := &initialNoticeDriver{openingStatusDriver: openingStatusDriver{err: fmt.Errorf("status fixture unavailable")}}
 	service.Driver = driver
 	service.RunUI = func(_ context.Context, snapshot list.Snapshot, options ui.Options, _ ui.Runtime) (ui.Result, error) {
 		require.Equal(t, ui.State{View: ui.ViewFlat, Scope: ui.ScopeTracked, Preview: true}, options.Initial)
+		require.Equal(t, 70, options.PreviewWidth)
 		require.True(t, strings.HasPrefix(snapshot.Notice, "configuration warning: ui.view"))
+		require.Contains(t, snapshot.Notice, "ui.preview_width: allowed 1–99; using default 70")
+		require.NotContains(t, snapshot.Notice, "18446744073709551616")
+		require.NotContains(t, snapshot.Notice, "wrong")
 		require.Contains(t, snapshot.Notice, "frecency state unavailable")
 		require.Contains(t, snapshot.Notice, "status unavailable: status fixture unavailable")
 		return ui.Result{}, nil
