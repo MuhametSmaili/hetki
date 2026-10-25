@@ -32,6 +32,7 @@ func init() {
 	updateCmd.Flags().BoolVarP(&updateDryRun, "dry-run", "n", false, "Preview the update without installing it")
 	updateCmd.Flags().BoolVarP(&updateVerbose, "verbose", "v", false, "Show verbose output")
 	updateCmd.Flags().StringVar(&updateTargetVer, "version", "", "Install exact stable release `TAG` (allows downgrade or reinstall)")
+	cobra.CheckErr(updateCmd.RegisterFlagCompletionFunc("version", cobra.NoFileCompletions))
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {

@@ -128,7 +128,7 @@ func TestWorkspaceCompletion(t *testing.T) {
 	t.Setenv("HETKI_HOME", "wrong-directory")
 	directory := filepath.Join(home, ".config", "hetki", "workspaces")
 	require.NoError(t, os.MkdirAll(directory, 0700))
-	for _, name := range []string{"work.yml", "work.v1.yaml", "work.yaml.yml", "work .yaml", ".yaml"} {
+	for _, name := range []string{"work.yml", "work.v1.yaml", "work.yaml.yml", "work .yaml", ".yaml", "-dash.yaml"} {
 		writeWorkspaceFile(t, directory, name, "")
 	}
 
@@ -139,6 +139,10 @@ func TestWorkspaceCompletion(t *testing.T) {
 			want string
 		}{
 			{"name", []string{""}, "work\nwork .yaml\nwork.v1.yaml\nwork.yaml.yml\n:4\n"},
+			{"partial name", []string{"work.v"}, "work.v1.yaml\n:4\n"},
+			{"empty name after terminator", []string{"--", ""}, "work\nwork .yaml\nwork.v1.yaml\nwork.yaml.yml\n:4\n"},
+			{"dash prefix after terminator", []string{"--", "-d"}, "-dash\n:4\n"},
+			{"name already selected after terminator", []string{"--", "-dash", ""}, ":4\n"},
 			{"file", []string{"--file", ""}, "yaml\nyml\n:8\n"},
 			{"short file", []string{"-f", ""}, "yaml\nyml\n:8\n"},
 			{"name already selected", []string{"work", ""}, ":4\n"},

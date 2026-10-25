@@ -28,6 +28,49 @@ go install github.com/MuhametSmaili/hetki@latest
 
 Prebuilt binaries are available on the [releases page](https://github.com/MuhametSmaili/hetki/releases).
 
+<details>
+<summary>Load completion for Hetki</summary>
+
+### Zsh
+
+Generate the completion file once:
+
+```zsh
+mkdir -p ~/.local/share/zsh/site-functions
+hetki completion zsh > ~/.local/share/zsh/site-functions/_hetki
+```
+
+In `~/.zshrc`, add this line before your shell's completion setup:
+
+```zsh
+fpath=("$HOME/.local/share/zsh/site-functions" $fpath)
+```
+
+Zsh's completion system must be enabled. Most shell frameworks handle this automatically.
+Otherwise, add these lines after `fpath`:
+
+```zsh
+autoload -Uz compinit
+compinit
+```
+
+### Bash
+
+Requires Bash 4.2 or newer with `bash-completion` 2.x enabled. Generate its user-local completion file once:
+
+```bash
+dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+mkdir -p "$dir"
+hetki completion bash > "$dir/hetki"
+```
+
+If you set `BASH_COMPLETION_USER_DIR`, use one of those directories with a `completions` subdirectory instead.
+
+Restart your shell after setup. Regenerate the completion file after upgrading Hetki.
+These setups load completion functions on demand. Hetki reads workspace names only during completion.
+
+</details>
+
 ## Commands
 
 | Command                          | What it does                                          |

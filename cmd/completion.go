@@ -3,8 +3,10 @@ package cmd
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/MuhametSmaili/hetki/internal/manifest"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 	"github.com/spf13/cobra"
 )
 
@@ -30,6 +32,21 @@ func completeWorkspaceNames(cmd *cobra.Command, args []string, toComplete string
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	names, _ := getWorkspaceNames()
-	return names, cobra.ShellCompDirectiveNoFileComp
+	names, err := getWorkspaceNames()
+	if err != nil {
+		cobra.CompErrorln("complete workspace names: " + terminal.Sanitize(err.Error()))
+		return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
+	}
+	completions := names[:0]
+	for _, name := range names {
+		if !strings.HasPrefix(name, toComplete) {
+			continue
+		}
+		// Cobra routes dash-prefixed tokens here only after --, not as flags.
+		if toComplete == "" && strings.HasPrefix(name, "-") {
+			continue
+		}
+		completions = append(completions, name)
+	}
+	return completions, cobra.ShellCompDirectiveNoFileComp
 }
