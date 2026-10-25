@@ -5,7 +5,40 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestValidateObservedLayoutAcceptsOnlySupportedConcreteGeometry(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	b := &TmuxBackend{}
+	jsonLayout := `{"V":2,"L":{"t":"p","w":80,"h":24,"x":0,"y":0,"i":0,"I":"%3"}}`
+
+	for _, tc := range []struct {
+		name    string
+		layout  string
+		wantErr string
+	}{
+		{name: "legacy", layout: "b25d,80x24,0,0,0"},
+		{name: "JSON V2", layout: jsonLayout},
+		{name: "missing", wantErr: "missing"},
+		{name: "preset is not an observation", layout: "tiled", wantErr: "unsupported"},
+		{name: "unknown version", layout: strings.Replace(jsonLayout, `"V":2`, `"V":3`, 1), wantErr: "unsupported"},
+		{name: "floating field", layout: strings.Replace(jsonLayout, `"i":0`, `"z":0,"i":0`, 1), wantErr: "unsupported"},
+		{name: "invalid checksum", layout: "0000,80x24,0,0,0", wantErr: "invalid"},
+		{name: "oversized observation", layout: strings.Repeat("x", 16<<10+1), wantErr: "unsupported"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := b.ValidateObservedLayout(tc.layout)
+
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+			require.Less(t, len(err.Error()), 100, "raw observations must not be echoed")
+		})
+	}
+}
 
 func TestLayoutsMatchIgnoresPaneIDsButKeepsGeometry(t *testing.T) {
 	b := &TmuxBackend{}

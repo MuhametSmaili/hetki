@@ -29,6 +29,7 @@ type Options struct {
 type Backend interface {
 	QueryState(context.Context) (backend.StateResult, error)
 	LayoutsMatch(desired, actual string) bool
+	ValidateObservedLayout(observed string) error
 	Apply(context.Context, []backend.Action) error
 	DryRun([]backend.Action) ([]string, error)
 	Attach(context.Context, string) error
@@ -129,7 +130,7 @@ func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, op
 		return nil, fmt.Errorf("invalid reconciliation plan: %w", err)
 	}
 	if opts.Force {
-		if err := validateLinkedWindowRemoval(result.Sessions, p); err != nil {
+		if err := validateWindowRemoval(result.Sessions, p, b.ValidateObservedLayout); err != nil {
 			return nil, err
 		}
 	}

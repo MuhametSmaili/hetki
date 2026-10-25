@@ -16,18 +16,8 @@ var ErrUnsafePruning = errors.New("unsafe session pruning")
 var ErrLinkedWindow = errors.New("linked window")
 
 // Removal session names must come from the same snapshot as sessions.
-func validateLinkedWindowRemoval(sessions []backend.Session, p *plan.Plan) error {
-	var removalSessions map[string]string
-	for _, action := range p.Actions {
-		removal, ok := action.(plan.KillWindowAction)
-		if !ok {
-			continue
-		}
-		if removalSessions == nil {
-			removalSessions = make(map[string]string)
-		}
-		removalSessions[removal.WindowID] = removal.Session
-	}
+func validateWindowRemoval(sessions []backend.Session, p *plan.Plan, validateLayout func(string) error) error {
+	removalSessions := plannedWindowRemovals(p.Actions)
 	if len(removalSessions) == 0 {
 		return nil
 	}
@@ -35,15 +25,41 @@ func validateLinkedWindowRemoval(sessions []backend.Session, p *plan.Plan) error
 	for _, session := range sessions {
 		for _, window := range session.Windows {
 			removalSession, found := removalSessions[window.ID]
-			if found && session.Name != removalSession {
+			if !found {
+				continue
+			}
+
+			if session.Name != removalSession {
 				return appshared.WithHint(
 					fmt.Errorf("%w: cannot remove or replace window %q (%s) in session %q; it is shared across sessions",
 						ErrLinkedWindow, window.Name, window.ID, removalSession),
 					"No changes were applied. Resolve the window links before retrying, or run without --force to keep existing windows.")
 			}
+
+			if err := validateLayout(window.Layout); err != nil {
+				return appshared.WithHint(
+					fmt.Errorf("cannot remove or replace window %q (%s) in session %q: %w", window.Name, window.ID, removalSession, err),
+					"No changes were applied. Run without --force to keep existing windows, or use a supported tmux layout before retrying.")
+			}
 		}
 	}
 	return nil
+}
+
+func plannedWindowRemovals(actions []plan.Action) map[string]string {
+	var removals map[string]string
+	for _, action := range actions {
+		removal, ok := action.(plan.KillWindowAction)
+		if !ok {
+			continue
+		}
+
+		if removals == nil {
+			removals = make(map[string]string)
+		}
+		removals[removal.WindowID] = removal.Session
+	}
+	return removals
 }
 
 func validatePruning(result backend.StateResult, p *plan.Plan) error {

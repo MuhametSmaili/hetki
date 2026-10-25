@@ -22,12 +22,13 @@ import (
 func acceptLayout(string) error { return nil }
 
 type stubBackend struct {
-	queryResult backend.StateResult
-	queryErr    error
-	layoutMatch func(string, string) bool
-	dryRunLines []string
-	applyErr    error
-	onApply     func()
+	queryResult            backend.StateResult
+	queryErr               error
+	layoutMatch            func(string, string) bool
+	validateObservedLayout func(string) error
+	dryRunLines            []string
+	applyErr               error
+	onApply                func()
 
 	queryCalls  int
 	applyCalls  int
@@ -42,6 +43,13 @@ func (s *stubBackend) LayoutsMatch(desired, actual string) bool {
 		return s.layoutMatch(desired, actual)
 	}
 	return desired == actual
+}
+
+func (s *stubBackend) ValidateObservedLayout(observed string) error {
+	if s.validateObservedLayout != nil {
+		return s.validateObservedLayout(observed)
+	}
+	return nil
 }
 
 func (s *stubBackend) QueryState(context.Context) (backend.StateResult, error) {

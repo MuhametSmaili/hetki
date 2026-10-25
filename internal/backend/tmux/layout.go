@@ -12,6 +12,11 @@ func ValidateAuthoredLayout(text string) error {
 	return layout.ValidateAuthored(text)
 }
 
+// ValidateObservedLayout rejects missing, invalid or unsupported layout observations.
+func (b *TmuxBackend) ValidateObservedLayout(observed string) error {
+	return layout.ValidateObserved(observed)
+}
+
 // LayoutPreset converts an observation to a readable, approximate preset.
 // It does not query or modify tmux; missing observations remain omitted.
 func (b *TmuxBackend) LayoutPreset(observed string) (string, error) {

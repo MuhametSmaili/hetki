@@ -3,6 +3,7 @@ package layout
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 )
 
@@ -36,6 +37,18 @@ func SameGeometry(first, second string) bool {
 
 	b, ok := parse(second)
 	return ok && sameCells(a, b)
+}
+
+// ValidateObserved accepts only supported concrete layout observations.
+func ValidateObserved(text string) error {
+	if text == "" {
+		return errors.New("observed tmux layout is missing")
+	}
+
+	if _, ok := parse(text); !ok {
+		return errors.New("invalid or unsupported observed tmux layout")
+	}
+	return nil
 }
 
 func parse(text string) (cell, bool) {

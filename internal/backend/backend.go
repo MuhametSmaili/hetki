@@ -12,6 +12,7 @@ type Backend interface {
 
 	// Layout operations are pure and on demand; QueryState keeps observations opaque.
 	LayoutsMatch(desired, actual string) bool
+	ValidateObservedLayout(observed string) error
 	LayoutPreset(observed string) (string, error)
 
 	QueryState(context.Context) (StateResult, error)

@@ -38,6 +38,7 @@ type stubBackend struct {
 
 func (s *stubBackend) LayoutsMatch(desired, actual string) bool     { return desired == actual }
 func (s *stubBackend) LayoutPreset(observed string) (string, error) { return observed, nil }
+func (s *stubBackend) ValidateObservedLayout(string) error          { return nil }
 
 func (s *stubBackend) Name() string { return "stub" }
 func (s *stubBackend) CapturePane(context.Context, backend.Target) (string, error) {
