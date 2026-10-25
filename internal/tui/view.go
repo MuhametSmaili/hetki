@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/MuhametSmaili/hetki/internal/terminal"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
@@ -17,7 +18,7 @@ func (m model) View() tea.View {
 	}
 	layout := m.layout()
 	header := m.viewHeader(layout)
-	body := lipgloss.PlaceVertical(layout.middleHeight, lipgloss.Top, m.viewList(layout))
+	body := lipgloss.PlaceVertical(layout.middleHeight, lipgloss.Top, m.viewBody(layout))
 	content := body
 	if header != "" {
 		content = lipgloss.JoinVertical(lipgloss.Left, header, body)
@@ -101,6 +102,23 @@ func (m model) viewDivider(layout layoutMetrics) string {
 	}
 	divider += strings.Repeat(" │ \n", layout.middleHeight)
 	return m.theme.sectionLine.Render(strings.TrimSuffix(divider, "\n"))
+}
+
+func (m model) viewBody(layout layoutMetrics) string {
+	if !m.inline || layout.headerHeight > 0 {
+		return m.viewList(layout)
+	}
+	message := terminal.Sanitize(headerMessage(m))
+	if message == "" {
+		return m.viewList(layout)
+	}
+	if layout.listWidth < 3 {
+		return m.theme.meta.Render(truncateWidth(message, layout.listWidth))
+	}
+
+	messageWidth := min(terminal.Width(message), layout.listWidth/2)
+	layout.listWidth -= messageWidth + 1
+	return m.viewList(layout) + " " + m.theme.meta.Render(truncateWidth(message, messageWidth))
 }
 
 func (m model) viewList(layout layoutMetrics) string {
@@ -194,7 +212,7 @@ func headerHint(m model) string {
 	return ""
 }
 
-func headerRight(m model) string {
+func headerMessage(m model) string {
 	if m.err != nil {
 		return m.err.Error()
 	}
@@ -206,6 +224,13 @@ func headerRight(m model) string {
 	}
 	if m.paneStatus.readErr != nil {
 		return m.paneStatus.readErr.Error()
+	}
+	return ""
+}
+
+func headerRight(m model) string {
+	if message := headerMessage(m); message != "" {
+		return message
 	}
 	query := m.items.Query()
 	if m.scope.mode == ScopeTracked {
