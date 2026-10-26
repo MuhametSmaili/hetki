@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+// ErrScreenTooLarge means one pane's screen exceeded the per-screen byte limit.
+// Only that pane's capture fails.
+var ErrScreenTooLarge = fmt.Errorf("tmux screen exceeds %d bytes", maxScreenBytes)
+
 const (
 	maxCaptureTargets    = 128
 	maxCaptureRows       = 200
@@ -157,7 +161,7 @@ func (s *Sampler) captureSurvivors(ctx context.Context, targets []CaptureTarget,
 	}
 
 	// Targets missing from the post-capture facts fail with ErrChanged.
-	var texts map[string]string
+	var texts map[string]capturedText
 	var after Inventory
 	started := time.Now()
 	if len(survivors) > 0 {
@@ -197,12 +201,19 @@ func (t CaptureTarget) check(i Inventory) error {
 	return nil
 }
 
-func finishCaptures(targets []CaptureTarget, texts map[string]string, after Inventory, started time.Time) []Screen {
+// capturedText is one pane's screen, or why it could not be kept.
+type capturedText struct {
+	text string
+	err  error
+}
+
+func finishCaptures(targets []CaptureTarget, texts map[string]capturedText, after Inventory, started time.Time) []Screen {
 	results := make([]Screen, len(targets))
 	for n, target := range targets {
-		result := Screen{Target: target, Err: target.check(after)}
+		captured := texts[target.pane.ID]
+		result := Screen{Target: target, Err: errors.Join(target.check(after), captured.err)}
 		if result.Err == nil {
-			result.Text = texts[target.pane.ID]
+			result.Text = captured.text
 			result.StartedAt = started
 		}
 		results[n] = result
@@ -210,7 +221,7 @@ func finishCaptures(targets []CaptureTarget, texts map[string]string, after Inve
 	return results
 }
 
-func (s *Sampler) captureBatch(ctx context.Context, targets []CaptureTarget) (map[string]string, Inventory, error) {
+func (s *Sampler) captureBatch(ctx context.Context, targets []CaptureTarget) (map[string]capturedText, Inventory, error) {
 	processes := processSample{read: s.process, cache: make(map[int]processResult)}
 	if err := s.validateProcess(ctx, &processes); err != nil {
 		return nil, Inventory{}, err
@@ -255,7 +266,7 @@ func captureBatchArgs(targets []CaptureTarget, marker string) ([]string, []strin
 	return args, ids
 }
 
-func (s *Sampler) parseCaptureBatch(out, marker string, targets []CaptureTarget, ids []string) (map[string]string, Inventory, error) {
+func (s *Sampler) parseCaptureBatch(out, marker string, targets []CaptureTarget, ids []string) (map[string]capturedText, Inventory, error) {
 	screens, facts, ok := strings.Cut(out, marker+"-facts\n")
 	if !ok || len(screens) > maxCaptureBytes || len(facts) > maxInventoryBytes {
 		return nil, Inventory{}, fmt.Errorf("missing or oversized capture batch section")
@@ -275,8 +286,8 @@ func (s *Sampler) parseCaptureBatch(out, marker string, targets []CaptureTarget,
 	return texts, after, nil
 }
 
-func splitScreens(out, marker string, targets []CaptureTarget, after Inventory) (map[string]string, error) {
-	texts := make(map[string]string, len(targets))
+func splitScreens(out, marker string, targets []CaptureTarget, after Inventory) (map[string]capturedText, error) {
+	texts := make(map[string]capturedText, len(targets))
 	for _, target := range targets {
 		key := strings.TrimPrefix(target.pane.ID, "%")
 		start := marker + "-begin-" + key + "\n"
@@ -287,18 +298,22 @@ func splitScreens(out, marker string, targets []CaptureTarget, after Inventory) 
 		end := marker + "-end-" + key + "\n"
 		text, rest, ok := strings.Cut(out, end)
 		rows := strings.Count(text, "\n")
-		if !ok || !strings.HasSuffix(text, "\n") || len(text) > maxScreenBytes || strings.Contains(text, marker) || rows > maxCaptureRows {
-			return nil, fmt.Errorf("invalid capture boundary, size or row count")
+		if !ok || !strings.HasSuffix(text, "\n") || strings.Contains(text, marker) || rows > maxCaptureRows {
+			return nil, fmt.Errorf("invalid capture boundary or row count")
 		}
 		out = rest
 
+		if len(text) > maxScreenBytes {
+			texts[target.pane.ID] = capturedText{err: ErrScreenTooLarge}
+			continue
+		}
 		if after.panes[target.pane.ID].Rows != target.pane.Rows {
 			continue
 		}
 		if rows != target.last-target.first+1 {
 			return nil, fmt.Errorf("unexpected capture row count for pane %s", target.pane.ID)
 		}
-		texts[target.pane.ID] = strings.Clone(text)
+		texts[target.pane.ID] = capturedText{text: strings.Clone(text)}
 	}
 	if out != "" {
 		return nil, fmt.Errorf("unexpected trailing capture data")

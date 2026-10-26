@@ -194,7 +194,6 @@ func TestCaptureRejectsMalformedScreensWithResizedPane(t *testing.T) {
 		peerRows  int
 	}{
 		{"unterminated resized screen", "resized", 30},
-		{"oversized resized screen", strings.Repeat("x", maxScreenBytes) + "\n", 30},
 		{"too many resized rows", strings.Repeat("row\n", maxCaptureRows+1), 30},
 		{"missing unchanged peer row", strings.Repeat("row\n", 20), 29},
 		{"extra unchanged peer row", strings.Repeat("row\n", 20), 31},
@@ -224,6 +223,33 @@ func TestCaptureRejectsMalformedScreensWithResizedPane(t *testing.T) {
 			require.Nil(t, screens)
 		})
 	}
+}
+
+func TestCaptureFailsOnlyAnOversizedScreen(t *testing.T) {
+	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
+	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+		if !slices.Contains(args, "capture-pane") {
+			return testInventoryOutput(testPaneRow + peer), nil
+		}
+		out := captureFixtureReply(t, args, testPaneRow+peer)
+		wide := strings.Repeat(strings.Repeat("x", maxScreenBytes/30)+"\n", 30)
+		return strings.Replace(out, strings.Repeat("%1 content\n", 30), wide, 1), nil
+	})
+	inventory, err := s.Inventory(t.Context(), 1)
+	require.NoError(t, err)
+	first, err := inventory.Target("%1", Region{})
+	require.NoError(t, err)
+	second, err := inventory.Target("%2", Region{})
+	require.NoError(t, err)
+
+	screens, err := s.Capture(t.Context(), []CaptureTarget{first, second})
+
+	require.NoError(t, err)
+	require.Len(t, screens, 2)
+	require.ErrorIs(t, screens[0].Err, ErrScreenTooLarge)
+	require.Empty(t, screens[0].Text)
+	require.NoError(t, screens[1].Err)
+	require.Equal(t, strings.Repeat("%2 content\n", 30), screens[1].Text)
 }
 
 func TestCaptureRetriesWithoutClosedPanes(t *testing.T) {
@@ -472,7 +498,6 @@ func TestScreenFramingRejectsAmbiguousOrTruncatedText(t *testing.T) {
 		{"extra row", "m-begin-1\na\nb\nc\nm-end-1\n"},
 		{"embedded marker", "m-begin-1\na\nmarker\nm-end-1\n"},
 		{"trailing output", "m-begin-1\na\nb\nm-end-1\nextra"},
-		{"oversized text", "m-begin-1\n" + strings.Repeat("x", maxScreenBytes) + "\nb\nm-end-1\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

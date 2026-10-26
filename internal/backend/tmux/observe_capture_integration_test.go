@@ -161,6 +161,35 @@ func TestNativeStatusCaptureKeepsPeerWhenPaneCloses(t *testing.T) {
 	require.Contains(t, screens[1].Text, "PEER-CAPTURE")
 }
 
+func TestNativeStatusCaptureKeepsPeerOfOversizedScreen(t *testing.T) {
+	b, server, _, pane := nativeStatusFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	waitForNativeCommand(t, ctx, b, pane, "cat")
+	wide, err := b.client.Run(ctx, "new-session", "-d", "-s", "wide", "-x", "1000", "-y", "200", "-P", "-F", "#{pane_id}",
+		`python3 -c "import sys,time; sys.stdout.write(('─'*1000)*199 + '─'*997 + 'END'); sys.stdout.flush(); time.sleep(30)"`)
+	require.NoError(t, err)
+	wide = strings.TrimSpace(wide)
+	waitForNativeScreen(t, ctx, b, wide, "END")
+	sampler, err := b.StatusSampler(server)
+	require.NoError(t, err)
+	inventory, err := sampler.Inventory(ctx, 1)
+	require.NoError(t, err)
+	small, err := inventory.Target(pane, observe.Region{})
+	require.NoError(t, err)
+	large, err := inventory.Target(wide, observe.Region{})
+	require.NoError(t, err)
+
+	screens, err := sampler.Capture(ctx, []observe.CaptureTarget{small, large})
+
+	require.NoError(t, err)
+	require.Len(t, screens, 2)
+	require.NoError(t, screens[0].Err)
+	require.False(t, screens[0].StartedAt.IsZero())
+	require.ErrorIs(t, screens[1].Err, observe.ErrScreenTooLarge)
+	require.Empty(t, screens[1].Text)
+}
+
 func TestNativeStatusCaptureRejectsRespawnAndRetainsDeadPane(t *testing.T) {
 	b, server, _, pane := nativeStatusFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
