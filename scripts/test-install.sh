@@ -148,7 +148,7 @@ write_stub_gh() {
     [[ "$mode" == "none" ]] && return 0
     cat >"$dir/gh" <<EOF
 #!/bin/bash
-if [[ "\$1" == "--version" ]]; then echo 'gh version 2.97.0 (test)'; exit 0; fi
+if [[ "\$1" == "--version" ]]; then echo 'gh version 2.102.0 (test)'; exit 0; fi
 if [[ "\$1" == "auth" ]]; then exit 0; fi
 if [[ "\$1" == "attestation" ]]; then
     printf '%s\n' "\$*" >>"\${HETKI_TEST_GH_LOG:-/dev/null}"

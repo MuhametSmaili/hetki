@@ -150,11 +150,11 @@ func TestGhExecutableGatesVersion(t *testing.T) {
 	_, err := ghExecutable(context.Background())
 	require.ErrorContains(t, err, "gh CLI not found")
 
-	stubGh(t, "2.96.9", "")
+	stubGh(t, "2.101.9", "")
 	_, err = ghExecutable(context.Background())
 	require.ErrorContains(t, err, "too old")
 
-	stubGh(t, "2.97.0", "")
+	stubGh(t, "2.102.0", "")
 	gh, err := ghExecutable(context.Background())
 	require.NoError(t, err)
 	assert.Contains(t, gh, "gh")
@@ -201,7 +201,7 @@ func TestVerifyAttestationEndToEndPasses(t *testing.T) {
 	require.NoError(t, os.WriteFile(artifact, content, 0644))
 	digest := sha256.Sum256(content)
 	digestHex := hex.EncodeToString(digest[:])
-	gh := stubGh(t, "2.97.0", subjectJSON("hetki-testos-testarch", digestHex))
+	gh := stubGh(t, "2.102.0", subjectJSON("hetki-testos-testarch", digestHex))
 	bundle := filepath.Join(dir, "bundle.json")
 	require.NoError(t, os.WriteFile(bundle, []byte(`{}`), 0644))
 
@@ -214,7 +214,7 @@ func TestVerifyAttestationGhFailureFailsClosed(t *testing.T) {
 	require.NoError(t, os.WriteFile(artifact, []byte("x"), 0644))
 	bundle := filepath.Join(dir, "bundle.json")
 	require.NoError(t, os.WriteFile(bundle, []byte(`{}`), 0644))
-	gh := stubGh(t, "2.97.0", "")
+	gh := stubGh(t, "2.102.0", "")
 
 	err := verifyAttestation(t.Context(), gh, artifact, bundle, "hetki-testos-testarch", "d", testTarget("v1.0.0"))
 	require.ErrorContains(t, err, "attestation verification failed")
@@ -245,7 +245,7 @@ func TestVerifyReleaseArtifactFullFlow(t *testing.T) {
 	digest := sha256.Sum256(content)
 	digestHex := hex.EncodeToString(digest[:])
 
-	stubGh(t, "2.97.0", subjectJSON("hetki-testos-testarch", digestHex))
+	stubGh(t, "2.102.0", subjectJSON("hetki-testos-testarch", digestHex))
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"attestations":[{"bundle":%s}]}`, subjectJSON("hetki-testos-testarch", digestHex))
 	})
@@ -269,7 +269,7 @@ func TestVerifyReleaseArtifactBoundsFailureSummary(t *testing.T) {
 			require.NoError(t, os.WriteFile(artifact, []byte("x"), 0644))
 			versionChecks := filepath.Join(dir, "version-checks")
 			t.Setenv("HETKI_TEST_VERSION_CHECKS", versionChecks)
-			script := "#!/bin/sh\nif [ \"$1\" = --version ]; then echo checked >> \"$HETKI_TEST_VERSION_CHECKS\"; echo 'gh version 2.97.0'; exit 0; fi\nprintf '%s' \"$HETKI_TEST_DIAGNOSTIC\" >&2\nexit 1\n"
+			script := "#!/bin/sh\nif [ \"$1\" = --version ]; then echo checked >> \"$HETKI_TEST_VERSION_CHECKS\"; echo 'gh version 2.102.0'; exit 0; fi\nprintf '%s' \"$HETKI_TEST_DIAGNOSTIC\" >&2\nexit 1\n"
 			require.NoError(t, os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0755))
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			t.Setenv("HETKI_TEST_DIAGNOSTIC", test.diagnostic)
@@ -299,7 +299,7 @@ func TestVerifyReleaseArtifactNoBundleFailsClosed(t *testing.T) {
 	dir := t.TempDir()
 	artifact := filepath.Join(dir, "bin")
 	require.NoError(t, os.WriteFile(artifact, []byte("x"), 0644))
-	stubGh(t, "2.97.0", "")
+	stubGh(t, "2.102.0", "")
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	})

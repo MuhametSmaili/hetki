@@ -517,7 +517,8 @@ gh_supports_attestation() {
     [[ "$(printf '%s' "$output" | wc -c)" -le 4096 ]] || return 1
     [[ "$output" =~ gh[[:space:]]version[[:space:]]([0-9]+)\.([0-9]+) ]] || return 1
     major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}"
-    [[ "$major" -gt 2 || ( "$major" -eq 2 && "$minor" -ge 97 ) ]]
+    # 2.102 fixes signer-workflow prefix matching and case-insensitive source-ref.
+    [[ "$major" -gt 2 || ( "$major" -eq 2 && "$minor" -ge 102 ) ]]
 }
 
 # Online gh verification is optional at bootstrap, but any attempted check

@@ -284,7 +284,7 @@ func TestBinaryUpdaterUpdateFullFlow(t *testing.T) {
 	}))
 	defer releaseServer.Close()
 
-	stubGh(t, "2.97.0", subjectJSON(binaryName, digestHex))
+	stubGh(t, "2.102.0", subjectJSON(binaryName, digestHex))
 	stubGitHub(t, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"attestations":[{"bundle":%s}]}`, subjectJSON(binaryName, digestHex))
 	})

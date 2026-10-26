@@ -20,9 +20,10 @@ import (
 const (
 	// signerWorkflow pins which workflow may produce trusted artifacts (D4).
 	signerWorkflow = "MuhametSmaili/hetki/.github/workflows/release.yml"
-	// ghMinMajor/ghMinMinor is the oldest gh CLI with working
-	// `attestation verify --bundle` (offline, unauthenticated).
-	ghMinMajor, ghMinMinor = 2, 97
+	// ghMinMajor/ghMinMinor is the oldest gh CLI whose offline
+	// `attestation verify --bundle` matches --signer-workflow exactly and
+	// --source-ref case-sensitively (GHSA-wjmr-j3rp-mh2g, GHSA-4mq3-hpgx-9cx8).
+	ghMinMajor, ghMinMinor = 2, 102
 	// maxBundleBytes bounds the attestation API response and bundle files.
 	maxBundleBytes          = 4 << 20
 	maxAttestationBundles   = 30
