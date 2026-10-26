@@ -197,14 +197,13 @@ func TestStatusPollingStopsOnQuit(t *testing.T) {
 	require.Nil(t, poll)
 }
 
-func TestStatusReadCadence(t *testing.T) {
+func TestStatusReadsTheNextResultAtOnce(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		err   error
-		delay time.Duration
+		name string
+		err  error
 	}{
-		{name: "success reads the next change at once"},
-		{name: "failure waits before the next read", err: errors.New("offline"), delay: statusPollInterval},
+		{name: "after success"},
+		{name: "after failure", err: errors.New("offline")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -223,7 +222,7 @@ func TestStatusReadCadence(t *testing.T) {
 				again()
 
 				require.IsType(t, statusPollMsg{}, message)
-				require.Equal(t, tc.delay, time.Since(start))
+				require.Zero(t, time.Since(start), "the source owns retry delays")
 				require.Equal(t, []uint64{0, 4}, after, "the next read waits for a newer result")
 			})
 		})
