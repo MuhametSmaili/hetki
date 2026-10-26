@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -244,4 +246,80 @@ func TestSuccessfulSwitchNavigatesAfterUIWithoutRefresh(t *testing.T) {
 	require.NoError(t, service.Run(context.Background()))
 	assert.Equal(t, 1, driver.loads)
 	assert.Equal(t, []list.ItemID{{ID: "dev"}}, driver.navigations)
+}
+
+type exitProbeModel struct{ init tea.Cmd }
+
+func (m exitProbeModel) Init() tea.Cmd                       { return m.init }
+func (m exitProbeModel) Update(tea.Msg) (tea.Model, tea.Cmd) { return m, nil }
+func (m exitProbeModel) View() tea.View                      { return tea.NewView("") }
+
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+// runRealProgram returns the genuine error from a headless Bubble Tea run so the
+// tests track how the pinned Bubble Tea version wraps exit errors.
+func runRealProgram(t *testing.T, input io.Reader, init func(*tea.Program) tea.Cmd) error {
+	t.Helper()
+	var p *tea.Program
+	var cmd tea.Cmd
+	if init != nil {
+		cmd = func() tea.Msg { return init(p)() }
+	}
+	p = tea.NewProgram(exitProbeModel{init: cmd},
+		tea.WithInput(input), tea.WithOutput(io.Discard), tea.WithoutSignalHandler())
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.Run()
+		done <- err
+	}()
+	return awaitChannel(t, done)
+}
+
+func TestServiceClassifiesBubbleTeaExitErrors(t *testing.T) {
+	inputErr := errors.New("terminal read failed")
+	for _, test := range []struct {
+		name    string
+		input   io.Reader
+		init    func(*tea.Program) tea.Cmd
+		wantErr error
+	}{
+		{
+			name: "interrupt is a clean exit",
+			init: func(*tea.Program) tea.Cmd { return func() tea.Msg { return tea.InterruptMsg{} } },
+		},
+		{
+			name: "bare kill is a clean exit",
+			init: func(p *tea.Program) tea.Cmd { return func() tea.Msg { p.Kill(); return nil } },
+		},
+		{
+			name:    "recovered panic is reported",
+			init:    func(*tea.Program) tea.Cmd { return func() tea.Msg { panic("picker bug") } },
+			wantErr: tea.ErrProgramPanic,
+		},
+		{
+			name:    "input failure is reported",
+			input:   failingReader{err: inputErr},
+			wantErr: inputErr,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			teaErr := runRealProgram(t, test.input, test.init)
+			require.Error(t, teaErr)
+			service := Service{Options: ui.DefaultOptions(), Driver: &switchDriver{},
+				RunUI: func(context.Context, list.Snapshot, ui.Options, ui.Runtime) (ui.Result, error) {
+					return ui.Result{}, teaErr
+				},
+			}
+
+			err := service.Run(t.Context())
+
+			if test.wantErr == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, test.wantErr)
+		})
+	}
 }

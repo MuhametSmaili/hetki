@@ -19,6 +19,7 @@ func TestInspectMissingEndpointDoesNotCreateDirectory(t *testing.T) {
 	result, err := Inspect(t.Context(), "missing-service")
 
 	require.NoError(t, err)
+	require.Equal(t, Absent, result.State)
 	require.Nil(t, result.Instance)
 	require.NotEmpty(t, result.LogPath)
 	_, err = os.Lstat(filepath.Dir(result.LogPath))
@@ -35,11 +36,57 @@ func TestInspectRunningDaemonPreservesItsInstance(t *testing.T) {
 	after, pingErr := c.Ping(t.Context())
 
 	require.NoError(t, err)
+	require.Equal(t, Running, result.State)
 	require.NotNil(t, result.Instance)
 	require.Equal(t, before, *result.Instance)
 	require.Equal(t, c.LogPath(), result.LogPath)
 	require.NoError(t, pingErr)
 	require.Equal(t, before, after)
+}
+
+func TestInspectReportsTransitionWithoutWaiting(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		arrange func(*testing.T, *Client)
+	}{
+		{"locked owner without listener", func(t *testing.T, c *Client) {
+			lock, err := lockEndpoint(c.path)
+			require.NoError(t, err)
+			require.NotNil(t, lock)
+			t.Cleanup(func() { require.NoError(t, lock.Close()) })
+		}},
+		{"listener before chmod", func(t *testing.T, c *Client) {
+			_, cleanup, err := listen(c.path)
+			require.NoError(t, err)
+			t.Cleanup(cleanup)
+			require.NoError(t, os.Chmod(c.path, 0700))
+		}},
+		{"connection closed without reply", func(t *testing.T, c *Client) {
+			listener, cleanup, err := listen(c.path)
+			require.NoError(t, err)
+			t.Cleanup(cleanup)
+			require.NoError(t, listener.SetDeadline(time.Now().Add(2*time.Second)))
+			closed := make(chan struct{})
+			go func() {
+				defer close(closed)
+				if conn, err := listener.AcceptUnix(); err == nil {
+					_ = conn.Close()
+				}
+			}()
+			t.Cleanup(func() { receive(t, closed) })
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := fixtureClient(t, "inspect-transition")
+			tc.arrange(t, c)
+
+			result, err := Inspect(t.Context(), c.server)
+
+			require.NoError(t, err)
+			require.Equal(t, Transition, result.State)
+			require.Nil(t, result.Instance)
+		})
+	}
 }
 
 func TestInspectStaleSocketDoesNotRemoveIt(t *testing.T) {
@@ -56,6 +103,7 @@ func TestInspectStaleSocketDoesNotRemoveIt(t *testing.T) {
 	after, statErr := os.Lstat(c.path)
 
 	require.NoError(t, err)
+	require.Equal(t, Absent, result.State)
 	require.Nil(t, result.Instance)
 	require.NoError(t, statErr)
 	require.True(t, os.SameFile(before, after))

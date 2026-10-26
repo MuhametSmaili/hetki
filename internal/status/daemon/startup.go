@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,39 +87,14 @@ func (c *Client) launchReady(ctx context.Context, executable string, arguments [
 	}
 }
 
+// waitForLaunch reports whether a daemon is ready to reuse. False without an
+// error means that the service settled as Absent, so a launch may proceed.
 func (c *Client) waitForLaunch(ctx context.Context) (bool, error) {
-	ticker := time.NewTicker(lifecyclePollInterval)
-	defer ticker.Stop()
-
-	var lastProbe error
-	for {
-		_, err := c.Ping(ctx)
-		if err == nil {
-			return true, nil
-		}
-		if !startupTransition(err) {
-			return false, c.startupError(ctx, err, lastProbe)
-		}
-		lastProbe = err
-		if isMissingEndpoint(err) {
-			owned, lockErr := endpointOwned(c.path)
-			if lockErr != nil || !owned {
-				return false, lockErr
-			}
-		}
-
-		select {
-		case <-ctx.Done():
-			return false, c.startupError(ctx, ctx.Err(), lastProbe)
-		case <-ticker.C:
-		}
+	observed, err := c.settle(ctx)
+	if err != nil {
+		return false, c.startupError(ctx, err, observed.cause)
 	}
-}
-
-func startupTransition(err error) bool {
-	return isMissingEndpoint(err) || errors.Is(err, errEndpointPermissions) ||
-		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
+	return observed.state == Running, nil
 }
 
 func (c *Client) startupError(ctx context.Context, err, lastProbe error) error {
@@ -188,7 +162,9 @@ func (c *Client) waitReady(ctx context.Context, exited <-chan error) error {
 		if err == nil {
 			return nil
 		}
-		if !startupTransition(err) {
+		// The child may not own its lock yet, so a missing endpoint is not
+		// absence here; only the child's exit ends this wait.
+		if !isMissingEndpoint(err) && !interrupted(err) {
 			return c.startupError(ctx, err, lastProbe)
 		}
 		lastProbe = err

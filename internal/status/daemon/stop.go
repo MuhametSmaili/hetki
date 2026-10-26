@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 )
 
 const shutdownTimeout = 5 * time.Second
 
 // Stop targets one observed instance without creating storage or starting a
-// daemon. A nil instance means no listener and no locked owner were observed,
-// not that a concurrent starter is excluded. Success waits for the target's
-// workers, source and logs to close; it does not wait for a replacement to exit.
+// daemon. It first waits, within its timeout, for a Transition to settle, and
+// returns ErrTransition if it does not. A nil instance means the service settled
+// as Absent, not that a concurrent starter is excluded. Success waits for the
+// target's workers, source and logs to close; it does not wait for a
+// replacement to exit.
 func Stop(ctx context.Context, server string) (*Info, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -36,35 +37,21 @@ func (c *Client) stop(ctx context.Context) (*Info, error) {
 	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
 
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := validateEndpointDirectory(c.path); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+	observed, err := c.settle(ctx)
+	if err != nil {
+		if observed.state == Transition && ctx.Err() != nil {
+			err = errors.Join(ErrTransition, err, observed.cause)
 		}
 		return nil, err
 	}
-
-	info, err := c.Ping(ctx)
-	if isMissingEndpoint(err) {
-		owned, lockErr := endpointOwned(c.path)
-		if lockErr != nil {
-			return nil, lockErr
-		}
-		if owned {
-			return nil, ErrTransition
-		}
+	if observed.state == Absent {
 		return nil, nil
 	}
-	if err != nil {
-		return nil, err
-	}
 
-	if err := c.stopObserved(ctx, info); err != nil {
+	if err := c.stopObserved(ctx, observed.info); err != nil {
 		return nil, err
 	}
-	return &info, nil
+	return &observed.info, nil
 }
 
 func (c *Client) stopObserved(ctx context.Context, info Info) (err error) {

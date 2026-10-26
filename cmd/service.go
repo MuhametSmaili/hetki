@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -40,7 +41,8 @@ The picker starts the service automatically.`,
 		Short: "Show status service information",
 		Long: `Show status service information for the tmux server selected by your environment.
 
-Show the tmux socket, service state, and log path without starting tmux or the service.`,
+Show the tmux socket, service state, and log path without starting tmux or the service.
+The state is running, not listening, or starting or stopping.`,
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -76,6 +78,7 @@ The service runs in the background and stops when its tmux server exits.`,
 		Long: `Stop the status service for the tmux server selected by your environment.
 
 Requires a running tmux server. Tmux sessions remain running.
+If the service is starting or stopping, waits briefly for it to finish first.
 An open picker can start the service again.
 Cancellation or timeout does not undo an accepted shutdown request.`,
 		Args:              cobra.NoArgs,
@@ -117,14 +120,31 @@ A failure after shutdown acceptance can leave the service stopped.`,
 }
 
 func writeServiceStatus(output io.Writer, result statusobserver.ServiceStatus) error {
-	state := "not listening"
-	instance := ""
-	if info := result.Daemon.Instance; info != nil {
-		state = "running"
-		instance = fmt.Sprintf("Daemon PID: %d\nInstance: %s\n", info.PID, terminal.Sanitize(info.Epoch))
+	state, instance, err := describeServiceState(result.Daemon)
+	if err != nil {
+		return err
 	}
 
-	_, err := fmt.Fprintf(output, "Status service: %s\nTmux socket: %s\n%sLog: %s\n",
+	_, err = fmt.Fprintf(output, "Status service: %s\nTmux socket: %s\n%sLog: %s\n",
 		state, terminal.Sanitize(result.Server.Socket), instance, terminal.Sanitize(result.Daemon.LogPath))
 	return err
+}
+
+// describeServiceState returns the state label and, only for a running
+// service, its instance lines.
+func describeServiceState(inspection daemon.Inspection) (string, string, error) {
+	switch inspection.State {
+	case daemon.Absent:
+		return "not listening", "", nil
+	case daemon.Transition:
+		return "starting or stopping", "", nil
+	case daemon.Running:
+		info := inspection.Instance
+		if info == nil {
+			return "", "", errors.New("status service inspection reported running without an instance")
+		}
+		return "running", fmt.Sprintf("Daemon PID: %d\nInstance: %s\n", info.PID, terminal.Sanitize(info.Epoch)), nil
+	default:
+		return "", "", fmt.Errorf("unknown status service state %d", inspection.State)
+	}
 }

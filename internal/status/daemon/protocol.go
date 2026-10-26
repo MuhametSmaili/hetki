@@ -28,7 +28,7 @@ var (
 	ErrIdentity    = errors.New("status daemon identity mismatch")
 	ErrUnavailable = errors.New("status source unavailable")
 	ErrLifecycle   = errors.New("status daemon does not support instance-safe lifecycle control")
-	ErrTransition  = errors.New("status daemon owns its lock but is not listening; startup or shutdown is in progress")
+	ErrTransition  = errors.New("status daemon is still starting or stopping")
 )
 
 type request struct {

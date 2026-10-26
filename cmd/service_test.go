@@ -16,11 +16,13 @@ import (
 func TestServiceStatusOutput(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
+		state    daemon.State
 		instance *daemon.Info
 		want     string
 	}{
-		{"not listening", nil, "Status service: not listening\nTmux socket: /tmp/tmux.sock\nLog: /tmp/status.log\n"},
-		{"running", &daemon.Info{PID: 123, Epoch: "fixture"}, "Status service: running\nTmux socket: /tmp/tmux.sock\nDaemon PID: 123\nInstance: fixture\nLog: /tmp/status.log\n"},
+		{"not listening", daemon.Absent, nil, "Status service: not listening\nTmux socket: /tmp/tmux.sock\nLog: /tmp/status.log\n"},
+		{"starting or stopping", daemon.Transition, nil, "Status service: starting or stopping\nTmux socket: /tmp/tmux.sock\nLog: /tmp/status.log\n"},
+		{"running", daemon.Running, &daemon.Info{PID: 123, Epoch: "fixture"}, "Status service: running\nTmux socket: /tmp/tmux.sock\nDaemon PID: 123\nInstance: fixture\nLog: /tmp/status.log\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
@@ -30,7 +32,7 @@ func TestServiceStatusOutput(t *testing.T) {
 				require.Equal(t, t.Context(), ctx)
 				return statusobserver.ServiceStatus{
 					Server: observe.Server{Socket: "/tmp/tmux.sock"},
-					Daemon: daemon.Inspection{Instance: tc.instance, LogPath: "/tmp/status.log"},
+					Daemon: daemon.Inspection{State: tc.state, Instance: tc.instance, LogPath: "/tmp/status.log"},
 				}, nil
 			}, nil, nil, nil)
 			command.SetOut(&output)
@@ -229,6 +231,32 @@ func TestServiceStatusPreservesInspectionFailure(t *testing.T) {
 	require.Empty(t, output.String(), "an inspection error must not print a successful status")
 }
 
+func TestServiceStatusRejectsInvalidInspection(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		inspection daemon.Inspection
+	}{
+		{"unset state", daemon.Inspection{}},
+		{"running without instance", daemon.Inspection{State: daemon.Running}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			command := newServiceCommand(func(context.Context) (statusobserver.ServiceStatus, error) {
+				return statusobserver.ServiceStatus{Daemon: tc.inspection}, nil
+			}, nil, nil, nil)
+			var output bytes.Buffer
+			command.SetOut(&output)
+			command.SilenceErrors = true
+			command.SilenceUsage = true
+			command.SetArgs([]string{"status"})
+
+			err := command.ExecuteContext(t.Context())
+
+			require.Error(t, err)
+			require.Empty(t, output.String())
+		})
+	}
+}
+
 func TestServiceCommandsPreserveOutputFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -246,7 +274,7 @@ func TestServiceCommandsPreserveOutputFailure(t *testing.T) {
 			require.NoError(t, reader.Close())
 			defer writer.Close()
 			command := newServiceCommand(func(context.Context) (statusobserver.ServiceStatus, error) {
-				return statusobserver.ServiceStatus{}, nil
+				return statusobserver.ServiceStatus{Daemon: daemon.Inspection{State: daemon.Absent}}, nil
 			}, func(context.Context) error { return nil }, func(context.Context) (*daemon.Info, error) {
 				return tc.info, nil
 			}, func(context.Context) error { return nil })
@@ -266,7 +294,7 @@ func TestServiceStatusSanitizesPaths(t *testing.T) {
 	command := newServiceCommand(func(context.Context) (statusobserver.ServiceStatus, error) {
 		return statusobserver.ServiceStatus{
 			Server: observe.Server{Socket: "/tmp/tmux\x1b[31m\n.sock"},
-			Daemon: daemon.Inspection{LogPath: "/tmp/status\t.log"},
+			Daemon: daemon.Inspection{State: daemon.Absent, LogPath: "/tmp/status\t.log"},
 		}, nil
 	}, nil, nil, nil)
 	var output bytes.Buffer

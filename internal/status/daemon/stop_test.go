@@ -110,17 +110,73 @@ func TestCanceledStopDoesNotUndoAcceptedShutdown(t *testing.T) {
 	require.NoError(t, receive(t, done))
 }
 
-func TestStopDoesNotInferAnInstanceFromBusyLock(t *testing.T) {
+func TestStopReportsTransitionThatDoesNotSettle(t *testing.T) {
 	client, closing, _, _ := gatedCleanup(t, "stop-without-listener")
 	info, err := client.Ping(t.Context())
 	require.NoError(t, err)
 	require.NoError(t, client.requestStop(t.Context(), info.Epoch))
 	receive(t, closing)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
 
-	stopped, err := Stop(t.Context(), client.server)
+	stopped, err := Stop(ctx, client.server)
 
 	require.ErrorIs(t, err, ErrTransition)
-	require.Nil(t, stopped)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Nil(t, stopped, "a busy lock must not be mistaken for an instance")
+}
+
+// startingFixture holds a daemon after it owns its lock but before it listens.
+func startingFixture(t *testing.T, client *Client) (func(), <-chan error) {
+	t.Helper()
+
+	starting := make(chan struct{})
+	proceed := make(chan struct{})
+	release := sync.OnceFunc(func() { close(proceed) })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- Serve(ctx, liveBinding(client.server), func(ctx context.Context, report func(error)) (Source, error) {
+			close(starting)
+			select {
+			case <-proceed:
+				return staticSource(status.Snapshot{})(ctx, report)
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		})
+	}()
+	t.Cleanup(func() {
+		cancel()
+		release()
+	})
+
+	receive(t, starting)
+	return release, done
+}
+
+func TestStopWaitsForStartupThenStopsThatInstance(t *testing.T) {
+	client := fixtureClient(t, "stop-during-startup")
+	release, done := startingFixture(t, client)
+	type result struct {
+		info *Info
+		err  error
+	}
+	stopped := make(chan result, 1)
+	go func() {
+		info, err := Stop(t.Context(), client.server)
+		stopped <- result{info, err}
+	}()
+
+	release()
+	got := receive(t, stopped)
+
+	require.NoError(t, got.err)
+	require.NotNil(t, got.info)
+	require.True(t, validEpoch(got.info.Epoch))
+	require.NoError(t, receive(t, done), "the instance that finished starting must be the one stopped")
+	_, err := client.Ping(t.Context())
+	require.True(t, isMissingEndpoint(err), "no daemon may remain listening: %v", err)
 }
 
 func TestStopRequestRequiresTargetBeforeConnecting(t *testing.T) {

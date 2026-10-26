@@ -2,20 +2,20 @@ package daemon
 
 import (
 	"context"
-	"errors"
-	"os"
 )
 
 // Inspection describes a single endpoint probe, not ownership of its process.
-// Instance is nil when no endpoint listens; startup or shutdown may be in progress.
-// LogPath describes the expected location, even when no log exists.
+// Instance is set only when State is Running. LogPath describes the expected
+// location, even when no log exists.
 type Inspection struct {
+	State    State
 	Instance *Info
 	LogPath  string
 }
 
-// Inspect probes without creating directories, launching a daemon or repairing
-// stale files. Unexpected failures remain errors rather than absence.
+// Inspect probes once without waiting, creating directories, launching a
+// daemon or repairing stale files. Unexpected failures remain errors rather
+// than absence.
 func Inspect(ctx context.Context, server string) (Inspection, error) {
 	if err := ctx.Err(); err != nil {
 		return Inspection{}, err
@@ -27,22 +27,14 @@ func Inspect(ctx context.Context, server string) (Inspection, error) {
 	}
 	result := Inspection{LogPath: logPath(path)}
 
-	if err := validateEndpointDirectory(path); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return result, nil
-		}
-		return result, err
-	}
-
-	client := &Client{server: server, path: path}
-	info, err := client.Ping(ctx)
-	if isMissingEndpoint(err) {
-		return result, nil
-	}
+	observed, err := (&Client{server: server, path: path}).probe(ctx)
 	if err != nil {
 		return result, err
 	}
 
-	result.Instance = &info
+	result.State = observed.state
+	if observed.state == Running {
+		result.Instance = &observed.info
+	}
 	return result, nil
 }

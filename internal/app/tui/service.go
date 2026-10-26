@@ -68,7 +68,7 @@ func (s Service) Run(ctx context.Context) error {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		if errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, tea.ErrInterrupted) {
+		if isCleanTUIExit(err) {
 			return nil
 		}
 		return err
@@ -77,6 +77,12 @@ func (s Service) Run(ctx context.Context) error {
 		return s.Driver.Navigate(ctx, result.Navigation)
 	}
 	return nil
+}
+
+// isCleanTUIExit accepts only an interrupt or a bare kill, because Bubble Tea
+// also wraps panics and input failures in ErrProgramKilled.
+func isCleanTUIExit(err error) bool {
+	return errors.Is(err, tea.ErrInterrupted) || err == tea.ErrProgramKilled //nolint:errorlint // Wrapped kills carry a real cause.
 }
 
 func openStatus(ctx context.Context, driver Driver) (*statusDelivery, error) {
