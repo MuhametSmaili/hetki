@@ -88,7 +88,7 @@ func TestLoadYAMLWithPanes(t *testing.T) {
 	assert.Equal(t, "/home/user/code", workspace.Sessions[0].Windows[0].Panes[1].Path, "panes inherit the window path")
 }
 
-// D2: split and size were accepted-but-ignored historically; they are now
+// Split and size were accepted-but-ignored historically; they are now
 // rejected with field paths.
 func TestLoadYAMLRejectsUnsupportedPaneFields(t *testing.T) {
 	tmpDir := t.TempDir()

@@ -28,6 +28,19 @@ go install github.com/MuhametSmaili/hetki@latest
 
 Prebuilt binaries are available on the [releases page](https://github.com/MuhametSmaili/hetki/releases).
 
+### Update
+
+Update Hetki with the tool you installed it with:
+
+| Installed with | Update with                                                   |
+| -------------- | ------------------------------------------------------------- |
+| `install.sh`   | Run the install command again.                                |
+| Go             | `go install github.com/MuhametSmaili/hetki@latest`            |
+| mise           | `mise upgrade go:github.com/MuhametSmaili/hetki`              |
+| mise, `@main`  | `mise install --force go:github.com/MuhametSmaili/hetki@main` |
+
+The status service stops when its binary is replaced. The picker starts the new build the next time it opens.
+
 <details>
 <summary>Load completion for Hetki</summary>
 
@@ -82,8 +95,6 @@ These setups load completion functions on demand. Hetki reads workspace names on
 | `hetki start work --dry-run`     | Preview workspace changes without applying them.      |
 | `hetki start --file ./work.yaml` | Start a workspace from a YAML file.                   |
 | `hetki save work --all-sessions` | Replace the saved session set with all live sessions. |
-| `hetki update`                   | Update to the latest stable release.                  |
-| `hetki update --head`            | Update to the latest pushed main commit. Requires Go. |
 | `hetki service status`           | Show status service information.                      |
 | `hetki service start`            | Start the status service.                             |
 | `hetki service stop`             | Stop the status service, not tmux.                    |

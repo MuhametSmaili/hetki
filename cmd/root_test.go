@@ -138,42 +138,13 @@ func TestRootRejectsArgumentsAndRemovedCommands(t *testing.T) {
 	require.Error(t, rootCmd.Args(rootCmd, []string{"unexpected"}))
 	t.Cleanup(func() { rootCmd.SetArgs(nil) })
 
-	for _, removed := range []string{"tui", "list", "report", "switch"} {
+	for _, removed := range []string{"tui", "list", "report", "switch", "update"} {
 		t.Run(removed, func(t *testing.T) {
 			rootCmd.SetArgs([]string{removed, "dev"})
 
 			_, err := rootCmd.ExecuteC()
 
 			require.ErrorContains(t, err, `unknown command "`+removed+`"`)
-		})
-	}
-}
-
-func TestUpdateRejectsUnsupportedArguments(t *testing.T) {
-	require.NotNil(t, updateCmd.Flags().Lookup("head"))
-
-	previousRun := updateCmd.RunE
-	updateCmd.RunE = func(*cobra.Command, []string) error {
-		return errors.New("update executed before argument validation")
-	}
-	t.Cleanup(func() {
-		updateCmd.RunE = previousRun
-		rootCmd.SetArgs(nil)
-	})
-
-	for _, test := range []struct {
-		argument, want string
-	}{
-		{"--source", "unknown flag: --source"},
-		{"--pre", "unknown flag: --pre"},
-		{"unexpected", "unknown command"},
-	} {
-		t.Run(test.argument, func(t *testing.T) {
-			rootCmd.SetArgs([]string{"update", test.argument})
-
-			_, err := rootCmd.ExecuteC()
-
-			require.ErrorContains(t, err, test.want)
 		})
 	}
 }
@@ -208,50 +179,6 @@ func TestVersionFlagsDoNotOpenPicker(t *testing.T) {
 			require.Contains(t, output.String(), "hetki version "+rootCmd.Version)
 			require.Contains(t, output.String(), "commit:")
 			require.Contains(t, output.String(), "built:")
-		})
-	}
-}
-
-func TestUpdateFlagRouting(t *testing.T) {
-	previousRun := updateCmd.RunE
-	t.Cleanup(func() {
-		updateCmd.RunE = previousRun
-		rootCmd.SetArgs(nil)
-	})
-
-	for _, test := range []struct {
-		name    string
-		args    []string
-		dryRun  bool
-		verbose bool
-		version string
-	}{
-		{name: "short dry-run", args: []string{"-n"}, dryRun: true},
-		{name: "long dry-run", args: []string{"--dry-run"}, dryRun: true},
-		{name: "short verbose", args: []string{"-v"}, verbose: true},
-		{name: "long verbose", args: []string{"--verbose"}, verbose: true},
-		{name: "exact release", args: []string{"--version", "v1.2.3", "-n", "-v"}, version: "v1.2.3", dryRun: true, verbose: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Cleanup(func() {
-				require.NoError(t, updateCmd.Flags().Set("dry-run", "false"))
-				require.NoError(t, updateCmd.Flags().Set("verbose", "false"))
-				require.NoError(t, updateCmd.Flags().Set("version", ""))
-			})
-			called := false
-			updateCmd.RunE = func(*cobra.Command, []string) error {
-				called = true
-				require.Equal(t, test.dryRun, updateDryRun)
-				require.Equal(t, test.verbose, updateVerbose)
-				require.Equal(t, test.version, updateTargetVer)
-				return nil
-			}
-			rootCmd.SetArgs(append([]string{"update"}, test.args...))
-
-			_, err := rootCmd.ExecuteC()
-
-			require.NoError(t, err)
-			require.True(t, called)
 		})
 	}
 }

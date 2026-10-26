@@ -51,26 +51,3 @@ func TestWorkspaceCompletionReportsInventoryErrors(t *testing.T) {
 		})
 	}
 }
-
-func TestUpdateVersionCompletionDoesNotSuggestFiles(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		args []string
-	}{
-		{"empty tag", []string{"--version", ""}},
-		{"partial tag", []string{"--version", "v0."}},
-		{"equals form", []string{"--version=v0."}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			var output bytes.Buffer
-			previous := rootCmd.OutOrStdout()
-			rootCmd.SetOut(&output)
-			t.Cleanup(func() { rootCmd.SetOut(previous) })
-
-			err := executeWorkspaceCommand(t, append([]string{"__complete", "update"}, test.args...)...)
-
-			require.NoError(t, err)
-			require.Equal(t, ":4\n", output.String())
-		})
-	}
-}

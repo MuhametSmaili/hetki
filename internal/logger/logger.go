@@ -16,10 +16,6 @@ var (
 	errorColor   = color.New(color.FgRed)
 	infoColor    = color.New(color.FgCyan)
 	warningColor = color.New(color.FgYellow)
-	debugColor   = color.New(color.FgHiBlack)
-
-	debugEnabled   = os.Getenv("DEBUG") != ""
-	verboseEnabled = false
 )
 
 func SetOutput(w io.Writer) io.Writer {
@@ -30,10 +26,6 @@ func SetOutput(w io.Writer) io.Writer {
 	}
 	output = w
 	return previous
-}
-
-func SetVerbose(verbose bool) {
-	verboseEnabled = verbose
 }
 
 func Success(format string, args ...any) {
@@ -54,18 +46,6 @@ func Warning(format string, args ...any) {
 
 func Plain(format string, args ...any) {
 	fmt.Fprintf(output, format+"\n", safeArgs(args)...)
-}
-
-func Debug(format string, args ...any) {
-	if debugEnabled {
-		debugColor.Fprintf(output, "[DEBUG] "+format+"\n", safeArgs(args)...)
-	}
-}
-
-func Verbose(format string, args ...any) {
-	if verboseEnabled {
-		infoColor.Fprintf(output, format+"\n", safeArgs(args)...)
-	}
 }
 
 func safeArgs(args []any) []any {

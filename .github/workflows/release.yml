@@ -128,7 +128,6 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF_TYPE" == tag ]]; then
             grep -Fx "hetki version ${GITHUB_REF_NAME}" <<<"$output"
           fi
-          go test ./internal/app/update
           ./scripts/test-install.sh
 
   attest:

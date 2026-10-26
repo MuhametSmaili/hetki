@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCommandsExecuteOnceAtCreationTime proves D1 on a real tmux server:
+// TestCommandsExecuteOnceAtCreationTime proves on a real tmux server that
 // manifest commands are typed into the created pane's shell and a second
 // start neither re-sends them nor flags the pane as drifted.
 func TestCommandsExecuteOnceAtCreationTime(t *testing.T) {

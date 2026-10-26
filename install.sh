@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016 # single-quoted snippets run in nested shells
 #
-# Installer for hetki (D4 policy)
+# Installer for hetki
 #
 #   - installs an exact resolved release tag (never a mutable ref)
 #   - always checksum-verifies the download
@@ -26,7 +26,7 @@ readonly REPO="MuhametSmaili/hetki"
 readonly GO_MODULE="github.com/MuhametSmaili/hetki"
 readonly SIGNER_WORKFLOW="${REPO}/.github/workflows/release.yml"
 readonly DEFAULT_INSTALL_DIR="${HOME}/.local/bin"
-readonly MAX_DOWNLOAD_BYTES=134217728 # 128 MiB, mirrors the updater bound
+readonly MAX_DOWNLOAD_BYTES=134217728 # 128 MiB
 readonly MAX_CHECKSUM_BYTES=65536
 readonly MAX_METADATA_BYTES=4194304
 readonly MAX_SOURCE_WORKSPACE_KIB=1048576 # 1 GiB aggregate temporary source workspace

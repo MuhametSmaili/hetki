@@ -81,7 +81,7 @@ type SendKeys struct {
 	Keys   string
 }
 
-// Args sends text literally, followed by one interpreted Enter key (D1).
+// Args sends text literally, followed by one interpreted Enter key.
 func (a SendKeys) Args() []string {
 	keys := a.Keys
 	// tmux consumes one escape before a trailing semicolon.

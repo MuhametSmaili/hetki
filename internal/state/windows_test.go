@@ -123,7 +123,7 @@ func TestWindowComparerUsesLayoutPolicyAndStrictPaneSemantics(t *testing.T) {
 	}))
 	assert.True(t, comparer.windowsMatch(&Window{Name: "editor", Path: "~/code", Layout: "recipe", Panes: base.Panes}, &Window{Name: "editor", Path: "~/code", Layout: "shape-a", Panes: base.Panes}))
 	assert.False(t, comparer.windowsMatch(&Window{Name: "editor", Path: "~/code", Layout: "shape-a", Panes: base.Panes}, &Window{Name: "editor", Path: "~/code", Layout: "shape-b", Panes: base.Panes}))
-	// D1: command is a creation-time effect and never part of steady-state
+	// Command is a creation-time effect and never part of steady-state
 	// equality, so a drifted pane command must not flag the window.
 	assert.True(t, comparer.windowsMatch(base, &Window{Name: "editor", Path: "~/code", Layout: "recipe", Panes: []*Pane{{Path: "~/code", Command: "vim"}, {Path: "~/api", Command: "npm run dev", Zoom: true}}}))
 	assert.False(t, comparer.windowsMatch(base, &Window{Name: "editor", Path: "~/code", Layout: "recipe", Panes: []*Pane{{Path: "~/code", Command: "vim"}, {Path: "~/api", Command: "npm test"}}}), "zoom difference is still a mismatch")
