@@ -329,11 +329,10 @@ func TestCanceledLifetimeCheckDoesNotStopDaemon(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestConcurrentRequestsAreBoundedAndSlotsRecover(t *testing.T) {
-	c := fixtureClient(t, "bounded")
-	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
-	var connections []net.Conn
-	for range maxClients {
+func dialIdle(t *testing.T, c *Client, count int) []net.Conn {
+	t.Helper()
+	connections := make([]net.Conn, 0, count)
+	for range count {
 		conn, err := net.Dial("unix", c.path)
 		require.NoError(t, err)
 		t.Cleanup(func() {
@@ -341,10 +340,38 @@ func TestConcurrentRequestsAreBoundedAndSlotsRecover(t *testing.T) {
 		})
 		connections = append(connections, conn)
 	}
+	return connections
+}
+
+func TestRequestsBeyondTheClientLimitGetABusyReply(t *testing.T) {
+	c := fixtureClient(t, "busy")
+	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
+	before, err := c.Ping(t.Context())
+	require.NoError(t, err)
+	dialIdle(t, c, maxClients)
+	require.Eventually(t, func() bool {
+		_, err := c.Ping(t.Context())
+		return errors.Is(err, ErrBusy)
+	}, time.Second, time.Millisecond)
+
+	busy, pingErr := c.Ping(t.Context())
+	inspection, inspectErr := Inspect(t.Context(), c.server)
+
+	require.ErrorIs(t, pingErr, ErrBusy)
+	require.Equal(t, before, busy, "a busy reply identifies the running instance")
+	require.NoError(t, inspectErr)
+	require.Equal(t, Running, inspection.State)
+	require.Equal(t, before, *inspection.Instance)
+}
+
+func TestConcurrentRequestsAreBoundedAndSlotsRecover(t *testing.T) {
+	c := fixtureClient(t, "bounded")
+	startFixture(t, c, liveBinding(c.server), staticSource(status.Snapshot{}))
+	connections := dialIdle(t, c, maxClients+maxBusyReplies)
 	require.Eventually(t, func() bool {
 		_, err := c.Ping(context.Background())
-		return err != nil
-	}, time.Second, time.Millisecond)
+		return err != nil && !errors.Is(err, ErrBusy)
+	}, time.Second, time.Millisecond, "beyond the busy replies, connections are closed")
 
 	for _, conn := range connections {
 		_ = conn.Close()

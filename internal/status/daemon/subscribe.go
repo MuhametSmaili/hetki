@@ -100,6 +100,7 @@ func (d *daemon) subscribe(ctx context.Context, conn *net.UnixConn) {
 		defer func() { <-d.subscribers }()
 	default:
 		d.logs.repeatedFailure("subscription_rejected", errors.New("subscriber limit reached"))
+		d.writeBusy(ctx, conn)
 		return
 	}
 

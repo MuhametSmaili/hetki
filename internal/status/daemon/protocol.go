@@ -27,6 +27,7 @@ var (
 	ErrProtocol    = errors.New("status daemon protocol mismatch")
 	ErrIdentity    = errors.New("status daemon identity mismatch")
 	ErrUnavailable = errors.New("status source unavailable")
+	ErrBusy        = errors.New("status daemon is busy")
 	ErrLifecycle   = errors.New("status daemon does not support instance-safe lifecycle control")
 	ErrTransition  = errors.New("status daemon is still starting or stopping")
 )
@@ -67,6 +68,10 @@ var errNoReply = errors.New("status daemon closed the connection without replyin
 // Mismatch replies must keep only fields that every protocol version decodes:
 // version, server, pid, epoch and error.
 const protocolMismatch = "protocol_mismatch"
+
+// A busy reply also keeps only those fields, so clients of any version can
+// identify the instance that refused them.
+const busyReply = "busy"
 
 // ProtocolMismatchError reports a daemon on another protocol version. A zero
 // PID means the daemon reported none. It matches ErrProtocol.

@@ -118,6 +118,8 @@ func (c *Client) readReply(conn net.Conn) (reply, error) {
 	switch result.Error {
 	case "instance_changed":
 		return reply{}, ErrIdentity
+	case busyReply:
+		return result, ErrBusy
 	case "":
 	default:
 		return reply{}, ErrUnavailable

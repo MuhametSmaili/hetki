@@ -144,7 +144,7 @@ func TestSubscriberLimitKeepsControlRequestsAvailable(t *testing.T) {
 		require.NoError(t, subscription.Close())
 	}
 
-	require.Error(t, rejected)
+	require.ErrorIs(t, rejected, ErrBusy)
 	require.NoError(t, pingErr)
 	require.Eventually(t, func() bool {
 		_, err := readFirst(t.Context(), c)

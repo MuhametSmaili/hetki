@@ -49,7 +49,7 @@ func (c *Client) probe(ctx context.Context) (observation, error) {
 	}
 
 	info, err := c.Ping(ctx)
-	if err == nil {
+	if err == nil || errors.Is(err, ErrBusy) {
 		return observation{state: Running, info: info}, nil
 	}
 	if interrupted(err) {
@@ -96,8 +96,8 @@ func (c *Client) settle(ctx context.Context) (observation, error) {
 }
 
 // interrupted reports a listener that cannot answer anymore: shutdown closes
-// accepted connections. A daemon at its client limit also closes connections;
-// retrying suits that case too.
+// accepted connections. A daemon far beyond its client limit also closes
+// connections without a busy reply; retrying suits that case too.
 func interrupted(err error) bool {
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
