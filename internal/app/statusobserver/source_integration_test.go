@@ -107,3 +107,34 @@ func TestNativeSourceInvalidSelectionStopsAndJoins(t *testing.T) {
 		t.Fatal("terminal source failure was not reported")
 	}
 }
+
+func TestNativeSourceDoesNotReportKilledSessions(t *testing.T) {
+	runner, server, sampler, _, _ := nativeStreamsFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	reported := make(chan error, 8)
+	source, err := NewSource(ctx, server, sampler, nil, func(err error) {
+		select {
+		case reported <- err:
+		default:
+		}
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, source.Close()) }()
+	out, err := runner.RunLimited(ctx, 4096, "new-session", "-d", "-s", "second", "-P", "-F", "#{pane_id}", "cat")
+	require.NoError(t, err)
+	pane := strings.TrimSpace(out)
+	awaitSourcePane(t, source, pane, "")
+
+	_, err = runner.RunLimited(ctx, 4096, "kill-session", "-t", "second")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		source.mu.Lock()
+		defer source.mu.Unlock()
+		_, found := source.panes[pane]
+		return !found
+	}, 3*time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool { return len(reported) > 0 }, 2500*time.Millisecond, 50*time.Millisecond,
+		"a removed session's stream loss must not be reported")
+}

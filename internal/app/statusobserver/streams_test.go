@@ -207,6 +207,21 @@ func testConnectionLossResetsImmediatelyAndReconnectCannotReviveScope(t *testing
 	require.NotEqual(t, before[0].scope.Connection, after[1].scope.Connection)
 }
 
+func TestStreamLossOfARemovedSessionIsNotAFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		streams, _, connections := streamFixture(t)
+		require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1", "$2")))
+		removed := connections["$2"]
+		removed.failure <- observe.ErrStreamLost
+		await(t, streams.Changes())
+
+		err := streams.reconcile(t.Context(), fixtureTopology(2, "$1"))
+
+		require.NoError(t, err)
+		await(t, removed.joined)
+	})
+}
+
 func TestNativeScopeChangesResetButResizePreservesStream(t *testing.T) {
 	cases := []struct {
 		name   string

@@ -67,7 +67,7 @@ func (s *Streams) reconcile(ctx context.Context, inventory topology) error {
 
 	var result error
 	for _, sub := range retired {
-		result = errors.Join(result, stopSubscription(sub))
+		result = errors.Join(result, stopRetired(sub, inventory))
 	}
 
 	for _, session := range selected {
@@ -112,6 +112,26 @@ func (s *Streams) prepare(ctx context.Context, inventory topology) ([]string, []
 	retired := s.retire(selected)
 	s.updateRoutes(inventory)
 	return selected, retired, nil
+}
+
+// stopRetired joins a retired subscription. A stream that ended because its
+// session no longer exists, for example after kill-session, is not a failure.
+func stopRetired(sub *subscription, inventory topology) error {
+	closeErr := sub.connection.Close()
+	<-sub.done
+	if !inventory.hasSession(sub.session) {
+		return closeErr
+	}
+	return errors.Join(closeErr, sub.err)
+}
+
+func (t topology) hasSession(session string) bool {
+	for _, facts := range t.panes {
+		if slices.Contains(facts.sessions, session) {
+			return true
+		}
+	}
+	return false
 }
 
 func sessionCount(inventory topology) int {
