@@ -226,6 +226,50 @@ func TestCaptureRejectsMalformedScreensWithResizedPane(t *testing.T) {
 	}
 }
 
+func TestCaptureRetriesWithoutClosedPanes(t *testing.T) {
+	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
+	cases := []struct {
+		name      string
+		remaining string
+		batches   int
+		captured  string
+	}{
+		{"peer closed", testPaneRow, 2, "%1 content\n"},
+		{"all closed", "", 1, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := testPaneRow + peer
+			batches := 0
+			s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+				if !slices.Contains(args, "capture-pane") {
+					return testInventoryOutput(rows), nil
+				}
+				batches++
+				if batches == 1 {
+					return "", errors.New("can't find pane: %2")
+				}
+				return captureFixtureReply(t, args, rows), nil
+			})
+			inventory, err := s.Inventory(t.Context(), 1)
+			require.NoError(t, err)
+			first, err := inventory.Target("%1", Region{Rows: 1})
+			require.NoError(t, err)
+			second, err := inventory.Target("%2", Region{Rows: 1})
+			require.NoError(t, err)
+			rows = tc.remaining
+
+			results, err := s.Capture(t.Context(), []CaptureTarget{first, second})
+
+			require.NoError(t, err)
+			require.Equal(t, tc.batches, batches)
+			require.Len(t, results, 2)
+			require.Equal(t, tc.captured, results[0].Text)
+			require.ErrorIs(t, results[1].Err, ErrChanged)
+		})
+	}
+}
+
 func TestCapturePropagatesBatchFailureWithoutPartialResults(t *testing.T) {
 	failed := errors.New("capture failed")
 	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {

@@ -109,8 +109,9 @@ type Screen struct {
 // Capture reads the screens of mixed-application targets in one tmux request.
 // The same request reads the pane facts after the capture, and OS process
 // checks follow it. A screen is kept only when those facts still match the
-// target's inventory. It retains no text after it returns. A failure of the
-// whole request discards every screen. Per-pane changes are in Screen.Err.
+// target's inventory. It retains no text after it returns. A pane that no
+// longer exists fails only its own screen; any other failure of the whole
+// request discards every screen. Per-pane changes are in Screen.Err.
 func (s *Sampler) Capture(ctx context.Context, targets []CaptureTarget) ([]Screen, error) {
 	ids, err := s.captureIDs(targets)
 	if err != nil {
@@ -126,15 +127,47 @@ func (s *Sampler) Capture(ctx context.Context, targets []CaptureTarget) ([]Scree
 	started := time.Now()
 	texts, after, err := s.captureBatch(ctx, targets)
 	if err != nil {
-		return nil, err
+		return s.captureSurvivors(ctx, targets, err)
 	}
 
-	results := make([]Screen, len(targets))
-	for n, target := range targets {
-		results[n] = Screen{Target: target}
+	return finishCaptures(targets, texts, after, started), ctx.Err()
+}
+
+// captureSurvivors retries once without targets whose panes no longer exist.
+// tmux stops a command sequence at its first error, so a pane closed after the
+// inventory would otherwise discard the screens of every other target.
+func (s *Sampler) captureSurvivors(ctx context.Context, targets []CaptureTarget, batchErr error) ([]Screen, error) {
+	if ctx.Err() != nil || errors.Is(batchErr, ErrServerChanged) {
+		return nil, batchErr
 	}
-	finishCaptures(results, texts, after, started)
-	return results, ctx.Err()
+
+	current, err := s.queryInventory(ctx)
+	if err != nil {
+		return nil, errors.Join(batchErr, err)
+	}
+
+	survivors := make([]CaptureTarget, 0, len(targets))
+	for _, target := range targets {
+		if _, found := current.panes[target.pane.ID]; found {
+			survivors = append(survivors, target)
+		}
+	}
+	if len(survivors) == len(targets) {
+		return nil, batchErr
+	}
+
+	// Targets missing from the post-capture facts fail with ErrChanged.
+	var texts map[string]string
+	var after Inventory
+	started := time.Now()
+	if len(survivors) > 0 {
+		texts, after, err = s.captureBatch(ctx, survivors)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return finishCaptures(targets, texts, after, started), ctx.Err()
 }
 
 func (s *Sampler) captureIDs(targets []CaptureTarget) ([]string, error) {
@@ -164,15 +197,17 @@ func (t CaptureTarget) check(i Inventory) error {
 	return nil
 }
 
-func finishCaptures(results []Screen, texts map[string]string, after Inventory, started time.Time) {
-	for n := range results {
-		result := &results[n]
-		result.Err = result.Target.check(after)
+func finishCaptures(targets []CaptureTarget, texts map[string]string, after Inventory, started time.Time) []Screen {
+	results := make([]Screen, len(targets))
+	for n, target := range targets {
+		result := Screen{Target: target, Err: target.check(after)}
 		if result.Err == nil {
-			result.Text = texts[result.Target.pane.ID]
+			result.Text = texts[target.pane.ID]
 			result.StartedAt = started
 		}
+		results[n] = result
 	}
+	return results
 }
 
 func (s *Sampler) captureBatch(ctx context.Context, targets []CaptureTarget) (map[string]string, Inventory, error) {
