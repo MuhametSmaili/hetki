@@ -438,7 +438,6 @@ func TestEndpointRecoveryRemovesStaleSocket(t *testing.T) {
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: c.path, Net: "unix"})
 	require.NoError(t, err)
 	listener.SetUnlinkOnClose(false)
-	require.NoError(t, os.Chmod(c.path, 0600))
 	require.NoError(t, listener.Close())
 
 	err = removeStaleEndpoint(context.Background(), c.path)

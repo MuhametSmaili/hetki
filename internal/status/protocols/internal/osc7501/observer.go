@@ -1,6 +1,7 @@
 // Package osc7501 observes the state-only projection of Program Status reports.
-// It validates unused metadata and child records but retains only the root state. It does
-// not implement terminal replies, metadata inheritance or presentation policy.
+// It validates unused metadata and child records but retains only the root
+// state. It does not implement terminal replies, metadata inheritance or
+// presentation policy.
 package osc7501
 
 type State string
@@ -47,7 +48,7 @@ func (o *Observer) Handle(payload []byte) Result {
 
 	o.observed = true
 	if report.id == "" {
-		// Clearing the root also clears its whole tree.
+		// A clear report has no state, so it withdraws the root.
 		o.root = report.state
 	}
 	return Applied
@@ -57,7 +58,7 @@ func (o *Observer) Handle(payload []byte) Result {
 // since Reset. It distinguishes withdrawal from never having received evidence.
 func (o *Observer) Observed() bool { return o.observed }
 
-// Root returns the current root state.
+// Root returns the root state, or false when none was reported or it was withdrawn.
 func (o *Observer) Root() (State, bool) { return o.root, o.root != "" }
 
 // Reset removes the root and the observed claim for RIS or lost continuity.

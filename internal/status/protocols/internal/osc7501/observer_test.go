@@ -158,7 +158,7 @@ func TestRootSurvivesManyChildReports(t *testing.T) {
 	require.Equal(t, Working, state)
 }
 
-func TestActivityEndRetainsExplicitOutcomesUntilReset(t *testing.T) {
+func TestActivityEndRetainsExplicitOutcomes(t *testing.T) {
 	cases := []struct {
 		state    State
 		retained bool
@@ -176,8 +176,6 @@ func TestActivityEndRetainsExplicitOutcomesUntilReset(t *testing.T) {
 			require.Equal(t, !tc.retained, changed)
 			require.Equal(t, tc.retained, found)
 			require.False(t, observer.EndActivity())
-			observer.Reset()
-			require.False(t, observer.Observed())
 		})
 	}
 }

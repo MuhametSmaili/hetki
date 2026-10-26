@@ -14,6 +14,8 @@ import (
 
 const staleConnectTimeout = 100 * time.Millisecond
 
+var errUnsafeDirectory = errors.New("status directory must be user-owned and mode 0700")
+
 // endpoint describes the location without reading or creating filesystem entries.
 func endpoint(server string) (string, error) {
 	if !validIdentity(server) {
@@ -57,7 +59,7 @@ func validateEndpointDirectory(path string) error {
 	}
 
 	if !info.IsDir() || !ownedMode(info, 0700) {
-		return fmt.Errorf("status directory must be user-owned and mode 0700")
+		return errUnsafeDirectory
 	}
 
 	return nil
@@ -65,6 +67,13 @@ func validateEndpointDirectory(path string) error {
 
 func ownedMode(info os.FileInfo, mode os.FileMode) bool {
 	return ownedByCurrentUser(info) && info.Mode().Perm() == mode
+}
+
+// ownedSocket checks the endpoint itself. Its mode is not checked: the private
+// directory is the access boundary, because socket file permissions are not
+// portable (unix(7)) and Go cannot set them before the socket is reachable.
+func ownedSocket(info os.FileInfo) bool {
+	return info.Mode()&os.ModeSocket != 0 && ownedByCurrentUser(info)
 }
 
 func ownedByCurrentUser(info os.FileInfo) bool {
@@ -82,7 +91,7 @@ func removeStaleEndpoint(ctx context.Context, path string) error {
 		return err
 	}
 
-	if info.Mode()&os.ModeSocket == 0 || !ownedMode(info, 0600) {
+	if !ownedSocket(info) {
 		return fmt.Errorf("unsafe status daemon endpoint")
 	}
 
@@ -117,10 +126,6 @@ func listen(path string) (*net.UnixListener, func(), error) {
 		if current, err := os.Lstat(path); err == nil && info != nil && os.SameFile(info, current) {
 			_ = os.Remove(path)
 		}
-	}
-
-	if err == nil {
-		err = os.Chmod(path, 0600)
 	}
 
 	if err != nil {
