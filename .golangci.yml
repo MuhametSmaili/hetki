@@ -57,8 +57,3 @@ linters:
     presets:
       # Close, Flush, print and os.*env results.
       - std-error-handling
-    rules:
-      # Test HTTP handlers: a failed write fails the client side of the test.
-      - path: _test\.go
-        linters: [errcheck]
-        text: "`w.Write`"

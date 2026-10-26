@@ -411,7 +411,11 @@ func runPickerPTY(t *testing.T, executable string, client *daemon.Client) {
 	}()
 	defer func() {
 		cancel()
-		<-done
+		// The success path already checked the exit and left done closed.
+		// After a failure, report how the picker ended for diagnosis.
+		if err := <-done; err != nil {
+			t.Logf("picker exit after cleanup: %v", err)
+		}
 	}()
 	select {
 	case <-output.ready:

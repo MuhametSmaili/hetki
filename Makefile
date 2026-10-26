@@ -16,7 +16,7 @@ install: build
 test:
 	go test -v ./...
 
-# Requires golangci-lint v2.14.0 on PATH, matching CI.
+# Requires golangci-lint v2.15.0 on PATH, matching CI.
 check:
 	@unformatted="$$(gofmt -l .)" || exit $$?; \
 	if [ -n "$$unformatted" ]; then \
