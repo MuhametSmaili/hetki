@@ -24,14 +24,20 @@ const (
 
 	// Running means that an instance answered a ping.
 	Running
+
+	// Incompatible means that an instance answered in another protocol. It
+	// cannot accept requests, so clients can only stop it.
+	Incompatible
 )
 
-// observation is one classification of the endpoint. Info is set only for
-// Running; cause explains a Transition.
+// observation is one classification of the endpoint. Info is set for Running
+// and, as the instance reported it, for Incompatible. Protocol is set only for
+// Incompatible; cause explains a Transition.
 type observation struct {
-	state State
-	info  Info
-	cause error
+	state    State
+	info     Info
+	protocol int
+	cause    error
 }
 
 // probe classifies the endpoint once without creating, repairing or removing
@@ -51,6 +57,11 @@ func (c *Client) probe(ctx context.Context) (observation, error) {
 	info, err := c.Ping(ctx)
 	if err == nil {
 		return observation{state: Running, info: info}, nil
+	}
+	var mismatch *ProtocolMismatchError
+	if errors.As(err, &mismatch) {
+		reported := Info{PID: mismatch.PID, Epoch: mismatch.Epoch}
+		return observation{state: Incompatible, info: reported, protocol: mismatch.Version}, nil
 	}
 	if interrupted(err) {
 		return observation{state: Transition, cause: err}, nil

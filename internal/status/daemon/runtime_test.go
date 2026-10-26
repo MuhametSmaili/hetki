@@ -173,8 +173,15 @@ func staticSource(snapshot status.Snapshot) SourceFactory {
 	}
 }
 
+// fixtureBuild is the build identity of daemons and clients in these tests.
+const fixtureBuild = "fixture-build"
+
 func liveBinding(server string) Binding {
-	return Binding{Server: server, Alive: func(context.Context) bool { return true }}
+	return buildBinding(server, fixtureBuild)
+}
+
+func buildBinding(server, build string) Binding {
+	return Binding{Server: server, Build: build, Alive: func(context.Context) bool { return true }}
 }
 
 func TestSnapshotRoundTripPreservesIdentityFreshnessAndAbsence(t *testing.T) {
@@ -261,6 +268,7 @@ func TestServerReplacementDuringReadRejectsSnapshot(t *testing.T) {
 	reading, finish := make(chan struct{}), make(chan struct{})
 	binding := Binding{
 		Server: c.server,
+		Build:  fixtureBuild,
 		Alive:  func(context.Context) bool { return alive.Load() },
 	}
 	done := startFixture(t, c, binding, func(context.Context, func(error)) (Source, error) {
@@ -298,6 +306,7 @@ func TestCanceledLifetimeCheckDoesNotStopDaemon(t *testing.T) {
 	checking, canceled := make(chan struct{}), make(chan struct{})
 	binding := Binding{
 		Server: c.server,
+		Build:  fixtureBuild,
 		Alive: func(ctx context.Context) bool {
 			if block.Swap(false) {
 				close(checking)
@@ -362,6 +371,7 @@ func TestIdleDaemonStopsWhenServerDies(t *testing.T) {
 	alive.Store(true)
 	binding := Binding{
 		Server: c.server,
+		Build:  fixtureBuild,
 		Alive:  func(context.Context) bool { return alive.Load() },
 	}
 	done := startFixture(t, c, binding, staticSource(status.Snapshot{}))
@@ -398,6 +408,7 @@ func TestStartupFailureReleasesEndpointAndClosesSource(t *testing.T) {
 	alive := true
 	binding := Binding{
 		Server: c.server,
+		Build:  fixtureBuild,
 		Alive:  func(context.Context) bool { return alive },
 	}
 

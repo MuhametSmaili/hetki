@@ -289,7 +289,7 @@ func TestSubscriptionRejectsInvalidRenewals(t *testing.T) {
 			go func() {
 				defer server.Close()
 				for _, frame := range frames {
-					frame.Version, frame.Server, frame.PID, frame.Epoch = protocolVersion, "server", 1, "0123456789abcdef0123456789abcdef"
+					frame.Version, frame.Server, frame.PID, frame.Epoch, frame.Build = protocolVersion, "server", 1, "0123456789abcdef0123456789abcdef", fixtureBuild
 					if writeFrame(server, maxReplyBytes, frame) != nil {
 						return
 					}

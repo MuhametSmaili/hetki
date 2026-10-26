@@ -39,6 +39,7 @@ func TestInspectRunningDaemonPreservesItsInstance(t *testing.T) {
 	require.Equal(t, Running, result.State)
 	require.NotNil(t, result.Instance)
 	require.Equal(t, before, *result.Instance)
+	require.Equal(t, fixtureBuild, result.Instance.Build)
 	require.Equal(t, c.LogPath(), result.LogPath)
 	require.NoError(t, pingErr)
 	require.Equal(t, before, after)
@@ -141,7 +142,6 @@ func TestInspectDoesNotTreatInvalidReplyAsAbsence(t *testing.T) {
 		change func(*reply)
 		want   error
 	}{
-		{"incompatible protocol", func(r *reply) { r.Version++ }, ErrProtocol},
 		{"wrong instance", func(r *reply) { r.Epoch = "invalid" }, ErrIdentity},
 		{"unavailable response", func(r *reply) { r.Error = "unavailable" }, ErrUnavailable},
 	} {
@@ -151,7 +151,7 @@ func TestInspectDoesNotTreatInvalidReplyAsAbsence(t *testing.T) {
 			require.NoError(t, err)
 			t.Cleanup(cleanup)
 			require.NoError(t, listener.SetDeadline(time.Now().Add(3*time.Second)))
-			response := reply{Version: protocolVersion, Server: c.server, PID: 1, Epoch: "0123456789abcdef0123456789abcdef"}
+			response := reply{Version: protocolVersion, Server: c.server, PID: 1, Epoch: "0123456789abcdef0123456789abcdef", Build: fixtureBuild}
 			tc.change(&response)
 			ctx, cancel := context.WithCancel(t.Context())
 			done := make(chan struct{})
@@ -177,4 +177,23 @@ func TestInspectDoesNotTreatInvalidReplyAsAbsence(t *testing.T) {
 			require.ErrorIs(t, inspectErr, tc.want)
 		})
 	}
+}
+
+func TestInspectReportsIncompatibleInstance(t *testing.T) {
+	c := fixtureClient(t, "inspect-incompatible")
+	listener, cleanup, err := listen(c.path)
+	require.NoError(t, err)
+	served := serveMismatch(listener, c.server, 4321, incompatibleEpoch)
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-served
+		cleanup()
+	})
+
+	result, err := Inspect(t.Context(), c.server)
+
+	require.NoError(t, err)
+	require.Equal(t, Incompatible, result.State)
+	require.Equal(t, protocolVersion-1, result.Protocol)
+	require.Equal(t, &Info{PID: 4321, Epoch: incompatibleEpoch}, result.Instance)
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/buildinfo"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 )
 
@@ -16,15 +17,16 @@ const DaemonCommand = "__status-daemon"
 const maxServerDescriptorBytes = 8192
 
 // EnsureDaemon starts or reuses the daemon for this exact server incarnation.
-// The detached child receives a descriptor rather than inheriting TMUX selection.
-// Executable may be empty to launch the current binary.
+// A daemon from another hetki build is replaced. The detached child receives a
+// descriptor rather than inheriting TMUX selection. Executable may be empty to
+// launch the current binary; it must be the same build as this process.
 func EnsureDaemon(ctx context.Context, server observe.Server, executable string) (*daemon.Client, error) {
 	if err := server.Validate(ctx); err != nil {
 		return nil, fmt.Errorf("validate status daemon server: %w", err)
 	}
 
 	identity := server.Identity()
-	return daemon.Ensure(ctx, identity, executable, func(ctx context.Context) ([]string, error) {
+	return daemon.Ensure(ctx, identity, buildinfo.Identity(), executable, func(ctx context.Context) ([]string, error) {
 		// Keep profile context in the caller's error until child startup can
 		// return an equally useful diagnostic instead of just an exit status.
 		if _, err := loadProfiles(ctx); err != nil {
@@ -54,6 +56,7 @@ func ServeDaemon(ctx context.Context, identity, descriptor string) error {
 
 	binding := daemon.Binding{
 		Server: identity,
+		Build:  buildinfo.Identity(),
 		Alive: func(ctx context.Context) bool {
 			return server.Validate(ctx) == nil
 		},

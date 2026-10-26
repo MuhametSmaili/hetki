@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/buildinfo"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	"github.com/stretchr/testify/require"
 )
@@ -42,6 +43,7 @@ func restartDaemonFixture(t *testing.T, server observe.Server, closeSource func(
 		defer close(done)
 		serveErr = daemon.Serve(ctx, daemon.Binding{
 			Server: server.Identity(),
+			Build:  buildinfo.Identity(),
 			Alive:  func(ctx context.Context) bool { return server.Validate(ctx) == nil },
 		}, func(context.Context, func(error)) (daemon.Source, error) {
 			return restartSource{close: closeSource}, nil

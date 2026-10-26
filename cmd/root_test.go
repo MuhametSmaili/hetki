@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"syscall"
 	"testing"
 	"time"
@@ -15,20 +14,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
-
-func TestApplyBuildInfoUsesModuleVersionAndRevision(t *testing.T) {
-	oldVersion, oldCommit := Version, GitCommit
-	t.Cleanup(func() { Version, GitCommit = oldVersion, oldCommit })
-	Version, GitCommit = "dev", "unknown"
-
-	applyBuildInfo(&debug.BuildInfo{
-		Main:     debug.Module{Version: "v1.2.3"},
-		Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "abc123"}},
-	})
-
-	require.Equal(t, "v1.2.3", Version)
-	require.Equal(t, "abc123", GitCommit)
-}
 
 func TestBareHetkiRequiresTerminalStdinAndStdout(t *testing.T) {
 	previousProbe, previousOpen := isTerminal, openTUI

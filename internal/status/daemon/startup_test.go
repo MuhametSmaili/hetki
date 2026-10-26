@@ -19,10 +19,18 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if len(os.Args) == 3 && os.Args[1] == "__status-daemon" {
+	if len(os.Args) == 3 && os.Args[1] == "__incompatible-daemon" {
+		os.Exit(runIncompatibleFixture(os.Args[2]))
+	}
+
+	if len(os.Args) >= 3 && os.Args[1] == "__status-daemon" {
+		build := fixtureBuild
+		if len(os.Args) == 4 {
+			build = os.Args[3]
+		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		err := Serve(ctx, liveBinding(os.Args[2]), processFixtureSource(os.Args[2]))
+		err := Serve(ctx, buildBinding(os.Args[2], build), processFixtureSource(os.Args[2]))
 		cancel()
 		stop()
 
@@ -37,8 +45,12 @@ func TestMain(m *testing.M) {
 }
 
 func fixtureArguments(server string) func(context.Context) ([]string, error) {
+	return buildArguments(server, fixtureBuild)
+}
+
+func buildArguments(server, build string) func(context.Context) ([]string, error) {
 	return func(context.Context) ([]string, error) {
-		return []string{"__status-daemon", server}, nil
+		return []string{"__status-daemon", server, build}, nil
 	}
 }
 
@@ -77,7 +89,7 @@ func TestConcurrentLaunchUsesSingleDaemon(t *testing.T) {
 	require.NoError(t, err)
 
 	prepared := false
-	client, err := Ensure(t.Context(), c.server, executable, func(context.Context) ([]string, error) {
+	client, err := Ensure(t.Context(), c.server, fixtureBuild, executable, func(context.Context) ([]string, error) {
 		prepared = true
 		return nil, errors.New("unexpected launch preparation")
 	})
@@ -103,7 +115,7 @@ func TestEnsureRetriesSettledLaunchWithoutRepeatingPreparation(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "first-attempt")
 	prepared := 0
 
-	_, err = Ensure(t.Context(), client.server, executable, func(context.Context) ([]string, error) {
+	_, err = Ensure(t.Context(), client.server, fixtureBuild, executable, func(context.Context) ([]string, error) {
 		prepared++
 		return []string{"-c", `if [ ! -f "$1" ]; then : > "$1"; exit 0; fi; exec "$2" __status-daemon "$3"`, "fixture", marker, fixture, client.server}, nil
 	})
@@ -120,7 +132,7 @@ func TestStartupWaitsForPrivateSocketPermissions(t *testing.T) {
 		run  func(context.Context, *Client) error
 	}{
 		{"ensure", func(ctx context.Context, client *Client) error {
-			_, err := Ensure(ctx, client.server, "", func(context.Context) ([]string, error) {
+			_, err := Ensure(ctx, client.server, fixtureBuild, "", func(context.Context) ([]string, error) {
 				return nil, errors.New("unexpected launch preparation")
 			})
 			return err
@@ -157,7 +169,7 @@ func TestEnsurePreservesPreparationFailureWithoutLaunching(t *testing.T) {
 	failure := errors.New("fixture preparation failed")
 	preparations := 0
 
-	_, err := Ensure(t.Context(), c.server, filepath.Join(t.TempDir(), "missing"), func(context.Context) ([]string, error) {
+	_, err := Ensure(t.Context(), c.server, fixtureBuild, filepath.Join(t.TempDir(), "missing"), func(context.Context) ([]string, error) {
 		preparations++
 		return nil, failure
 	})
@@ -175,7 +187,7 @@ func TestEnsureLaunchUsesCompleteCompositionArguments(t *testing.T) {
 	executable, err := exec.LookPath("sh")
 	require.NoError(t, err)
 
-	_, err = Ensure(t.Context(), c.server, executable, func(context.Context) ([]string, error) {
+	_, err = Ensure(t.Context(), c.server, fixtureBuild, executable, func(context.Context) ([]string, error) {
 		return []string{"-c", "exit 7"}, nil
 	})
 
@@ -199,7 +211,7 @@ func TestEnsureCancellationPreventsLaunch(t *testing.T) {
 			}
 			prepared := false
 
-			_, err := Ensure(ctx, c.server, filepath.Join(t.TempDir(), "missing"), func(prepareCtx context.Context) ([]string, error) {
+			_, err := Ensure(ctx, c.server, fixtureBuild, filepath.Join(t.TempDir(), "missing"), func(prepareCtx context.Context) ([]string, error) {
 				prepared = true
 				cancel()
 				require.ErrorIs(t, prepareCtx.Err(), context.Canceled)
@@ -253,7 +265,7 @@ func TestCrashReconnectStartsFreshDaemon(t *testing.T) {
 	t.Cleanup(func() {
 		stopProcessFixture(t, c)
 	})
-	_, err = Ensure(context.Background(), c.server, executable, fixtureArguments(c.server))
+	_, err = Ensure(context.Background(), c.server, fixtureBuild, executable, fixtureArguments(c.server))
 	require.NoError(t, err)
 	previous, err := c.Ping(context.Background())
 	require.NoError(t, err)
@@ -266,7 +278,7 @@ func TestCrashReconnectStartsFreshDaemon(t *testing.T) {
 		return isMissingEndpoint(err)
 	}, 3*time.Second, 10*time.Millisecond)
 
-	_, restartErr := Ensure(context.Background(), c.server, executable, fixtureArguments(c.server))
+	_, restartErr := Ensure(context.Background(), c.server, fixtureBuild, executable, fixtureArguments(c.server))
 	info, pingErr := c.Ping(context.Background())
 	snapshot, readErr := readFirst(context.Background(), c)
 	data, logErr := os.ReadFile(c.LogPath())

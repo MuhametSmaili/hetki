@@ -57,8 +57,8 @@ func (l *daemonLog) info(event string) {
 	l.logger.Printf("level=INFO event=%q", event)
 }
 
-func (l *daemonLog) ready(epoch string) {
-	l.logger.Printf("level=INFO event=%q epoch=%s", "ready", epoch)
+func (l *daemonLog) ready(epoch, build string) {
+	l.logger.Printf("level=INFO event=%q epoch=%s build=%q", "ready", epoch, logMessage(build))
 }
 
 func (l *daemonLog) failure(event string, err error) {

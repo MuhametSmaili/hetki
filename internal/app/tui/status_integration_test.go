@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
+	"github.com/MuhametSmaili/hetki/internal/buildinfo"
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	"github.com/MuhametSmaili/hetki/internal/testenv"
@@ -175,7 +176,7 @@ func servePickerSource(t *testing.T, client *daemon.Client, identity string, sou
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- daemon.Serve(ctx, daemon.Binding{Server: identity, Alive: func(ctx context.Context) bool {
+		done <- daemon.Serve(ctx, daemon.Binding{Server: identity, Build: buildinfo.Identity(), Alive: func(ctx context.Context) bool {
 			return ctx.Err() == nil
 		}}, func(context.Context, func(error)) (daemon.Source, error) { return source, nil })
 	}()
@@ -294,7 +295,9 @@ func pickerRowValues(update ui.StatusUpdate, now time.Time) map[list.ItemID]stat
 func buildPickerExecutable(t *testing.T) string {
 	t.Helper()
 	executable := filepath.Join(t.TempDir(), "hetki")
-	build := exec.CommandContext(t.Context(), "go", "build", "-race", "-o", executable, "../../..")
+	args := append([]string{"build", "-race"}, testenv.BuildFlags()...)
+	args = append(args, "-o", executable, "../../..")
+	build := exec.CommandContext(t.Context(), "go", args...)
 	output, err := build.CombinedOutput()
 	require.NoError(t, err, "%s", output)
 	return executable

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/MuhametSmaili/hetki/internal/app/statusobserver"
+	"github.com/MuhametSmaili/hetki/internal/testenv"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,9 @@ type rowsOnlyBackend struct{ Backend }
 
 func BenchmarkNativePickerOpening(b *testing.B) {
 	executable := filepath.Join(b.TempDir(), "hetki")
-	build := exec.CommandContext(b.Context(), "go", "build", "-o", executable, "../../..")
+	args := append([]string{"build"}, testenv.BuildFlags()...)
+	args = append(args, "-o", executable, "../../..")
+	build := exec.CommandContext(b.Context(), "go", args...)
 	out, err := build.CombinedOutput()
 	require.NoError(b, err, "%s", out)
 	native, _, _ := pickerDaemonFixture(b)

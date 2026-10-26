@@ -690,7 +690,10 @@ install_from_source() {
     mkdir -p "$temp_dir/gocache" "$temp_dir/tmp"
     build_log="$(mktemp)"
     TEMP_FILES+=("$build_log")
-    ldflags="-X ${GO_MODULE}/cmd.Version=${tag} -X ${GO_MODULE}/cmd.GitCommit=${RESOLVED_COMMIT}"
+    # Older tags keep build information in cmd; the linker ignores whichever
+    # variables the selected tag does not define.
+    ldflags="-X ${GO_MODULE}/internal/buildinfo.version=${tag} -X ${GO_MODULE}/internal/buildinfo.commit=${RESOLVED_COMMIT}"
+    ldflags+=" -X ${GO_MODULE}/cmd.Version=${tag} -X ${GO_MODULE}/cmd.GitCommit=${RESOLVED_COMMIT}"
     info "Installing from source at exact tag ${tag} (verified by the Go checksum database)..."
     SOURCE_WATCH_DIR="$temp_dir"
     verify_source_origin "$tag" "$RESOLVED_COMMIT" "$mod_cache"

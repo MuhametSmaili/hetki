@@ -9,6 +9,7 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/app/statusobserver"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/buildinfo"
 	"github.com/MuhametSmaili/hetki/internal/status/daemon"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +23,12 @@ func TestServiceStatusOutput(t *testing.T) {
 	}{
 		{"not listening", daemon.Absent, nil, "Status service: not listening\nTmux socket: /tmp/tmux.sock\nLog: /tmp/status.log\n"},
 		{"starting or stopping", daemon.Transition, nil, "Status service: starting or stopping\nTmux socket: /tmp/tmux.sock\nLog: /tmp/status.log\n"},
-		{"running", daemon.Running, &daemon.Info{PID: 123, Epoch: "fixture"}, "Status service: running\nTmux socket: /tmp/tmux.sock\nDaemon PID: 123\nInstance: fixture\nLog: /tmp/status.log\n"},
+		{"running", daemon.Running, &daemon.Info{PID: 123, Epoch: "fixture", Build: buildinfo.Identity(), Executable: "/opt/bin/hetki"},
+			"Status service: running\nTmux socket: /tmp/tmux.sock\nDaemon PID: 123\nInstance: fixture\nBuild: " + buildinfo.Identity() + "\nExecutable: /opt/bin/hetki\nLog: /tmp/status.log\n"},
+		{"running another build", daemon.Running, &daemon.Info{PID: 123, Epoch: "fixture", Build: "v0.0.1 old"},
+			"Status service: running\nTmux socket: /tmp/tmux.sock\nDaemon PID: 123\nInstance: fixture\nBuild: v0.0.1 old (differs from this hetki: " + buildinfo.Identity() + ")\nLog: /tmp/status.log\n"},
+		{"running another protocol", daemon.Incompatible, &daemon.Info{PID: 123, Epoch: "fixture"},
+			"Status service: running another hetki build\nTmux socket: /tmp/tmux.sock\nDaemon PID: 123\nInstance: fixture\nProtocol: 2\nLog: /tmp/status.log\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
@@ -32,7 +38,7 @@ func TestServiceStatusOutput(t *testing.T) {
 				require.Equal(t, t.Context(), ctx)
 				return statusobserver.ServiceStatus{
 					Server: observe.Server{Socket: "/tmp/tmux.sock"},
-					Daemon: daemon.Inspection{State: tc.state, Instance: tc.instance, LogPath: "/tmp/status.log"},
+					Daemon: daemon.Inspection{State: tc.state, Instance: tc.instance, Protocol: 2, LogPath: "/tmp/status.log"},
 				}, nil
 			}, nil, nil, nil)
 			command.SetOut(&output)
@@ -238,6 +244,7 @@ func TestServiceStatusRejectsInvalidInspection(t *testing.T) {
 	}{
 		{"unset state", daemon.Inspection{}},
 		{"running without instance", daemon.Inspection{State: daemon.Running}},
+		{"incompatible without instance", daemon.Inspection{State: daemon.Incompatible}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			command := newServiceCommand(func(context.Context) (statusobserver.ServiceStatus, error) {

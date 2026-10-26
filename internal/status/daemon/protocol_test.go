@@ -6,7 +6,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io"
+	"maps"
 	"net"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +43,7 @@ func TestFrameRejectsInvalidInput(t *testing.T) {
 }
 
 func TestClientRejectsIncompatibleReply(t *testing.T) {
-	valid := reply{Version: protocolVersion, Server: "server", PID: 1, Epoch: strings.Repeat("a", 32)}
+	valid := reply{Version: protocolVersion, Server: "server", PID: 1, Epoch: strings.Repeat("a", 32), Build: fixtureBuild}
 	for _, tt := range []struct {
 		name   string
 		change func(*reply)
@@ -50,6 +52,8 @@ func TestClientRejectsIncompatibleReply(t *testing.T) {
 		{"server", func(r *reply) { r.Server = "replacement" }, ErrIdentity},
 		{"epoch", func(r *reply) { r.Epoch = "invalid" }, ErrIdentity},
 		{"pid", func(r *reply) { r.PID = 0 }, ErrIdentity},
+		{"missing build", func(r *reply) { r.Build = "" }, ErrIdentity},
+		{"oversized executable", func(r *reply) { r.Executable = strings.Repeat("x", maxPathBytes+1) }, ErrIdentity},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			row := valid
@@ -96,7 +100,7 @@ func TestClientReportsDaemonProtocolMismatch(t *testing.T) {
 
 	var mismatch *ProtocolMismatchError
 	require.ErrorAs(t, err, &mismatch)
-	require.Equal(t, ProtocolMismatchError{PID: 4321, Version: protocolVersion + 1}, *mismatch)
+	require.Equal(t, ProtocolMismatchError{PID: 4321, Epoch: strings.Repeat("a", 32), Version: protocolVersion + 1}, *mismatch)
 	require.ErrorIs(t, err, ErrProtocol)
 	receive(t, done)
 }
@@ -146,10 +150,17 @@ func TestDaemonRepliesToOtherProtocolVersions(t *testing.T) {
 			require.NoError(t, conn.SetDeadline(time.Now().Add(time.Second)))
 			require.NoError(t, writeFrame(conn, maxRequestBytes, tc.frame))
 
+			raw, err := readFrameData(conn, maxReplyBytes)
+			var fields map[string]json.RawMessage
+			fieldsErr := json.Unmarshal(raw, &fields)
 			var result reply
-			err = readFrame(conn, maxReplyBytes, &result)
+			decodeErr := decodeFrame(raw, &result)
 
 			require.NoError(t, err)
+			require.NoError(t, fieldsErr)
+			// Clients of every version identify and stop this instance with these fields only.
+			require.ElementsMatch(t, []string{"version", "server", "pid", "epoch", "error"}, slices.Collect(maps.Keys(fields)))
+			require.NoError(t, decodeErr)
 			require.Equal(t, reply{
 				Version: protocolVersion, Server: c.server, PID: identity.PID, Epoch: identity.Epoch, Error: protocolMismatch,
 			}, result)

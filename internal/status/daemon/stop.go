@@ -11,7 +11,8 @@ const shutdownTimeout = 5 * time.Second
 
 // Stop targets one observed instance without creating storage or starting a
 // daemon. It first waits, within its timeout, for a Transition to settle, and
-// returns ErrTransition if it does not. A nil instance means the service settled
+// returns ErrTransition if it does not. An Incompatible instance receives
+// SIGTERM after its identity is confirmed, because it cannot accept a request. A nil instance means the service settled
 // as Absent, not that a concurrent starter is excluded. Success waits for the
 // target's workers, source and logs to close; it does not wait for a
 // replacement to exit.
@@ -44,14 +45,28 @@ func (c *Client) stop(ctx context.Context) (*Info, error) {
 		}
 		return nil, err
 	}
+	if err := c.retire(ctx, observed); err != nil {
+		return nil, err
+	}
 	if observed.state == Absent {
 		return nil, nil
 	}
-
-	if err := c.stopObserved(ctx, observed.info); err != nil {
-		return nil, err
-	}
 	return &observed.info, nil
+}
+
+// retire stops the observed instance and waits for its teardown. Absence needs
+// no work.
+func (c *Client) retire(ctx context.Context, observed observation) error {
+	switch observed.state {
+	case Absent:
+		return nil
+	case Running:
+		return c.stopObserved(ctx, observed.info)
+	case Incompatible:
+		return c.terminateIncompatible(ctx, observed.info)
+	default:
+		return fmt.Errorf("cannot stop a status daemon in state %d", observed.state)
+	}
 }
 
 func (c *Client) stopObserved(ctx context.Context, info Info) (err error) {

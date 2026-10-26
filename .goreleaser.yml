@@ -20,9 +20,9 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -s -w -buildid=
-      - -X github.com/MuhametSmaili/hetki/cmd.Version=v{{.Version}}
-      - -X github.com/MuhametSmaili/hetki/cmd.GitCommit={{.FullCommit}}
-      - -X github.com/MuhametSmaili/hetki/cmd.BuildDate={{.CommitDate}}
+      - -X github.com/MuhametSmaili/hetki/internal/buildinfo.version=v{{.Version}}
+      - -X github.com/MuhametSmaili/hetki/internal/buildinfo.commit={{.FullCommit}}
+      - -X github.com/MuhametSmaili/hetki/internal/buildinfo.date={{.CommitDate}}
 
 archives:
   - id: hetki

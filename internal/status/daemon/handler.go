@@ -110,6 +110,7 @@ func (d *daemon) rejectProtocol(ctx context.Context, conn *net.UnixConn, version
 	d.logs.repeatedFailure("request_rejected", fmt.Errorf("client protocol %d, daemon protocol %d", version, protocolVersion))
 
 	row := d.identity()
+	row.Build, row.Executable = "", ""
 	row.Error = protocolMismatch
 	if err := writeFrame(conn, maxReplyBytes, row); err != nil && ctx.Err() == nil {
 		d.logs.repeatedFailure("reply_write_failed", err)
@@ -131,9 +132,18 @@ func (d *daemon) checkLifetime(ctx context.Context) bool {
 
 func (d *daemon) identity() reply {
 	return reply{
-		Version: protocolVersion,
-		Server:  d.binding.Server,
-		PID:     d.info.PID,
-		Epoch:   d.info.Epoch,
+		Version:    protocolVersion,
+		Server:     d.binding.Server,
+		PID:        d.info.PID,
+		Epoch:      d.info.Epoch,
+		Build:      d.binding.Build,
+		Executable: d.executablePath(),
 	}
+}
+
+func (d *daemon) executablePath() string {
+	if d.executable == nil {
+		return ""
+	}
+	return d.executable.path
 }

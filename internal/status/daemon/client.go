@@ -18,9 +18,14 @@ type Client struct {
 	path   string
 }
 
+// Info identifies one instance. Build and Executable are empty for an instance
+// that speaks another protocol; Executable is also empty when the instance
+// could not record its binary.
 type Info struct {
-	PID   int
-	Epoch string
+	PID        int
+	Epoch      string
+	Build      string
+	Executable string
 }
 
 func Connect(server string) (*Client, error) {
@@ -109,7 +114,7 @@ func (c *Client) readReply(conn net.Conn) (reply, error) {
 	}
 
 	if result.Version != protocolVersion {
-		return reply{}, &ProtocolMismatchError{PID: max(result.PID, 0), Version: result.Version}
+		return reply{}, &ProtocolMismatchError{PID: max(result.PID, 0), Epoch: result.Epoch, Version: result.Version}
 	}
 
 	if result.Server != c.server || result.PID <= 0 || !validEpoch(result.Epoch) {
@@ -120,6 +125,9 @@ func (c *Client) readReply(conn net.Conn) (reply, error) {
 	case "instance_changed":
 		return reply{}, ErrIdentity
 	case "":
+		if !validIdentity(result.Build) || len(result.Executable) > maxPathBytes {
+			return reply{}, ErrIdentity
+		}
 	default:
 		return reply{}, ErrUnavailable
 	}
@@ -129,5 +137,5 @@ func (c *Client) readReply(conn net.Conn) (reply, error) {
 
 func (c *Client) Ping(ctx context.Context) (Info, error) {
 	result, err := c.call(ctx, "ping")
-	return Info{PID: result.PID, Epoch: result.Epoch}, err
+	return Info{PID: result.PID, Epoch: result.Epoch, Build: result.Build, Executable: result.Executable}, err
 }

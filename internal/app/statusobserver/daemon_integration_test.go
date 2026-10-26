@@ -117,7 +117,9 @@ func buildDaemonExecutable(t *testing.T) string {
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, "go", "build", "-race", "-o", path, "../../..")
+	args := append([]string{"build", "-race"}, testenv.BuildFlags()...)
+	args = append(args, "-o", path, "../../..")
+	command := exec.CommandContext(ctx, "go", args...)
 	output, err := command.CombinedOutput()
 	require.NoError(t, err, "%s", output)
 	return path

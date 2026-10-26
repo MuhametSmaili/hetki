@@ -45,7 +45,7 @@ func TestEnsureDoesNotLaunchDuringSourceCleanup(t *testing.T) {
 	defer cancel()
 	prepared := false
 
-	_, err = Ensure(ctx, client.server, "", func(context.Context) ([]string, error) {
+	_, err = Ensure(ctx, client.server, fixtureBuild, "", func(context.Context) ([]string, error) {
 		prepared = true
 		return nil, errors.New("must not prepare before cleanup")
 	})
@@ -69,7 +69,7 @@ func TestEnsureStartsAfterSourceCleanup(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		_, err := Ensure(ctx, client.server, "", fixtureArguments(client.server))
+		_, err := Ensure(ctx, client.server, fixtureBuild, "", fixtureArguments(client.server))
 		started <- err
 	}()
 	release()

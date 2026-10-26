@@ -17,6 +17,10 @@ const livenessTimeout = 2 * time.Second
 type Binding struct {
 	Server string
 
+	// Build identifies the executable's build. Clients replace an instance whose
+	// build differs from their own.
+	Build string
+
 	// Alive validates this exact server incarnation and honors cancellation.
 	// It may be called concurrently by the watcher and request handlers.
 	Alive func(context.Context) bool
@@ -41,6 +45,9 @@ type SourceFactory func(ctx context.Context, report func(error)) (Source, error)
 func Serve(ctx context.Context, binding Binding, start SourceFactory) (err error) {
 	if binding.Alive == nil || start == nil {
 		return fmt.Errorf("status daemon requires lifetime check and source factory")
+	}
+	if !validIdentity(binding.Build) {
+		return fmt.Errorf("status daemon requires a build identity")
 	}
 
 	path, err := endpoint(binding.Server)
@@ -141,7 +148,7 @@ func serveLocked(ctx context.Context, path, epoch string, binding Binding, start
 			Epoch: epoch,
 		},
 	}
-	logs.ready(d.info.Epoch)
+	logs.ready(d.info.Epoch, binding.Build)
 
 	return d.run(ctx, listener)
 }

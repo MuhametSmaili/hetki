@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	protocolVersion  = 2
+	protocolVersion  = 3
 	maxRequestBytes  = 4096
 	maxReplyBytes    = 1 << 20
 	maxIdentityBytes = 256
+	maxPathBytes     = 4096
 	requestTimeout   = 2 * time.Second
 )
 
@@ -39,13 +40,15 @@ type request struct {
 }
 
 type reply struct {
-	Version   int        `json:"version"`
-	Server    string     `json:"server"`
-	PID       int        `json:"pid"`
-	Epoch     string     `json:"epoch"`
-	Entries   []entry    `json:"entries,omitempty"`
-	Locations []Location `json:"locations,omitempty"`
-	Error     string     `json:"error,omitempty"`
+	Version    int        `json:"version"`
+	Server     string     `json:"server"`
+	PID        int        `json:"pid"`
+	Epoch      string     `json:"epoch"`
+	Build      string     `json:"build,omitempty"`
+	Executable string     `json:"executable,omitempty"`
+	Entries    []entry    `json:"entries,omitempty"`
+	Locations  []Location `json:"locations,omitempty"`
+	Error      string     `json:"error,omitempty"`
 
 	// A renewal frame changes only the lease and the deadlines in Entries.
 	// The client keeps the rest of its last full view.
@@ -65,13 +68,15 @@ type entry struct {
 var errNoReply = errors.New("status daemon closed the connection without replying")
 
 // Mismatch replies must keep only fields that every protocol version decodes:
-// version, server, pid, epoch and error.
+// version, server, pid, epoch and error. A client of any version relies on the
+// pid and epoch to stop an instance whose protocol it does not speak.
 const protocolMismatch = "protocol_mismatch"
 
 // ProtocolMismatchError reports a daemon on another protocol version. A zero
-// PID means the daemon reported none. It matches ErrProtocol.
+// PID or an empty Epoch means the daemon reported none. It matches ErrProtocol.
 type ProtocolMismatchError struct {
 	PID     int
+	Epoch   string
 	Version int
 }
 

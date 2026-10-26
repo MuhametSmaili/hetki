@@ -40,6 +40,7 @@ Update Hetki with the tool you installed it with:
 | mise, `@main`  | `mise install --force go:github.com/MuhametSmaili/hetki@main` |
 
 The status service stops when its binary is replaced. The picker starts the new build the next time it opens.
+If a service from another build still runs, the picker and `hetki service restart` replace it.
 
 <details>
 <summary>Load completion for Hetki</summary>

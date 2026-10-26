@@ -355,6 +355,7 @@ if HETKI_FROM_SOURCE=1 run_case source ok; then
     check "source binary installed" "[[ -x \"\$BIN\" ]]"
     check "source authentication pinned" "grep -q 'GOPROXY=direct GOSUMDB=sum.golang.org GONOSUMDB= GOPRIVATE= GONOPROXY= GOMODCACHE=.* GOCACHE=.* GOTMPDIR=.' \"\$WORK/source/go.log\""
     check "source tag pinned" "grep -q 'github.com/MuhametSmaili/hetki@v1.0.0' \"\$WORK/source/go.log\""
+    check "source build stamps current and older build variables" "grep -q 'internal/buildinfo.commit=' \"\$WORK/source/go.log\" && grep -q 'cmd.GitCommit=' \"\$WORK/source/go.log\""
 else
     FAIL=$((FAIL + 1)); note "source installer failed: $(tail -3 "$WORK/source/err.log")"
 fi

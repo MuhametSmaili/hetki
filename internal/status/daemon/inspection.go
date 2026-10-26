@@ -5,11 +5,13 @@ import (
 )
 
 // Inspection describes a single endpoint probe, not ownership of its process.
-// Instance is set only when State is Running. LogPath describes the expected
-// location, even when no log exists.
+// Instance is set when State is Running or Incompatible; for Incompatible it
+// holds what the instance reported. Protocol is set only for Incompatible.
+// LogPath describes the expected location, even when no log exists.
 type Inspection struct {
 	State    State
 	Instance *Info
+	Protocol int
 	LogPath  string
 }
 
@@ -33,8 +35,9 @@ func Inspect(ctx context.Context, server string) (Inspection, error) {
 	}
 
 	result.State = observed.state
-	if observed.state == Running {
+	if observed.state == Running || observed.state == Incompatible {
 		result.Instance = &observed.info
+		result.Protocol = observed.protocol
 	}
 	return result, nil
 }
