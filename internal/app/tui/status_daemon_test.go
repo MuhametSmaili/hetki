@@ -129,11 +129,17 @@ func TestOpeningStatusDefersDaemonWorkUntilRead(t *testing.T) {
 		require.NotNil(t, reader)
 		update := reader.options().Read(t.Context(), 0)
 		require.Error(t, update.Err, "the asynchronous read validates the descriptor")
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		later := make(chan ui.StatusUpdate, 1)
+		go func() { later <- reader.options().Read(ctx, update.Sequence) }()
 
 		time.Sleep(time.Hour) // Virtual time exceeds any retry suppression.
-		later := reader.options().Read(t.Context(), update.Sequence)
+		synctest.Wait()
 
-		require.ErrorIs(t, later.Err, errors.Unwrap(update.Err), "uncertain native identity ends this reader")
+		require.Empty(t, later, "uncertain native identity ends this reader without new results")
+		cancel()
+		require.Equal(t, update.Sequence, awaitChannel(t, later).Sequence)
 	})
 }
 

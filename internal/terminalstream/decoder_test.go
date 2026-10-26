@@ -112,12 +112,27 @@ func TestFramingAcrossEverySplitPoint(t *testing.T) {
 	}
 }
 
-func TestOpaqueStringsDoNotExposeReportsOrResets(t *testing.T) {
-	for _, introducer := range []string{"P", "X", "^", "_"} {
+func TestDCSDoesNotExposeReportsOrResets(t *testing.T) {
+	input := "\x1bPpayload\x1bc\x1b]7501;state=idle\a\x1b\\"
+	input += "\x1b]133;A\a"
+	want := []observation{{kind: OSC, body: "133;A"}}
+
+	for split := 0; split <= len(input); split++ {
+		got := collect(input[:split], input[split:])
+
+		require.Equal(t, want, got, "split at byte %d", split)
+	}
+}
+
+// tmux ends SOS, PM and APC at any ESC, so an unterminated string cannot hide
+// the reports and resets that follow it.
+func TestEscapeEndsUnterminatedControlStrings(t *testing.T) {
+	for _, introducer := range []string{"X", "^", "_"} {
 		t.Run(introducer, func(t *testing.T) {
-			input := "\x1b" + introducer + "payload\x1bc\x1b]7501;state=idle\a\x1b\\"
-			input += "\x1b]133;A\a"
-			want := []observation{{kind: OSC, body: "133;A"}}
+			input := "\x1b" + introducer + "payload\x1bc"
+			input += "\x1b" + introducer + "payload\x1b\x1b]7501;state=idle\a"
+			input += "\x1b" + introducer + "payload\x1b\\\x1b]133;A\a"
+			want := []observation{{kind: RIS}, {kind: OSC, body: "7501;state=idle"}, {kind: OSC, body: "133;A"}}
 
 			for split := 0; split <= len(input); split++ {
 				got := collect(input[:split], input[split:])

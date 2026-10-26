@@ -56,12 +56,6 @@ func TestInspectReportsTransitionWithoutWaiting(t *testing.T) {
 			require.NotNil(t, lock)
 			t.Cleanup(func() { require.NoError(t, lock.Close()) })
 		}},
-		{"listener before chmod", func(t *testing.T, c *Client) {
-			_, cleanup, err := listen(c.path)
-			require.NoError(t, err)
-			t.Cleanup(cleanup)
-			require.NoError(t, os.Chmod(c.path, 0700))
-		}},
 		{"connection closed without reply", func(t *testing.T, c *Client) {
 			listener, cleanup, err := listen(c.path)
 			require.NoError(t, err)

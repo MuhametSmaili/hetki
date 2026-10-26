@@ -130,11 +130,10 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 	}
 	m.applyStatusUpdate(msg.update)
 	m.applyStatusPresentation(time.Now())
-	if msg.update.Err == nil {
-		return m, statusPoll(0)
-	}
 
-	return m, statusPoll(statusPollInterval)
+	// Read waits for a newer result, so the next read starts at once even after
+	// an error: the source applies its own retry delay.
+	return m, statusPoll(0)
 }
 
 func (m *model) applyStatusUpdate(update StatusUpdate) {

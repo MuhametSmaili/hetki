@@ -35,7 +35,8 @@ func TestWindowOpenCapturesTheDisplayedPane(t *testing.T) {
 				}
 				id := list.ItemID{ID: "window"}
 				values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-					panes[1].Ref: {State: status.Unknown, Outcome: status.Completed, OutcomeSince: time.Now(), ValidUntil: time.Now().Add(time.Minute)},
+					panes[0].Ref: {State: status.Working, ValidUntil: time.Now().Add(time.Hour)},
+					panes[1].Ref: {State: status.Blocked, ValidUntil: time.Now().Add(statusSuccessDuration)},
 				})
 				require.NoError(t, err)
 				m, _ = updateModel(t, m, statusResultMsg{update: StatusUpdate{Values: values}})

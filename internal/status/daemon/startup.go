@@ -232,7 +232,7 @@ func (c *Client) waitReady(ctx context.Context, exited <-chan error) error {
 	var lastProbe error
 	for {
 		_, err := c.Ping(ctx)
-		if err == nil {
+		if err == nil || errors.Is(err, ErrBusy) {
 			return nil
 		}
 		// The child may not own its lock yet, so a missing endpoint is not

@@ -162,7 +162,7 @@ func (p *Pane) Snapshot() Observation {
 }
 
 func (p *Pane) application() (status.State, status.Outcome) {
-	state, found := p.program.Lookup("")
+	state, found := p.program.Root()
 	if !found {
 		if p.program.Observed() || p.withdrawn {
 			return status.Withdrawn, status.NoOutcome

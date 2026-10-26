@@ -30,17 +30,19 @@ const (
 	csi
 	osc
 	oscEscape
-	ignoredString
-	ignoredEscape
+	dcs
+	dcsEscape
+	controlString
 )
 
 // Decoder belongs to one uninterrupted pane stream. Its zero value is ready to
 // use. Calls must be serialized; callbacks must not reenter or mutate Decoder.
 // Do not copy a Decoder after first use.
 // Only OSC bodies are buffered, lazily, up to MaxSequenceBytes-3 bytes. Other
-// strings (DCS, SOS, PM and APC) are skipped without retaining their contents.
-// Doubled ESC bytes in skipped strings are consumed as an opaque pair, so wrapped
-// escape sequences are not decoded as passthrough reports.
+// strings (DCS, SOS, PM and APC) are skipped without retaining their contents,
+// matching tmux: in DCS, ESC pairs with the next byte, so wrapped passthrough
+// sequences stay opaque; SOS, PM and APC end at any ESC, which starts the next
+// sequence.
 type Decoder struct {
 	state  state
 	length int
@@ -75,12 +77,14 @@ func (d *Decoder) advance(c byte, emit func(Frame)) {
 		}
 	case escape, escapeIntermediate:
 		d.advanceEscape(c, emit)
-	case csi:
-		d.skipCSI(c)
 	case osc, oscEscape:
 		d.advanceOSC(c, emit)
-	case ignoredString, ignoredEscape:
-		d.skipString(c)
+	case dcs, dcsEscape:
+		d.skipDCS(c)
+	case csi:
+		d.skipCSI(c)
+	case controlString:
+		d.skipControlString(c)
 	}
 }
 
@@ -133,8 +137,10 @@ func (d *Decoder) dispatchEscape(c byte, emit func(Frame)) {
 		d.state = osc
 	case '[':
 		d.state = csi
-	case 'P', 'X', '^', '_':
-		d.state = ignoredString
+	case 'P':
+		d.state = dcs
+	case 'X', '^', '_':
+		d.state = controlString
 	case 'c':
 		d.discard()
 		emit(Frame{Kind: RIS})
@@ -154,9 +160,17 @@ func (d *Decoder) skipCSI(c byte) {
 	}
 }
 
-func (d *Decoder) skipString(c byte) {
-	if d.state == ignoredEscape {
-		d.state = ignoredString
+// skipControlString skips SOS, PM and APC. Any ESC ends the string and starts
+// the next sequence, so ESC \\ (ST) ends as an ordinary escape.
+func (d *Decoder) skipControlString(c byte) {
+	if c == 0x1b {
+		d.beginEscape()
+	}
+}
+
+func (d *Decoder) skipDCS(c byte) {
+	if d.state == dcsEscape {
+		d.state = dcs
 		if c == '\\' {
 			d.discard()
 		}
@@ -164,7 +178,7 @@ func (d *Decoder) skipString(c byte) {
 	}
 
 	if c == 0x1b {
-		d.state = ignoredEscape
+		d.state = dcsEscape
 	}
 }
 

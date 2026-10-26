@@ -10,9 +10,6 @@ import (
 	"time"
 )
 
-// Binding precedes chmod. Startup can wait for this state, but must not dial it.
-var errEndpointPermissions = errors.New("unsafe status daemon endpoint permissions")
-
 type Client struct {
 	server string
 	path   string
@@ -74,9 +71,14 @@ func (c *Client) callRequest(ctx context.Context, req request, timeout time.Dura
 	return result, err
 }
 
-// dial checks that the endpoint is a socket owned by this user before it connects.
+// dial checks the private directory and that the endpoint is a socket owned by
+// this user before it connects.
 func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if err := validateEndpointDirectory(c.path); err != nil {
 		return nil, err
 	}
 
@@ -85,11 +87,8 @@ func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 		return nil, err
 	}
 
-	if info.Mode()&os.ModeSocket == 0 || !ownedByCurrentUser(info) {
+	if !ownedSocket(info) {
 		return nil, fmt.Errorf("unsafe status daemon endpoint")
-	}
-	if info.Mode().Perm() != 0600 {
-		return nil, errEndpointPermissions
 	}
 
 	return (&net.Dialer{}).DialContext(ctx, "unix", c.path)
@@ -124,7 +123,7 @@ func (c *Client) readReply(conn net.Conn) (reply, error) {
 	switch result.Error {
 	case "instance_changed":
 		return reply{}, ErrIdentity
-	case "":
+	case "", busyReply:
 		if !validIdentity(result.Build) || len(result.Executable) > maxPathBytes {
 			return reply{}, ErrIdentity
 		}
@@ -132,6 +131,9 @@ func (c *Client) readReply(conn net.Conn) (reply, error) {
 		return reply{}, ErrUnavailable
 	}
 
+	if result.Error == busyReply {
+		return result, ErrBusy
+	}
 	return result, nil
 }
 

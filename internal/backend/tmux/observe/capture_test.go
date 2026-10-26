@@ -194,7 +194,6 @@ func TestCaptureRejectsMalformedScreensWithResizedPane(t *testing.T) {
 		peerRows  int
 	}{
 		{"unterminated resized screen", "resized", 30},
-		{"oversized resized screen", strings.Repeat("x", maxScreenBytes) + "\n", 30},
 		{"too many resized rows", strings.Repeat("row\n", maxCaptureRows+1), 30},
 		{"missing unchanged peer row", strings.Repeat("row\n", 20), 29},
 		{"extra unchanged peer row", strings.Repeat("row\n", 20), 31},
@@ -222,6 +221,77 @@ func TestCaptureRejectsMalformedScreensWithResizedPane(t *testing.T) {
 
 			require.Error(t, err)
 			require.Nil(t, screens)
+		})
+	}
+}
+
+func TestCaptureFailsOnlyAnOversizedScreen(t *testing.T) {
+	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
+	s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+		if !slices.Contains(args, "capture-pane") {
+			return testInventoryOutput(testPaneRow + peer), nil
+		}
+		out := captureFixtureReply(t, args, testPaneRow+peer)
+		wide := strings.Repeat(strings.Repeat("x", maxScreenBytes/30)+"\n", 30)
+		return strings.Replace(out, strings.Repeat("%1 content\n", 30), wide, 1), nil
+	})
+	inventory, err := s.Inventory(t.Context(), 1)
+	require.NoError(t, err)
+	first, err := inventory.Target("%1", Region{})
+	require.NoError(t, err)
+	second, err := inventory.Target("%2", Region{})
+	require.NoError(t, err)
+
+	screens, err := s.Capture(t.Context(), []CaptureTarget{first, second})
+
+	require.NoError(t, err)
+	require.Len(t, screens, 2)
+	require.ErrorIs(t, screens[0].Err, ErrScreenTooLarge)
+	require.Empty(t, screens[0].Text)
+	require.NoError(t, screens[1].Err)
+	require.Equal(t, strings.Repeat("%2 content\n", 30), screens[1].Text)
+}
+
+func TestCaptureRetriesWithoutClosedPanes(t *testing.T) {
+	peer := "$1|@2|%2|101|0|/dev/pts/2|other-app|80|30|0\n"
+	cases := []struct {
+		name      string
+		remaining string
+		batches   int
+		captured  string
+	}{
+		{"peer closed", testPaneRow, 2, "%1 content\n"},
+		{"all closed", "", 1, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rows := testPaneRow + peer
+			batches := 0
+			s := testSampler(t, func(_ context.Context, _ int, args ...string) (string, error) {
+				if !slices.Contains(args, "capture-pane") {
+					return testInventoryOutput(rows), nil
+				}
+				batches++
+				if batches == 1 {
+					return "", errors.New("can't find pane: %2")
+				}
+				return captureFixtureReply(t, args, rows), nil
+			})
+			inventory, err := s.Inventory(t.Context(), 1)
+			require.NoError(t, err)
+			first, err := inventory.Target("%1", Region{Rows: 1})
+			require.NoError(t, err)
+			second, err := inventory.Target("%2", Region{Rows: 1})
+			require.NoError(t, err)
+			rows = tc.remaining
+
+			results, err := s.Capture(t.Context(), []CaptureTarget{first, second})
+
+			require.NoError(t, err)
+			require.Equal(t, tc.batches, batches)
+			require.Len(t, results, 2)
+			require.Equal(t, tc.captured, results[0].Text)
+			require.ErrorIs(t, results[1].Err, ErrChanged)
 		})
 	}
 }
@@ -428,7 +498,6 @@ func TestScreenFramingRejectsAmbiguousOrTruncatedText(t *testing.T) {
 		{"extra row", "m-begin-1\na\nb\nc\nm-end-1\n"},
 		{"embedded marker", "m-begin-1\na\nmarker\nm-end-1\n"},
 		{"trailing output", "m-begin-1\na\nb\nm-end-1\nextra"},
-		{"oversized text", "m-begin-1\n" + strings.Repeat("x", maxScreenBytes) + "\nb\nm-end-1\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

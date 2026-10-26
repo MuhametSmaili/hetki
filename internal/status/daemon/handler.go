@@ -147,3 +147,40 @@ func (d *daemon) executablePath() string {
 	}
 	return d.executable.path
 }
+
+// rejectBusy answers a connection beyond the client limit. It reads the request
+// first so that the client's write cannot fail before it sees the reply.
+func (d *daemon) rejectBusy(parent context.Context, conn *net.UnixConn) {
+	defer d.logs.recordPanic()
+	defer conn.Close()
+
+	stopParent := context.AfterFunc(parent, func() {
+		_ = conn.Close()
+	})
+	defer stopParent()
+
+	_ = conn.SetDeadline(time.Now().Add(requestTimeout))
+	raw, err := readFrameData(conn, maxRequestBytes)
+	if err != nil {
+		return
+	}
+
+	if version, ok := frameVersion(raw); ok && version != protocolVersion {
+		d.rejectProtocol(parent, conn, version)
+		return
+	}
+
+	d.logs.repeatedFailure("request_rejected", errors.New("client limit reached"))
+	d.writeBusy(parent, conn)
+}
+
+// writeBusy tells a client that this instance is running but has no capacity.
+func (d *daemon) writeBusy(ctx context.Context, conn *net.UnixConn) {
+	row := d.identity()
+	row.Error = busyReply
+
+	_ = conn.SetWriteDeadline(time.Now().Add(requestTimeout))
+	if err := writeFrame(conn, maxReplyBytes, row); err != nil && ctx.Err() == nil && !clientGone(err) {
+		d.logs.repeatedFailure("reply_write_failed", err)
+	}
+}

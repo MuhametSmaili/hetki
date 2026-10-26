@@ -77,20 +77,19 @@ func newDaemonReader(ctx context.Context, server observe.Server) *daemonReader {
 }
 
 // readView waits for a result newer than after. It returns the result and its
-// sequence number.
+// sequence number. After the reader stops, it waits until ctx ends, so callers
+// can read again at once after any result without spinning.
 func (r *daemonReader) readView(ctx context.Context, after uint64) (daemon.View, uint64, error) {
 	r.start.Do(func() {
 		go r.run()
 	})
 
-	stopped := false
 	for {
 		r.mu.Lock()
 		view, err, sequence, updated := r.view, r.err, r.sequence, r.updated
 		r.mu.Unlock()
 
-		// A stopped reader repeats its last result, so callers do not wait forever.
-		if sequence != after || stopped {
+		if sequence != after {
 			return view, sequence, err
 		}
 
@@ -98,8 +97,6 @@ func (r *daemonReader) readView(ctx context.Context, after uint64) (daemon.View,
 		case <-ctx.Done():
 			return daemon.View{}, after, ctx.Err()
 		case <-updated:
-		case <-r.done:
-			stopped = true
 		}
 	}
 }

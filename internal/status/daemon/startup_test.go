@@ -126,40 +126,30 @@ func TestEnsureRetriesSettledLaunchWithoutRepeatingPreparation(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestStartupWaitsForPrivateSocketPermissions(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		run  func(context.Context, *Client) error
-	}{
-		{"ensure", func(ctx context.Context, client *Client) error {
-			_, err := Ensure(ctx, client.server, fixtureBuild, "", func(context.Context) ([]string, error) {
-				return nil, errors.New("unexpected launch preparation")
-			})
-			return err
-		}},
-		{"readiness", func(ctx context.Context, client *Client) error {
-			return client.waitReady(ctx, nil)
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			client := fixtureClient(t, "socket-permissions")
+func TestClientsIgnoreSocketModeInsidePrivateDirectory(t *testing.T) {
+	client := fixtureClient(t, "socket-mode")
+	startFixture(t, client, liveBinding(client.server), staticSource(status.Snapshot{}))
+	require.NoError(t, os.Chmod(client.path, 0755))
+	t.Cleanup(func() { require.NoError(t, os.Chmod(client.path, 0600)) })
+
+	info, err := client.Ping(t.Context())
+
+	require.NoError(t, err, "the private directory, not the socket mode, is the access boundary")
+	require.True(t, validEpoch(info.Epoch))
+}
+
+func TestClientsRefuseToDialThroughAnUnsafeDirectory(t *testing.T) {
+	for _, change := range []string{"permissions", "symlink"} {
+		t.Run(change, func(t *testing.T) {
+			client := fixtureClient(t, "dial-directory")
 			startFixture(t, client, liveBinding(client.server), staticSource(status.Snapshot{}))
-			before, err := client.Ping(t.Context())
-			require.NoError(t, err)
-			require.NoError(t, os.Chmod(client.path, 0700))
-			t.Cleanup(func() { require.NoError(t, os.Chmod(client.path, 0600)) })
-			ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-			defer cancel()
+			changeServiceDirectory(t, filepath.Dir(client.path), change)
 
-			err = tc.run(ctx, client)
+			_, pingErr := client.Ping(t.Context())
+			_, subscribeErr := client.Subscribe(t.Context())
 
-			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.ErrorIs(t, err, errEndpointPermissions)
-			require.NoError(t, os.Chmod(client.path, 0600))
-			require.NoError(t, tc.run(t.Context(), client))
-			after, err := client.Ping(t.Context())
-			require.NoError(t, err)
-			require.Equal(t, before, after)
+			require.ErrorIs(t, pingErr, errUnsafeDirectory)
+			require.ErrorIs(t, subscribeErr, errUnsafeDirectory)
 		})
 	}
 }
