@@ -42,7 +42,9 @@ func TestTreeRowFollowsOnePaneAcrossStatusChanges(t *testing.T) {
 		{"inactive agent works", [3]status.State{status.Idle, status.Working, status.Idle}, 0, 1},
 		{"another agent needs input", [3]status.State{status.Idle, status.Working, status.Blocked}, 1, 2},
 		{"equal priorities retain the later pane", [3]status.State{status.Idle, status.Working, status.Working}, 2, 2},
-		{"idle falls back to active shell", [3]status.State{status.Unreported, status.Idle, status.Idle}, 2, 0},
+		{"idle agent is shown over a shell without status", [3]status.State{status.Unreported, status.Idle, status.Idle}, 0, 1},
+		{"equal idle retains the previous pane", [3]status.State{status.Unreported, status.Idle, status.Idle}, 2, 2},
+		{"no status shows the active pane", [3]status.State{status.Unreported, status.Unreported, status.Unreported}, 2, 0},
 		{"unknown retains its own command", [3]status.State{status.Idle, status.Unknown, status.Idle}, 0, 1},
 		{"withdrawal returns to active shell", [3]status.State{status.Idle, status.Withdrawn, status.Idle}, 1, 0},
 	} {
@@ -73,13 +75,44 @@ func TestTreeRowFollowsOnePaneAcrossStatusChanges(t *testing.T) {
 	}
 }
 
+func TestTrackedWindowsShowTheStatusTheyAreTrackedFor(t *testing.T) {
+	now := time.Now()
+	id := list.ItemID{ID: "window"}
+	for _, tc := range []struct {
+		name    string
+		state   status.State
+		tracked bool
+	}{
+		{"idle inactive pane", status.Idle, true},
+		{"no status", status.Unreported, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, panes := windowStatusFixture(t)
+			values := map[status.PaneRef]status.Value{}
+			if tc.state != status.Unreported {
+				values[panes[1].Ref] = status.Value{State: tc.state, ValidUntil: now.Add(time.Minute)}
+			}
+			snapshot, err := status.NewSnapshot(values)
+			require.NoError(t, err)
+			m.paneStatus.values = snapshot
+
+			m.applyStatusPresentation(now)
+			_, tracked := m.trackedItems(now)[id]
+			row := m.paneStatus.rowValue(id, now)
+
+			require.Equal(t, tc.tracked, tracked)
+			require.Equal(t, tc.state, row.State)
+		})
+	}
+}
+
 func TestTreeStatusExpiryReprojectsFilteredRows(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		now := time.Now()
 		m, panes := windowStatusFixture(t)
 		values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
-			panes[0].Ref: {State: status.Idle, ValidUntil: now.Add(time.Minute)},
-			panes[1].Ref: {State: status.Unknown, Outcome: status.Completed, OutcomeSince: now, ValidUntil: now.Add(time.Minute)},
+			panes[0].Ref: {State: status.Working, ValidUntil: now.Add(time.Hour)},
+			panes[1].Ref: {State: status.Blocked, ValidUntil: now.Add(statusSuccessDuration)},
 		})
 		require.NoError(t, err)
 		m.applyStatusUpdate(StatusUpdate{Values: values})
@@ -88,7 +121,7 @@ func TestTreeStatusExpiryReprojectsFilteredRows(t *testing.T) {
 		require.Len(t, m.items.Rows(), 2)
 		m.applyScope("no-match", now)
 		require.Empty(t, m.items.Rows())
-		due := m.nextStatusFrame(now)
+		due := m.paneStatus.nextWindowStatusChange(now)
 		require.Equal(t, now.Add(statusSuccessDuration), due)
 
 		time.Sleep(statusSuccessDuration)
@@ -99,7 +132,7 @@ func TestTreeStatusExpiryReprojectsFilteredRows(t *testing.T) {
 		require.Nil(t, cmd, "expiry is local, with no backend/status read")
 		require.Empty(t, m.items.Rows()[1].Item.Trailing)
 		require.Equal(t, "/shell", m.items.Rows()[1].Item.Secondary)
-		require.Equal(t, status.Idle, m.paneStatus.rowValue(list.ItemID{ID: "window"}, time.Now()).State)
+		require.Equal(t, status.Working, m.paneStatus.rowValue(list.ItemID{ID: "window"}, time.Now()).State)
 	})
 }
 

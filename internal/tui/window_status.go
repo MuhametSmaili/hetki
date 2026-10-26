@@ -21,6 +21,9 @@ type windowRepresentative struct {
 	paneID string
 }
 
+// representativePane chooses the pane a tree window row shows and opens: the
+// highest-priority pane with any status, keeping the previous choice on ties.
+// Without any status it is the active pane.
 func representativePane(
 	panes []WindowPane,
 	previous status.PaneRef,
@@ -43,11 +46,9 @@ func representativePane(
 		selected = active
 	}
 
-	idlePriority := statusPriority(status.Value{State: status.Idle})
-	priority := idlePriority
+	priority := 0
 	if selected >= 0 {
-		current := displayedStatus(values.Lookup(panes[selected].Ref), now)
-		priority = max(priority, statusPriority(current))
+		priority = statusPriority(displayedStatus(values.Lookup(panes[selected].Ref), now))
 	}
 
 	for i, pane := range panes {
@@ -57,7 +58,7 @@ func representativePane(
 		}
 	}
 
-	if priority == idlePriority {
+	if priority == 0 {
 		return active
 	}
 

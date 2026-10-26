@@ -60,8 +60,15 @@ func TestWindowPreviewAndOpenUseTheDisplayedPane(t *testing.T) {
 
 func TestWindowPreviewRejectsTheOldPaneAfterRepresentativeExpiry(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		m := windowPreviewModel(t, status.Value{State: status.Unknown, Outcome: status.Completed, OutcomeSince: time.Now(), ValidUntil: time.Now().Add(time.Minute)})
+		m := windowPreviewModel(t, status.Value{State: status.Blocked, ValidUntil: time.Now().Add(statusSuccessDuration)})
 		id := list.ItemID{ID: "window"}
+		panes := m.paneStatus.windows[id]
+		values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+			panes[0].Ref: {State: status.Working, ValidUntil: time.Now().Add(time.Hour)},
+			panes[1].Ref: m.paneStatus.values.Lookup(panes[1].Ref),
+		})
+		require.NoError(t, err)
+		m, _ = updateModel(t, m, statusResultMsg{update: StatusUpdate{Values: values}})
 		var requests []PreviewRequest
 		var readErrors []error
 		m.readPreview = func(ctx context.Context, request PreviewRequest) (string, error) {
