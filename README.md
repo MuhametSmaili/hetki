@@ -20,11 +20,16 @@ Requires tmux. On macOS, requires Ventura 13 or later.
 curl -fsSL https://raw.githubusercontent.com/MuhametSmaili/hetki/main/install.sh | bash
 ```
 
-Or install with Go 1.27.3 or newer:
+Or use a package manager:
 
-```bash
-go install github.com/MuhametSmaili/hetki@latest
-```
+| Method   | Install command                                        |
+| -------- | ------------------------------------------------------ |
+| Homebrew | `brew install MuhametSmaili/tap/hetki`                 |
+| mise     | `mise use -g go:github.com/MuhametSmaili/hetki@latest` |
+| Go       | `go install github.com/MuhametSmaili/hetki@latest`     |
+
+Go and mise installations require Go 1.27.3 or newer.
+For the latest unreleased main commit with Homebrew, add `--HEAD` to its install command.
 
 Prebuilt binaries are available on the [releases page](https://github.com/MuhametSmaili/hetki/releases).
 
@@ -35,6 +40,8 @@ Update Hetki with the tool you installed it with:
 | Installed with | Update with                                                   |
 | -------------- | ------------------------------------------------------------- |
 | `install.sh`   | Run the install command again.                                |
+| Homebrew       | `brew upgrade hetki`                                          |
+| Homebrew, HEAD | `brew upgrade --fetch-HEAD hetki`                             |
 | Go             | `go install github.com/MuhametSmaili/hetki@latest`            |
 | mise           | `mise upgrade go:github.com/MuhametSmaili/hetki`              |
 | mise, `@main`  | `mise install --force go:github.com/MuhametSmaili/hetki@main` |

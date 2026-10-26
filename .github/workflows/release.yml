@@ -179,3 +179,37 @@ jobs:
             dist/hetki-linux-arm64 \
             dist/checksums.txt \
             "${flags[@]}"
+
+  homebrew:
+    if: github.event_name == 'push' && github.ref_type == 'tag' && !contains(github.ref_name, '-')
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check tap credentials
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -z "$HOMEBREW_TAP_TOKEN" ]]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@d482da0e602890d3160aade42e72c8556103bf04 # 2026.10.26.1
+        with:
+          stable: true
+
+      - name: Open a formula update pull request
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_GIT_NAME: github-actions[bot]
+          HOMEBREW_GIT_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          brew tap MuhametSmaili/tap
+          brew trust --formula MuhametSmaili/tap/hetki
+          brew bump-formula-pr --no-fork --no-browse --strict --online \
+            --version="${GITHUB_REF_NAME#v}" MuhametSmaili/tap/hetki
