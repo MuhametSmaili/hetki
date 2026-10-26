@@ -69,6 +69,27 @@ func TestNativeProtocolReportsReachCacheAndSurviveAttachedExit(t *testing.T) {
 	requireSourceState(t, source, replacement, status.Unreported)
 }
 
+func TestNativeReportAfterUnterminatedControlString(t *testing.T) {
+	runner, server, sampler, id, _ := nativeStreamsFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	source, err := NewSource(ctx, server, sampler, nil, func(err error) {
+		t.Errorf("unexpected source error: %v", err)
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, source.Close()) }()
+	ref := awaitSourcePane(t, source, id, "")
+	output := "\x1b_unterminated application string" + string(protocolReport("state=working"))
+
+	_, err = runner.RunLimited(ctx, 4096, "send-keys", "-t", id, "-l", "--", output+"\n")
+
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		snapshot, err := source.ReadStatus(ctx)
+		return err == nil && snapshot.At(ref, time.Now()) == status.Working
+	}, 3*time.Second, 10*time.Millisecond, "the report after the unterminated string must apply")
+}
+
 func TestNativeShellBoundariesAcrossForegroundHandoff(t *testing.T) {
 	runner, server, sampler, id, _ := nativeStreamsFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
