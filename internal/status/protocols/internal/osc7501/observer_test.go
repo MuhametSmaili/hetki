@@ -3,14 +3,13 @@ package osc7501
 import (
 	"encoding/base64"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestReportsValidateBeforeMutatingRecords(t *testing.T) {
+func TestReportsValidateBeforeChangingState(t *testing.T) {
 	cases := []struct {
 		name    string
 		payload string
@@ -43,54 +42,76 @@ func TestReportsValidateBeforeMutatingRecords(t *testing.T) {
 			var observer Observer
 			require.Equal(t, Applied, observer.Handle([]byte("state=working")))
 			require.Equal(t, Applied, observer.Handle([]byte("state=blocked:id=child")))
-			before := slices.Clone(observer.records)
+			before := observer
 
 			result := observer.Handle([]byte(tc.payload))
 
 			require.Equal(t, tc.result, result)
-			require.Equal(t, before, observer.records)
+			require.Equal(t, before, observer)
 		})
 	}
 }
 
 func TestReportsAcceptValidStatesAndSkipMalformedPairs(t *testing.T) {
-	maxID := strings.Repeat("a", 32) + "/" + strings.Repeat("b", 32) + "/" +
-		strings.Repeat("c", 32) + "/" + strings.Repeat("d", 29)
 	cases := []struct {
 		name    string
 		payload string
-		id      string
 		state   State
 	}{
-		{"idle", "state=idle", "", Idle},
-		{"working", "state=working", "", Working},
-		{"blocked", "state=blocked", "", Blocked},
-		{"done", "state=done", "", Done},
-		{"error", "state=error", "", Error},
-		{"whitespace and unknown metadata", " state = idle :future=x:kind=unrecognized:progress=no", "", Idle},
-		{"malformed pair skipped", "state=idle:noequals:=x:STATE=bad:app=!:msg=!", "", Idle},
-		{"last valid repeated state", "state=working:state=idle:state=!", "", Idle},
-		{"last repeated id", "state=idle:id=first:id=last", "last", Idle},
-		{"last id repairs grammar", "state=idle:id=bad//path:id=ok", "ok", Idle},
-		{"padded text", "state=idle:msg=aMOpbGxv:title=b2s=", "", Idle},
-		{"unpadded text", "state=idle:msg=b2s:title=b2s", "", Idle},
-		{"maximum msg", "state=idle:msg=" + base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 2048))), "", Idle},
-		{"maximum title", "state=idle:title=" + base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 192))), "", Idle},
-		{"maximum app and key", "state=idle:app=" + strings.Repeat("a", 32) + ":abcdefghijklmnop=x", "", Idle},
-		{"maximum id length", "state=idle:id=" + maxID, maxID, Idle},
-		{"maximum id levels", "state=idle:id=a/b/c/d/e/f/g/h", "a/b/c/d/e/f/g/h", Idle},
+		{"idle", "state=idle", Idle},
+		{"working", "state=working", Working},
+		{"blocked", "state=blocked", Blocked},
+		{"done", "state=done", Done},
+		{"error", "state=error", Error},
+		{"whitespace and unknown metadata", " state = idle :future=x:kind=unrecognized:progress=no", Idle},
+		{"malformed pair skipped", "state=idle:noequals:=x:STATE=bad:app=!:msg=!", Idle},
+		{"last valid repeated state", "state=working:state=idle:state=!", Idle},
+		{"padded text", "state=idle:msg=aMOpbGxv:title=b2s=", Idle},
+		{"unpadded text", "state=idle:msg=b2s:title=b2s", Idle},
+		{"maximum msg", "state=idle:msg=" + base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 2048))), Idle},
+		{"maximum title", "state=idle:title=" + base64.StdEncoding.EncodeToString([]byte(strings.Repeat("a", 192))), Idle},
+		{"maximum app and key", "state=idle:app=" + strings.Repeat("a", 32) + ":abcdefghijklmnop=x", Idle},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var observer Observer
 
 			result := observer.Handle([]byte(tc.payload))
-			state, found := observer.Lookup(tc.id)
+			state, found := observer.Root()
 
 			require.Equal(t, Applied, result)
 			require.True(t, found)
 			require.Equal(t, tc.state, state)
 			require.True(t, observer.Observed())
+		})
+	}
+}
+
+func TestChildReportsAreAcceptedWithoutChangingRoot(t *testing.T) {
+	maxID := strings.Repeat("a", 32) + "/" + strings.Repeat("b", 32) + "/" +
+		strings.Repeat("c", 32) + "/" + strings.Repeat("d", 29)
+	cases := []struct {
+		name    string
+		payload string
+	}{
+		{"child", "state=done:id=build"},
+		{"last repeated id", "state=idle:id=first:id=last"},
+		{"last id repairs grammar", "state=idle:id=bad//path:id=ok"},
+		{"maximum id length", "state=idle:id=" + maxID},
+		{"maximum id levels", "state=idle:id=a/b/c/d/e/f/g/h"},
+		{"child clear", "state=clear:id=build"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var observer Observer
+			require.Equal(t, Applied, observer.Handle([]byte("state=working")))
+
+			result := observer.Handle([]byte(tc.payload))
+			state, found := observer.Root()
+
+			require.Equal(t, Applied, result)
+			require.True(t, found)
+			require.Equal(t, Working, state)
 		})
 	}
 }
@@ -112,54 +133,51 @@ func TestEveryDecodedControlIsRejected(t *testing.T) {
 	}
 }
 
-func TestSubtreeClearPreservesSiblingsAndRoot(t *testing.T) {
+func TestRootClearWithdrawsWithoutForgettingReports(t *testing.T) {
 	var observer Observer
-	for _, report := range []string{"state=idle", "state=working:id=build", "state=blocked:id=build/test", "state=done:id=builder"} {
-		require.Equal(t, Applied, observer.Handle([]byte(report)))
-	}
+	require.Equal(t, Applied, observer.Handle([]byte("state=idle")))
 
-	result := observer.Handle([]byte("state=clear:id=build"))
+	result := observer.Handle([]byte("state=clear"))
+	_, found := observer.Root()
 
 	require.Equal(t, Applied, result)
-	require.Equal(t, []record{{id: "", state: Idle}, {id: "builder", state: Done}}, observer.records)
-	require.Equal(t, Applied, observer.Handle([]byte("state=clear")))
-	require.Empty(t, observer.records)
+	require.False(t, found)
 	require.True(t, observer.Observed(), "clear is withdrawal, not absence of reports")
 }
 
-func TestEvictionUsesLastUpdateNotCreationOrLookup(t *testing.T) {
+func TestRootSurvivesManyChildReports(t *testing.T) {
 	var observer Observer
-	require.Equal(t, Applied, observer.Handle([]byte("state=idle")))
-	for i := 1; i < MaxRecords; i++ {
-		require.Equal(t, Applied, observer.Handle(fmt.Appendf(nil, "state=working:id=child%d", i)))
+	require.Equal(t, Applied, observer.Handle([]byte("state=working")))
+
+	for i := range 1000 {
+		require.Equal(t, Applied, observer.Handle(fmt.Appendf(nil, "state=blocked:id=task%d", i)))
 	}
-	require.Equal(t, Applied, observer.Handle([]byte("state=idle")))
-	_, found := observer.Lookup("child1")
+	state, found := observer.Root()
+
 	require.True(t, found)
-
-	require.Equal(t, Applied, observer.Handle([]byte("state=done:id=new")))
-	_, evicted := observer.Lookup("child1")
-	root, rootFound := observer.Lookup("")
-
-	require.False(t, evicted)
-	require.True(t, rootFound)
-	require.Equal(t, Idle, root)
-	require.Len(t, observer.records, MaxRecords)
-	require.LessOrEqual(t, cap(observer.records), MaxRecords)
+	require.Equal(t, Working, state)
 }
 
 func TestActivityEndRetainsExplicitOutcomesUntilReset(t *testing.T) {
-	var observer Observer
-	for _, state := range []State{Idle, Working, Blocked, Done, Error} {
-		require.Equal(t, Applied, observer.Handle([]byte("state="+state+":id="+state)))
+	cases := []struct {
+		state    State
+		retained bool
+	}{
+		{Idle, false}, {Working, false}, {Blocked, false}, {Done, true}, {Error, true},
 	}
+	for _, tc := range cases {
+		t.Run(string(tc.state), func(t *testing.T) {
+			var observer Observer
+			require.Equal(t, Applied, observer.Handle([]byte("state="+tc.state)))
 
-	changed := observer.EndActivity()
+			changed := observer.EndActivity()
+			_, found := observer.Root()
 
-	require.True(t, changed)
-	require.Equal(t, []record{{id: "done", state: Done}, {id: "error", state: Error}}, observer.records)
-	require.False(t, observer.EndActivity())
-	observer.Reset()
-	require.Empty(t, observer.records)
-	require.False(t, observer.Observed())
+			require.Equal(t, !tc.retained, changed)
+			require.Equal(t, tc.retained, found)
+			require.False(t, observer.EndActivity())
+			observer.Reset()
+			require.False(t, observer.Observed())
+		})
+	}
 }
