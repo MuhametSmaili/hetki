@@ -11,14 +11,25 @@ import (
 )
 
 // Run expects resolved options; its caller cancels and joins effects.
+// Cancellation quits the program and returns the context's error.
 func Run(ctx context.Context, initial list.Snapshot, options Options, runtime Runtime) (Result, error) {
 	m, err := newModelWithOptions(ctx, initial, options, runtime)
 	if err != nil {
 		return Result{}, err
 	}
-	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithFPS(120))
+	p := tea.NewProgram(m, tea.WithFPS(120))
+
+	// Quit instead of tea.WithContext: a cancelled context kills the program,
+	// which closes the terminal input while its reader goroutine still uses it.
+	// Quit waits for that goroutine.
+	stopQuit := context.AfterFunc(ctx, p.Quit)
 	final, err := p.Run()
+	stopQuit()
+
 	if err != nil {
+		return Result{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
 	m, ok := final.(model)
