@@ -24,6 +24,7 @@ type Pane struct {
 	program      osc7501.Observer
 	withdrawn    bool
 	outcomeSince time.Time
+	outcomeEnded bool
 }
 
 // New creates an independent pane observer with immutable source selection.
@@ -36,8 +37,9 @@ func (p *Pane) Feed(data []byte) (Observation, bool) {
 	publish := false
 	p.decoder.Feed(data, func(frame terminalstream.Frame) {
 		_, previous := p.application()
+		wasEnded := p.outcomeEnded
 		if p.handleFrame(frame) {
-			p.observeOutcome(previous)
+			p.observeOutcome(previous, wasEnded)
 			publish = true
 		}
 	})
@@ -47,9 +49,9 @@ func (p *Pane) Feed(data []byte) (Observation, bool) {
 	return p.Snapshot(), true
 }
 
-func (p *Pane) observeOutcome(previous status.Outcome) {
+func (p *Pane) observeOutcome(previous status.Outcome, wasEnded bool) {
 	_, outcome := p.application()
-	if outcome == previous {
+	if outcome == previous && (!wasEnded || p.outcomeEnded) {
 		return
 	}
 
@@ -65,6 +67,7 @@ func (p *Pane) Reset() {
 	p.program.Reset()
 	p.withdrawn = false
 	p.outcomeSince = time.Time{}
+	p.outcomeEnded = false
 }
 
 // ForegroundChanged ends application activity attribution while retaining explicit
@@ -72,6 +75,8 @@ func (p *Pane) Reset() {
 func (p *Pane) ForegroundChanged() {
 	p.decoder.Reset()
 	p.program.EndActivity()
+	_, outcome := p.application()
+	p.outcomeEnded = outcome != status.NoOutcome
 }
 
 func (p *Pane) handleFrame(frame terminalstream.Frame) bool {
@@ -79,6 +84,7 @@ func (p *Pane) handleFrame(frame terminalstream.Frame) bool {
 		observed := p.program.Observed()
 		p.program.Reset()
 		p.withdrawn = p.withdrawn || observed
+		p.outcomeEnded = false
 		return observed
 	}
 
@@ -93,7 +99,14 @@ func (p *Pane) handleFrame(frame terminalstream.Frame) bool {
 
 	switch string(selector) {
 	case "7501":
-		if p.options.ProgramStatus && p.program.Handle(payload) == osc7501.Applied {
+		if !p.options.ProgramStatus {
+			return false
+		}
+		switch p.program.Handle(payload) {
+		case osc7501.Applied:
+			p.outcomeEnded = false
+			return true
+		case osc7501.ChildApplied:
 			return true
 		}
 		return false
@@ -109,6 +122,7 @@ func (p *Pane) Snapshot() Observation {
 		Activity:     activity,
 		Outcome:      outcome,
 		OutcomeSince: p.outcomeSince,
+		OutcomeEnded: p.outcomeEnded,
 	}
 }
 

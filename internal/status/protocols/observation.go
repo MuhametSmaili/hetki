@@ -14,4 +14,6 @@ type Observation struct {
 	// Start of the current root outcome, preserved across repeated reports.
 	// Captured before chunk coalescing so intervening resets are not lost.
 	OutcomeSince time.Time
+	// OutcomeEnded records the loss of foreground attribution, not OS process exit.
+	OutcomeEnded bool
 }

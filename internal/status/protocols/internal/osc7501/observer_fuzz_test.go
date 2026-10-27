@@ -14,7 +14,7 @@ func FuzzObserverAtomicity(f *testing.F) {
 
 		result := observer.Handle(payload)
 
-		if result != Applied && observer != before {
+		if result != Applied && result != ChildApplied && observer != before {
 			t.Fatal("unaccepted report changed the observer")
 		}
 		if state, found := observer.Root(); found && recognizedState(string(state)) == "" {

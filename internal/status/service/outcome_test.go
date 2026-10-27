@@ -122,6 +122,78 @@ func TestNewOutcomeObservationWakesReaders(t *testing.T) {
 	}
 }
 
+func TestOutcomeLifetimeChangeWakesReadersAndSurvivesRenewal(t *testing.T) {
+	pane := fixturePane(service.Protocol)
+	core := fixtureService(t, pane)
+	target := targetFor(t, core, pane, service.Protocol)
+	value := status.Value{State: status.Unknown, Outcome: status.Completed, OutcomeSince: time.Now()}
+	require.NoError(t, core.Apply(target, 1, value))
+	_, changes := core.Changes()
+	value.OutcomeEnded = true
+
+	require.NoError(t, core.Apply(target, 2, value))
+
+	select {
+	case <-changes:
+	default:
+		t.Fatal("ending foreground attribution did not wake readers")
+	}
+	_, repeated := core.Changes()
+	require.NoError(t, core.Apply(target, 3, value))
+	select {
+	case <-repeated:
+		t.Fatal("identical ended outcome woke readers")
+	default:
+	}
+	require.NoError(t, core.UpdateInventory(inventory(2, pane)))
+	after, err := core.ReadStatus(t.Context())
+	require.NoError(t, err)
+	require.True(t, after.Lookup(pane.Ref).OutcomeEnded)
+	require.Equal(t, value.OutcomeSince, after.Lookup(pane.Ref).OutcomeSince)
+}
+
+func TestEndedOutcomeDoesNotRestoreUnknownStatusAfterContinuityLoss(t *testing.T) {
+	cases := []struct {
+		name      string
+		interrupt func(*testing.T, *service.Service, *service.Pane)
+	}{
+		{"expired validation", func(_ *testing.T, _ *service.Service, _ *service.Pane) {
+			time.Sleep(time.Minute + time.Second)
+		}},
+		{"failed inventory", func(t *testing.T, core *service.Service, _ *service.Pane) {
+			require.NoError(t, core.Invalidate(2))
+		}},
+		{"new connection", func(_ *testing.T, _ *service.Service, pane *service.Pane) {
+			pane.Scope.Connection = "replacement"
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				pane := fixturePane(service.Protocol)
+				core := fixtureService(t, pane)
+				target := targetFor(t, core, pane, service.Protocol)
+				require.NoError(t, core.Apply(target, 1, status.Value{
+					State: status.Unknown, Outcome: status.Completed, OutcomeSince: time.Now(), OutcomeEnded: true,
+				}))
+
+				tc.interrupt(t, core, &pane)
+				require.NoError(t, core.UpdateInventory(inventory(3, pane)))
+				after, err := core.ReadStatus(t.Context())
+
+				require.NoError(t, err)
+				require.Equal(t, status.Withdrawn, after.At(pane.Ref, time.Now()))
+				require.Equal(t, status.NoOutcome, after.Lookup(pane.Ref).Outcome)
+				pane.Scope.Connection = "another-connection"
+				require.NoError(t, core.UpdateInventory(inventory(4, pane)))
+				after, err = core.ReadStatus(t.Context())
+				require.NoError(t, err)
+				require.Equal(t, status.Withdrawn, after.At(pane.Ref, time.Now()))
+			})
+		})
+	}
+}
+
 func TestScreenCannotSupplyUnvalidatedOutcome(t *testing.T) {
 	pane := fixturePane(service.Screen)
 	core := fixtureService(t, pane)

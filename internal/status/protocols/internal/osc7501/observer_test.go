@@ -41,7 +41,7 @@ func TestReportsValidateBeforeChangingState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var observer Observer
 			require.Equal(t, Applied, observer.Handle([]byte("state=working")))
-			require.Equal(t, Applied, observer.Handle([]byte("state=blocked:id=child")))
+			require.Equal(t, ChildApplied, observer.Handle([]byte("state=blocked:id=child")))
 			before := observer
 
 			result := observer.Handle([]byte(tc.payload))
@@ -109,7 +109,7 @@ func TestChildReportsAreAcceptedWithoutChangingRoot(t *testing.T) {
 			result := observer.Handle([]byte(tc.payload))
 			state, found := observer.Root()
 
-			require.Equal(t, Applied, result)
+			require.Equal(t, ChildApplied, result)
 			require.True(t, found)
 			require.Equal(t, Working, state)
 		})
@@ -150,7 +150,7 @@ func TestRootSurvivesManyChildReports(t *testing.T) {
 	require.Equal(t, Applied, observer.Handle([]byte("state=working")))
 
 	for i := range 1000 {
-		require.Equal(t, Applied, observer.Handle(fmt.Appendf(nil, "state=blocked:id=task%d", i)))
+		require.Equal(t, ChildApplied, observer.Handle(fmt.Appendf(nil, "state=blocked:id=task%d", i)))
 	}
 	state, found := observer.Root()
 

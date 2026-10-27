@@ -106,8 +106,8 @@ func (s *Service) reconcile(previous record, pane Pane, continuous bool) record 
 	if pane.Profile.Source != "" || sameClaim && previous.value.State != status.Unreported {
 		row.value.State = status.Unknown
 	}
-
-	if sameEvidenceScope(previous.pane, pane) && previous.value.State == status.Withdrawn {
+	// A new scope cannot revive a withdrawn or ended reporter without a report.
+	if sameClaim && (previous.value.OutcomeEnded || previous.value.State == status.Withdrawn) {
 		row.value.State = status.Withdrawn
 	}
 
@@ -169,7 +169,11 @@ func (s *Service) Invalidate(revision uint64) error {
 		row.generation = s.generation
 		row.sequence = 0
 		if row.value.State != status.Unreported && row.value.State != status.Withdrawn {
-			row.value = status.Value{State: status.Unknown}
+			state := status.Unknown
+			if row.value.OutcomeEnded {
+				state = status.Withdrawn
+			}
+			row.value = status.Value{State: state}
 		}
 		s.panes[id] = row
 	}

@@ -15,7 +15,8 @@ const (
 )
 
 // Result distinguishes accepted reports from queries, invalid reports and
-// syntactically valid input that has no recognized state. No result sends bytes.
+// syntactically valid input that has no recognized state. Applied addresses the
+// root; ChildApplied never changes it. No result sends bytes.
 type Result uint8
 
 const (
@@ -23,6 +24,7 @@ const (
 	Query
 	Rejected
 	Applied
+	ChildApplied
 )
 
 // Observer belongs to one pane's applicable protocol scope. Its zero value is
@@ -47,10 +49,11 @@ func (o *Observer) Handle(payload []byte) Result {
 	}
 
 	o.observed = true
-	if report.id == "" {
-		// A clear report has no state, so it withdraws the root.
-		o.root = report.state
+	if report.id != "" {
+		return ChildApplied
 	}
+	// A clear report has no state, so it withdraws the root.
+	o.root = report.state
 	return Applied
 }
 
@@ -66,7 +69,7 @@ func (o *Observer) Reset() {
 	*o = Observer{}
 }
 
-// EndActivity handles an observed prompt or attached-process exit. Working,
+// EndActivity handles the loss of native foreground attribution. Working,
 // blocked and idle are dropped; explicit done/error survive until cleared/reset.
 // It returns whether the root changed. Silence alone must never invoke this method.
 func (o *Observer) EndActivity() bool {

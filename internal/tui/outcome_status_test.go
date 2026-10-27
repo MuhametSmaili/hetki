@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const statusSuccessDuration = 5 * time.Second
+
 func TestWindowOutcomePriority(t *testing.T) {
 	now := time.Now()
 	success := status.Value{State: status.Unknown, Outcome: status.Completed}
@@ -104,6 +106,39 @@ func TestCompletionPresentationRespectsAgeAndFreshness(t *testing.T) {
 
 			require.Equal(t, tc.want, got)
 			require.Equal(t, tc.next, nextStatusChange(value, now))
+		})
+	}
+}
+
+func TestEndedOutcomesDisappearWithoutAnIdleOrUnknownIndicator(t *testing.T) {
+	for _, outcome := range []status.Outcome{status.Completed, status.Failed} {
+		t.Run(string(outcome), func(t *testing.T) {
+			now := time.Now()
+			m := paneStatusModel(t, status.Unknown, now.Add(time.Minute))
+			pane := m.paneStatus.options.Bindings[list.ItemID{ID: "window"}][0]
+			values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+				pane: {
+					State: status.Unknown, Outcome: outcome, OutcomeSince: now,
+					OutcomeEnded: true, ValidUntil: now.Add(time.Minute),
+				},
+			})
+			require.NoError(t, err)
+			m.paneStatus.values = values
+			due := m.nextStatusFrame(now)
+
+			before := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due.Add(-time.Nanosecond))
+			after := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due)
+			glyph, _ := statusIndicator(after, due)
+
+			require.Equal(t, now.Add(5*time.Second), due)
+			require.Equal(t, outcome, before.Outcome)
+			require.Equal(t, status.Value{}, after)
+			require.Empty(t, glyph)
+			_, trackedBefore := m.trackedItems(due.Add(-time.Nanosecond))[list.ItemID{ID: "window"}]
+			_, trackedAfter := m.trackedItems(due)[list.ItemID{ID: "window"}]
+			require.True(t, trackedBefore)
+			require.False(t, trackedAfter)
+			require.True(t, m.nextStatusFrame(due).IsZero())
 		})
 	}
 }

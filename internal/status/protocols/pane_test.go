@@ -122,7 +122,44 @@ func TestResetAndForegroundChangeHaveDifferentLifetimes(t *testing.T) {
 	require.Equal(t, status.Completed, afterExit.Outcome)
 	require.False(t, observed.IsZero())
 	require.Equal(t, observed, afterExit.OutcomeSince)
+	require.True(t, afterExit.OutcomeEnded)
 	require.Equal(t, protocols.Observation{Activity: status.Unreported}, afterGap)
+}
+
+func TestOnlyRootReportsCanReplaceAnEndedOutcome(t *testing.T) {
+	cases := []struct {
+		name  string
+		input []byte
+	}{
+		{"child activity", report("state=working:id=child")},
+		{"child outcome", report("state=done:id=child")},
+		{"child withdrawal", report("state=clear:id=child")},
+		{"invalid root", report("state=working:id=bad!")},
+		{"query", report("?")},
+		{"ignored marker", marker("A")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				pane := protocols.New(protocols.Options{ProgramStatus: true})
+				pane.Feed(report("state=done"))
+				pane.ForegroundChanged()
+				ended := pane.Snapshot()
+				time.Sleep(6 * time.Second)
+
+				pane.Feed(tc.input)
+				after := pane.Snapshot()
+				fresh, publish := pane.Feed(report("state=done"))
+
+				require.Equal(t, ended, after)
+				require.True(t, publish)
+				require.False(t, fresh.OutcomeEnded)
+				require.Equal(t, status.Completed, fresh.Outcome)
+				require.Equal(t, time.Now(), fresh.OutcomeSince)
+				require.True(t, fresh.OutcomeSince.After(ended.OutcomeSince))
+			})
+		})
+	}
 }
 
 func TestRepeatedRootOutcomeRetainsObservationTime(t *testing.T) {

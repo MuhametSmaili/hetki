@@ -107,10 +107,79 @@ func TestOutcomeSurvivesVerifiedShellReturnButNotStreamLoss(t *testing.T) {
 	snapshot, err := s.ReadStatus(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, status.Completed, snapshot.Lookup(row.pane.Ref).OutcomeAt(time.Now()))
+	require.True(t, snapshot.Lookup(row.pane.Ref).OutcomeEnded)
 	scope.Connection = "replacement"
 	scope.Generation++
 	s.Reset(scope)
 	snapshot, err = s.ReadStatus(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, status.NoOutcome, snapshot.Lookup(row.pane.Ref).Outcome)
+}
+
+func TestOutcomesAfterShellReturnDisappear(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		report  string
+		outcome status.Outcome
+		age     time.Duration
+	}{
+		{"exits during success indication", "done", status.Completed, time.Second},
+		{"exits after success became idle", "done", status.Completed, 6 * time.Second},
+		{"exits during error indication", "error", status.Failed, time.Second},
+		{"exits after error aged", "error", status.Failed, 6 * time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				s, row := sourceFixture(t)
+				scope := sourceScope(row.facts)
+				s.Reset(scope)
+				require.NoError(t, s.Output(scope, protocolReport("state="+tc.report)))
+				bindings := ui.StatusBindings{{ID: "pane"}: {row.pane.Ref}}
+				observed := time.Now()
+				time.Sleep(tc.age)
+				facts := row.facts
+				facts.Foreground = facts.Root
+
+				updateProtocolFacts(t, s, facts, Selection{}, true)
+				scope.Foreground = facts.Foreground
+				scope.Generation++
+				s.Reset(scope)
+				snapshot, err := s.ReadStatus(t.Context())
+
+				require.NoError(t, err)
+				if tc.age < 5*time.Second {
+					require.Equal(t, tc.outcome, bindings.ValueAt(list.ItemID{ID: "pane"}, snapshot, time.Now()).Outcome)
+				}
+				require.Equal(t, status.Value{}, bindings.ValueAt(list.ItemID{ID: "pane"}, snapshot, observed.Add(6*time.Second)))
+			})
+		})
+	}
+}
+
+func TestAnotherForegroundChildCannotReviveEndedSuccess(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s, row := sourceFixture(t)
+		scope := sourceScope(row.facts)
+		s.Reset(scope)
+		require.NoError(t, s.Output(scope, protocolReport("state=done")))
+		facts := row.facts
+		facts.Foreground = facts.Root
+		updateProtocolFacts(t, s, facts, Selection{}, true)
+		scope.Foreground = facts.Foreground
+		scope.Generation++
+		s.Reset(scope)
+		time.Sleep(6 * time.Second)
+		next := row.facts
+		next.Foreground.Birth = "another-child"
+
+		updateProtocolFacts(t, s, next, Selection{}, true)
+		scope.Foreground = next.Foreground
+		scope.Generation++
+		s.Reset(scope)
+		snapshot, err := s.ReadStatus(t.Context())
+
+		require.NoError(t, err)
+		require.True(t, snapshot.Lookup(row.pane.Ref).OutcomeEnded)
+		require.Equal(t, status.Withdrawn, snapshot.At(row.pane.Ref, time.Now()))
+	})
 }

@@ -149,6 +149,7 @@ func (s *Source) applyProtocol(p *protocolBinding, observation protocols.Observa
 		State:        observation.Activity,
 		Outcome:      observation.Outcome,
 		OutcomeSince: observation.OutcomeSince,
+		OutcomeEnded: observation.OutcomeEnded,
 	})
 	if errors.Is(err, service.ErrStale) {
 		p.reset()

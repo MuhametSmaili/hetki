@@ -88,7 +88,8 @@ func sameEvidence(a, b View) bool {
 	}
 	for pane, value := range b.Values.All() {
 		previous := a.Values.Lookup(pane)
-		if previous.State != value.State || previous.Outcome != value.Outcome || !previous.OutcomeSince.Equal(value.OutcomeSince) {
+		if previous.State != value.State || previous.Outcome != value.Outcome ||
+			previous.OutcomeEnded != value.OutcomeEnded || !previous.OutcomeSince.Equal(value.OutcomeSince) {
 			return false
 		}
 	}

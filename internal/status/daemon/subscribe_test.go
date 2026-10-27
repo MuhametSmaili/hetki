@@ -223,6 +223,41 @@ func TestRenewalCarriesMovedEvidenceDeadlines(t *testing.T) {
 	require.True(t, extended.ValidUntil.Equal(renewal.Entries[0].ValidUntil))
 }
 
+func TestOutcomeLifetimeChangeSendsFullFrameThenRenews(t *testing.T) {
+	c := fixtureClient(t, "outcome-lifetime")
+	pane := status.PaneRef{Server: c.server, ID: "%1", Generation: "birth"}
+	value := status.Value{State: status.Unknown, Outcome: status.Completed, OutcomeSince: time.Now().UTC()}
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: value})
+	require.NoError(t, err)
+	view := View{Values: values, Lease: time.Now().Add(time.Minute)}
+	source := newChangingSource(view, nil)
+	startFixture(t, c, liveBinding(c.server), source.factory())
+	conn := rawSubscribe(t, c)
+	var full, ended, renewal reply
+	require.NoError(t, readFrame(conn, maxReplyBytes, &full))
+	value.OutcomeEnded = true
+	view.Values, err = status.NewSnapshot(map[status.PaneRef]status.Value{pane: value})
+	require.NoError(t, err)
+
+	source.set(view, nil)
+	require.NoError(t, readFrame(conn, maxReplyBytes, &ended))
+	view.Lease = view.Lease.Add(time.Minute)
+	source.set(view, nil)
+	require.NoError(t, readFrame(conn, maxReplyBytes, &renewal))
+
+	require.False(t, full.Renewal)
+	require.False(t, full.Entries[0].OutcomeEnded)
+	require.False(t, ended.Renewal, "a lifetime change is evidence, not a deadline renewal")
+	require.True(t, ended.Entries[0].OutcomeEnded)
+	require.True(t, renewal.Renewal)
+	decoded, err := c.decodeView(ended)
+	require.NoError(t, err)
+	renewed, err := c.renew(decoded, renewal)
+	require.NoError(t, err)
+	require.True(t, renewed.Values.Lookup(pane).OutcomeEnded)
+	require.True(t, value.OutcomeSince.Equal(renewed.Values.Lookup(pane).OutcomeSince))
+}
+
 func TestSubscriptionAppliesRenewalsToTheLastView(t *testing.T) {
 	c := fixtureClient(t, "renewal-client")
 	view := testView(t, c.server, status.Working)

@@ -51,7 +51,9 @@ func (s Snapshot) All() iter.Seq2[PaneRef, Value] {
 func (s Snapshot) Invalidate() Snapshot {
 	values := make(map[PaneRef]Value, len(s.panes))
 	for pane, value := range s.panes {
-		if value.State != Withdrawn {
+		if value.OutcomeEnded {
+			value = Value{State: Withdrawn}
+		} else if value.State != Withdrawn {
 			value = Value{State: Unknown}
 		}
 

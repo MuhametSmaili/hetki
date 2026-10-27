@@ -54,6 +54,7 @@ func TestSnapshotRejectsInvalidOutcomeCombinations(t *testing.T) {
 		{State: status.Idle, Outcome: status.Completed},
 		{State: status.Withdrawn, Outcome: status.Failed},
 		{State: status.Idle, OutcomeSince: time.Now()},
+		{State: status.Unknown, OutcomeEnded: true},
 	} {
 		t.Run(string(value.State)+"/"+string(value.Outcome), func(t *testing.T) {
 			_, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: value})
@@ -61,6 +62,67 @@ func TestSnapshotRejectsInvalidOutcomeCombinations(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+func TestOutcomeLifetimeControlsItsEffectiveState(t *testing.T) {
+	observed := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name    string
+		report  status.Outcome
+		ended   bool
+		age     time.Duration
+		lease   time.Duration
+		state   status.State
+		outcome status.Outcome
+		next    time.Duration
+	}{
+		{"foreground success", status.Completed, false, 4 * time.Second, time.Minute, status.Unknown, status.Completed, 5 * time.Second},
+		{"foreground success becomes idle", status.Completed, false, 5 * time.Second, time.Minute, status.Idle, status.NoOutcome, time.Minute},
+		{"ended success remains briefly", status.Completed, true, 4 * time.Second, time.Minute, status.Unknown, status.Completed, 5 * time.Second},
+		{"ended success disappears", status.Completed, true, 5 * time.Second, time.Minute, status.Withdrawn, status.NoOutcome, 0},
+		{"ended success stays absent", status.Completed, true, time.Hour, time.Minute, status.Withdrawn, status.NoOutcome, 0},
+		{"foreground success lease expires first", status.Completed, false, 2 * time.Second, 2 * time.Second, status.Unknown, status.NoOutcome, 0},
+		{"ended success lease expires first", status.Completed, true, 2 * time.Second, 2 * time.Second, status.Withdrawn, status.NoOutcome, 0},
+		{"foreground error waits for a new report", status.Failed, false, 6 * time.Second, time.Minute, status.Unknown, status.Failed, time.Minute},
+		{"ended error remains briefly", status.Failed, true, 4 * time.Second, time.Minute, status.Unknown, status.Failed, 5 * time.Second},
+		{"ended error disappears", status.Failed, true, 5 * time.Second, time.Minute, status.Withdrawn, status.NoOutcome, 0},
+		{"ended error stays absent", status.Failed, true, time.Hour, 2 * time.Hour, status.Withdrawn, status.NoOutcome, 0},
+		{"ended error lease expires first", status.Failed, true, 2 * time.Second, 2 * time.Second, status.Withdrawn, status.NoOutcome, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			value := status.Value{
+				State: status.Unknown, Outcome: tc.report, OutcomeSince: observed,
+				OutcomeEnded: tc.ended, ValidUntil: observed.Add(tc.lease),
+			}
+			now := observed.Add(tc.age)
+
+			require.Equal(t, tc.state, value.At(now))
+			require.Equal(t, tc.outcome, value.OutcomeAt(now))
+			wantNext := time.Time{}
+			if tc.next != 0 {
+				wantNext = observed.Add(tc.next)
+			}
+			require.Equal(t, wantNext, value.NextChange(now))
+		})
+	}
+}
+
+func TestInvalidatingAnEndedOutcomeDoesNotRestoreUnknownStatus(t *testing.T) {
+	now := time.Now()
+	pane := status.PaneRef{Server: "server", ID: "%1", Generation: "birth"}
+	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{
+		pane: {
+			State: status.Unknown, Outcome: status.Completed, OutcomeSince: now,
+			OutcomeEnded: true, ValidUntil: now.Add(time.Minute),
+		},
+	})
+	require.NoError(t, err)
+
+	invalid := values.Invalidate()
+
+	require.Equal(t, status.Withdrawn, invalid.At(pane, now))
+	require.Equal(t, status.NoOutcome, invalid.Lookup(pane).Outcome)
 }
 
 func TestSnapshotIdentityAndOwnership(t *testing.T) {

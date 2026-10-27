@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	protocolVersion  = 3
+	protocolVersion  = 4
 	maxRequestBytes  = 4096
 	maxReplyBytes    = 1 << 20
 	maxIdentityBytes = 256
@@ -63,6 +63,7 @@ type entry struct {
 	State        status.State   `json:"state"`
 	Outcome      status.Outcome `json:"outcome,omitempty"`
 	OutcomeSince time.Time      `json:"outcome_since,omitzero"`
+	OutcomeEnded bool           `json:"outcome_ended,omitempty"`
 	ValidUntil   time.Time      `json:"valid_until"`
 }
 
@@ -187,6 +188,7 @@ func snapshotEntries(server string, snapshot status.Snapshot) ([]entry, error) {
 			State:        value.State,
 			Outcome:      value.Outcome,
 			OutcomeSince: value.OutcomeSince,
+			OutcomeEnded: value.OutcomeEnded,
 			ValidUntil:   value.ValidUntil,
 		})
 	}
@@ -210,7 +212,10 @@ func (r reply) snapshot() (status.Snapshot, error) {
 			return status.Snapshot{}, fmt.Errorf("duplicate daemon pane identity")
 		}
 
-		values[pane] = status.Value{State: e.State, Outcome: e.Outcome, OutcomeSince: e.OutcomeSince, ValidUntil: e.ValidUntil}
+		values[pane] = status.Value{
+			State: e.State, Outcome: e.Outcome, OutcomeSince: e.OutcomeSince,
+			OutcomeEnded: e.OutcomeEnded, ValidUntil: e.ValidUntil,
+		}
 	}
 
 	return status.NewSnapshot(values)

@@ -18,6 +18,8 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/status/screen"
 	"github.com/MuhametSmaili/hetki/internal/status/service"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/require"
 )
 
@@ -69,6 +71,52 @@ func TestNativeActivityClearsOnShellReturnWithoutMarkers(t *testing.T) {
 	refreshLifecycleSource(t, source)
 
 	requireSourceState(t, source, ref, status.Withdrawn)
+}
+
+func TestNativeOutcomesDisappearAfterShellReturn(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		report  string
+		outcome status.Outcome
+		running status.Value
+	}{
+		{"success", "done", status.Completed, status.Value{State: status.Idle}},
+		{"error", "error", status.Failed, status.Value{State: status.Unknown, Outcome: status.Failed}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runner, server, sampler, id, _ := nativeStreamsFixture(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			script := strings.Replace(foregroundLifecycleFixture, "state=working", "state="+tc.report, 1)
+			startLifecycleShell(t, ctx, runner, id, script)
+			source, err := NewSource(ctx, server, sampler, nil, func(err error) {
+				t.Errorf("unexpected source error: %v", err)
+			})
+			require.NoError(t, err)
+			defer func() { require.NoError(t, source.Close()) }()
+			ref := awaitSourcePane(t, source, id, "")
+			sendShellInput(t, ctx, runner, id, "run")
+			awaitLifecycleForeground(t, source, id, true)
+			sendShellInput(t, ctx, runner, id, "begin")
+			require.Eventually(t, func() bool {
+				snapshot, err := source.ReadStatus(ctx)
+				return err == nil && snapshot.Lookup(ref).OutcomeAt(time.Now()) == tc.outcome
+			}, 3*time.Second, 10*time.Millisecond)
+			bindings := ui.StatusBindings{{ID: "pane"}: {ref}}
+			before, err := source.ReadStatus(ctx)
+			require.NoError(t, err)
+			agedAt := before.Lookup(ref).OutcomeSince.Add(5 * time.Second)
+			require.Equal(t, tc.running, bindings.ValueAt(list.ItemID{ID: "pane"}, before, agedAt))
+
+			sendShellInput(t, ctx, runner, id, "finish")
+			awaitLifecycleForeground(t, source, id, false)
+			refreshLifecycleSource(t, source)
+			after, err := source.ReadStatus(ctx)
+
+			require.NoError(t, err)
+			require.Equal(t, status.Value{}, bindings.ValueAt(list.ItemID{ID: "pane"}, after, agedAt))
+		})
+	}
 }
 
 func TestNativeEarlyChildReportSurvivesForegroundRefresh(t *testing.T) {

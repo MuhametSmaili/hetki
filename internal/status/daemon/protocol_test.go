@@ -195,6 +195,7 @@ func TestSnapshotRejectsDuplicateInvalidAndOversizedEntries(t *testing.T) {
 		{{ID: "%1", Generation: "birth", State: "done"}},
 		{{ID: "%1", Generation: "birth", State: status.Unknown, Outcome: "future-result"}},
 		{{ID: "%1", Generation: "birth", State: status.Working, Outcome: status.Completed}},
+		{{ID: "%1", Generation: "birth", State: status.Unknown, OutcomeEnded: true}},
 		{{ID: "%1", State: status.Unknown}},
 		{{ID: strings.Repeat("x", maxIdentityBytes+1), Generation: "birth", State: status.Idle}},
 		make([]entry, status.MaxPanes+1),
@@ -221,9 +222,21 @@ func TestOutcomeSurvivesSocketTransport(t *testing.T) {
 	observed := time.Now().Add(-3 * time.Second)
 	deadline := observed.Add(time.Minute)
 	values := make(map[status.PaneRef]status.Value)
-	for _, outcome := range []status.Outcome{status.Completed, status.Failed} {
-		pane := status.PaneRef{Server: c.server, ID: string(outcome), Generation: "birth"}
-		values[pane] = status.Value{State: status.Unknown, Outcome: outcome, OutcomeSince: observed, ValidUntil: deadline}
+	for _, tc := range []struct {
+		name    string
+		outcome status.Outcome
+		ended   bool
+	}{
+		{"foreground success", status.Completed, false},
+		{"ended success", status.Completed, true},
+		{"foreground error", status.Failed, false},
+		{"ended error", status.Failed, true},
+	} {
+		pane := status.PaneRef{Server: c.server, ID: tc.name, Generation: "birth"}
+		values[pane] = status.Value{
+			State: status.Unknown, Outcome: tc.outcome, OutcomeSince: observed,
+			OutcomeEnded: tc.ended, ValidUntil: deadline,
+		}
 	}
 	snapshot, err := status.NewSnapshot(values)
 	require.NoError(t, err)
@@ -233,10 +246,11 @@ func TestOutcomeSurvivesSocketTransport(t *testing.T) {
 
 	require.NoError(t, err)
 	for pane, value := range values {
-		require.Equal(t, value.Outcome, got.Lookup(pane).OutcomeAt(time.Now()))
-		require.Equal(t, status.Unknown, got.At(pane, time.Now()))
+		require.Equal(t, value.Outcome, got.Lookup(pane).OutcomeAt(observed.Add(time.Second)))
+		require.Equal(t, status.Unknown, got.At(pane, observed.Add(time.Second)))
 		require.True(t, deadline.Equal(got.Lookup(pane).ValidUntil))
 		require.True(t, observed.Equal(got.Lookup(pane).OutcomeSince))
+		require.Equal(t, value.OutcomeEnded, got.Lookup(pane).OutcomeEnded)
 	}
 }
 

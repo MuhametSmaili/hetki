@@ -76,7 +76,8 @@ func (s *Service) Apply(target Target, sequence uint64, value status.Value) erro
 		value.State = status.State(strings.Clone(string(value.State)))
 		value.Outcome = status.Outcome(strings.Clone(string(value.Outcome)))
 		if row.value.State != value.State || row.value.Outcome != value.Outcome ||
-			row.value.OutcomeSince != value.OutcomeSince || row.value.At(now) != value.At(now) ||
+			row.value.OutcomeSince != value.OutcomeSince || row.value.OutcomeEnded != value.OutcomeEnded ||
+			row.value.At(now) != value.At(now) ||
 			value.ValidUntil.Before(row.value.ValidUntil) {
 			s.changed()
 		} else {
