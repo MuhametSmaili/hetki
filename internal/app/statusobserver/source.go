@@ -222,8 +222,8 @@ func (s *Source) Reset(scope Scope) {
 }
 
 // Output dispatches attributed bytes to the selected source. Protocol framing
-// and reduction are synchronous. Screen-selected panes track shell boundaries
-// independently while output schedules a checked capture for activity evidence.
+// and reduction are synchronous. Output in screen-selected panes schedules a
+// checked capture for activity evidence instead.
 func (s *Source) Output(scope Scope, data []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -235,6 +235,7 @@ func (s *Source) Output(scope Scope, data []byte) error {
 
 	if row.selection.Profile.Source == service.Screen {
 		s.screens.Dirty(scope.Pane)
+		return nil
 	}
 
 	if row.protocol == nil {

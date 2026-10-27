@@ -18,7 +18,7 @@ const (
 )
 
 // Scope fields are incarnation tokens, not PIDs or reusable command names.
-// An empty Command is allowed before shell lifecycle tracking is available.
+// Command is optional and identifies a command incarnation when available.
 type Scope struct {
 	Root       string
 	Foreground string

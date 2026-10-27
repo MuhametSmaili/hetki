@@ -7,7 +7,6 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MuhametSmaili/hetki/internal/status"
-	"github.com/MuhametSmaili/hetki/internal/status/protocols"
 	"github.com/MuhametSmaili/hetki/internal/status/screen"
 	"github.com/MuhametSmaili/hetki/internal/status/service"
 	"github.com/stretchr/testify/require"
@@ -17,81 +16,17 @@ func protocolReport(payload string) []byte {
 	return []byte("\x1b]7501;" + payload + "\x1b\\")
 }
 
-func shellMarker(payload string) []byte { return []byte("\x1b]133;" + payload + "\a") }
-
-func TestShellInvocationSurvivesVerifiedForegroundHandoff(t *testing.T) {
-	s, row := sourceFixture(t)
-	scope := sourceScope(row.facts)
-	s.Reset(scope)
-	require.NoError(t, s.Output(scope, shellMarker("C")))
-	before := s.panes[row.facts.ID].protocol.pane.Snapshot().Shell
-	facts := row.facts
-	facts.Foreground.Birth = "child"
-
-	updateProtocolFacts(t, s, facts, Selection{}, true)
-	scope.Foreground = facts.Foreground
-	scope.Generation++
-	s.Reset(scope)
-	require.NoError(t, s.Output(scope, shellMarker("D;130")))
-	after := s.panes[row.facts.ID].protocol.pane.Snapshot().Shell
-
-	require.Equal(t, before.Invocation, after.Invocation)
-	require.Equal(t, protocols.Finished, after.Phase)
-	require.True(t, after.ExitKnown)
-	require.Equal(t, uint8(130), after.ExitCode)
-	requireSourceState(t, s, row.pane.Ref, status.Unreported)
-}
-
-func TestExpiredInventoryCannotPreserveCommandAcrossHandoff(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		s, row := sourceFixture(t)
-		scope := sourceScope(row.facts)
-		s.Reset(scope)
-		require.NoError(t, s.Output(scope, shellMarker("C")))
-		facts := row.facts
-		facts.Foreground.Birth = "next"
-
-		time.Sleep(time.Minute + time.Second)
-		updateProtocolFacts(t, s, facts, Selection{}, true)
-		scope.Foreground = facts.Foreground
-		scope.Generation++
-		s.Reset(scope)
-		require.NoError(t, s.Output(scope, shellMarker("D;0")))
-
-		require.Equal(t, protocols.Shell{}, s.panes[row.facts.ID].protocol.pane.Snapshot().Shell)
-	})
-}
-
-func TestShellResetDiscardsPartialMarkersAndCommandMatching(t *testing.T) {
-	s, row := sourceFixture(t)
-	scope := sourceScope(row.facts)
-	s.Reset(scope)
-	require.NoError(t, s.Output(scope, shellMarker("C")))
-	require.NoError(t, s.Output(scope, []byte("\x1b]133;D;")))
-
-	scope.Connection = "replacement"
-	scope.Generation++
-	s.Reset(scope)
-	require.NoError(t, s.Output(scope, []byte("0\a")))
-	require.NoError(t, s.Output(scope, shellMarker("D;0")))
-
-	require.Equal(t, protocols.Shell{}, s.panes[row.facts.ID].protocol.pane.Snapshot().Shell)
-}
-
-func TestScreenSelectionTracksShellWithoutAcceptingOSCActivity(t *testing.T) {
+func TestScreenSelectionDoesNotCollectProtocolEvidence(t *testing.T) {
 	s, row := sourceFixture(t)
 	s.screens = newScreens(s.core, successfulScreens)
 	selection := Selection{Profile: service.Profile{Source: service.Screen, Generation: "rules"}}
 	updateProtocolFacts(t, s, row.facts, selection, true)
 	scope := sourceScope(row.facts)
 	s.Reset(scope)
-	input := append(shellMarker("C"), protocolReport("state=working")...)
 
-	require.NoError(t, s.Output(scope, input))
+	require.NoError(t, s.Output(scope, protocolReport("state=working")))
 
-	observation := s.panes[row.facts.ID].protocol.pane.Snapshot()
-	require.Equal(t, protocols.Running, observation.Shell.Phase)
-	require.Equal(t, status.Unreported, observation.Activity)
+	require.Nil(t, s.panes[row.facts.ID].protocol)
 	requireSourceState(t, s, row.pane.Ref, status.Unknown)
 }
 
@@ -194,16 +129,8 @@ func TestProtocolResizePreservesPartialInputAndRecords(t *testing.T) {
 
 func updateProtocolFacts(t *testing.T, s *Source, facts observe.Pane, selected Selection, valid bool) sourcePane {
 	t.Helper()
-	return updateProtocolFactsAt(t, s, facts, selected, valid, time.Now())
-}
-
-func updateProtocolFactsAt(t *testing.T, s *Source, facts observe.Pane, selected Selection, valid bool, startedAt time.Time) sourcePane {
-	t.Helper()
 	s.expireProtocols(time.Now())
 	row := s.reconcilePane(s.panes[facts.ID], facts, selected, valid)
-	if valid {
-		row.protocol.resolvePrompt(startedAt, facts.Foreground == facts.Root)
-	}
 	s.revision++
 	err := s.core.UpdateInventory(service.Inventory{
 		Revision:   s.revision,

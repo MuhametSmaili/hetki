@@ -51,15 +51,16 @@ func TestCharmProgramStatusReports(t *testing.T) {
 	}
 }
 
-func TestPromptCleansActivityAndRetainsOutcomes(t *testing.T) {
+func TestShellMarkersDoNotChangeApplicationStatus(t *testing.T) {
 	cases := []struct {
 		state   string
 		outcome status.Outcome
 		want    status.State
 	}{
-		{"idle", status.NoOutcome, status.Withdrawn},
-		{"working", status.NoOutcome, status.Withdrawn},
-		{"blocked", status.NoOutcome, status.Withdrawn},
+		{"clear", status.NoOutcome, status.Withdrawn},
+		{"idle", status.NoOutcome, status.Idle},
+		{"working", status.NoOutcome, status.Working},
+		{"blocked", status.NoOutcome, status.Blocked},
 		{"done", status.Completed, status.Unknown},
 		{"error", status.Failed, status.Unknown},
 	}
@@ -67,18 +68,16 @@ func TestPromptCleansActivityAndRetainsOutcomes(t *testing.T) {
 		t.Run(tc.state, func(t *testing.T) {
 			pane := protocols.New(protocols.Options{ProgramStatus: true})
 			pane.Feed(report("state=" + tc.state))
+			before := pane.Snapshot()
 
-			_, publish := pane.Feed(marker("A;cl=line"))
-			pane.ResolvePrompt(true)
-			observation := pane.Snapshot()
-			pane.Feed(marker("A"))
-			pane.ResolvePrompt(true)
-			repeated := pane.Snapshot()
+			for _, payload := range []string{"A;cl=line", "B", "C", "D;0", "A"} {
+				_, publish := pane.Feed(marker(payload))
 
-			require.False(t, publish, "a marker requires native confirmation before clearing activity")
-			require.Equal(t, tc.want, observation.Activity)
-			require.Equal(t, tc.outcome, observation.Outcome)
-			require.Equal(t, observation, repeated)
+				require.False(t, publish)
+				require.Equal(t, before, pane.Snapshot())
+			}
+			require.Equal(t, tc.want, pane.Snapshot().Activity)
+			require.Equal(t, tc.outcome, pane.Snapshot().Outcome)
 		})
 	}
 }
@@ -94,7 +93,7 @@ func TestShellMarkersAloneDoNotCreateApplicationActivity(t *testing.T) {
 	}
 }
 
-func TestOrderedDispatchAndSecondaryPrompt(t *testing.T) {
+func TestReportsAreDispatchedBetweenIgnoredShellMarkers(t *testing.T) {
 	pane := protocols.New(protocols.Options{ProgramStatus: true})
 	input := append(marker("C"), report("state=blocked")...)
 	input = append(input, marker("D;0")...)
@@ -104,22 +103,18 @@ func TestOrderedDispatchAndSecondaryPrompt(t *testing.T) {
 
 	require.True(t, publish)
 	require.Equal(t, status.Blocked, observation.Activity)
-	require.Equal(t, protocols.Finished, observation.Shell.Phase)
-	require.True(t, observation.Shell.ExitKnown)
-	require.Zero(t, observation.Shell.ExitCode)
 	input = append(marker("A"), report("state=working")...)
 	observation, publish = pane.Feed(input)
 	require.True(t, publish)
 	require.Equal(t, status.Working, observation.Activity)
 }
 
-func TestResetAndProcessExitHaveDifferentLifetimes(t *testing.T) {
+func TestResetAndForegroundChangeHaveDifferentLifetimes(t *testing.T) {
 	pane := protocols.New(protocols.Options{ProgramStatus: true})
 	pane.Feed(report("state=done"))
-	pane.Feed(marker("C"))
 	observed := pane.Snapshot().OutcomeSince
 
-	pane.ProcessExited()
+	pane.ForegroundChanged()
 	afterExit := pane.Snapshot()
 	pane.Reset()
 	afterGap := pane.Snapshot()
@@ -127,7 +122,6 @@ func TestResetAndProcessExitHaveDifferentLifetimes(t *testing.T) {
 	require.Equal(t, status.Completed, afterExit.Outcome)
 	require.False(t, observed.IsZero())
 	require.Equal(t, observed, afterExit.OutcomeSince)
-	require.Equal(t, protocols.Shell{}, afterExit.Shell)
 	require.Equal(t, protocols.Observation{Activity: status.Unreported}, afterGap)
 }
 
@@ -162,18 +156,16 @@ func TestRepeatedRootOutcomeRetainsObservationTime(t *testing.T) {
 	}
 }
 
-func TestRISWithdrawsAndDiscardsPartialCommandEnd(t *testing.T) {
+func TestRISWithdrawsAndDiscardsPartialReport(t *testing.T) {
 	pane := protocols.New(protocols.Options{ProgramStatus: true})
 	pane.Feed(report("state=working"))
-	pane.Feed(marker("C"))
-	pane.Feed([]byte("\x1b]133;D;"))
+	pane.Feed([]byte("\x1b]7501;state="))
 
-	observation, publish := pane.Feed([]byte("\x1bc0\a"))
-	pane.Feed(marker("D;0"))
+	observation, publish := pane.Feed([]byte("\x1bcidle\a"))
 
 	require.True(t, publish)
 	require.Equal(t, status.Withdrawn, observation.Activity)
-	require.Equal(t, protocols.Shell{}, pane.Snapshot().Shell)
+	require.Equal(t, observation, pane.Snapshot())
 }
 
 func TestSelectionAndChunkBoundaries(t *testing.T) {
@@ -187,6 +179,5 @@ func TestSelectionAndChunkBoundaries(t *testing.T) {
 
 		require.False(t, first || second)
 		require.Equal(t, status.Unreported, observation.Activity)
-		require.Equal(t, protocols.Running, observation.Shell.Phase)
 	}
 }

@@ -15,21 +15,18 @@ type protocolBinding struct {
 	pane               *protocols.Pane
 	target             service.Target
 	pendingPublication bool // A continuous launch or withdrawal awaiting validated rebinding.
-	promptAfter        time.Time
 }
 
 func (p *protocolBinding) reset() {
-	p.promptAfter = time.Time{}
 	p.pendingPublication = false
 	p.target = service.Target{}
 	p.pane.Reset()
 }
 
 func (p *protocolBinding) processExited() {
-	p.promptAfter = time.Time{}
 	p.pendingPublication = false
 	p.target = service.Target{}
-	p.pane.ProcessExited()
+	p.pane.ForegroundChanged()
 }
 
 func (p *protocolBinding) foregroundChanged(startingChild bool) {
@@ -38,7 +35,6 @@ func (p *protocolBinding) foregroundChanged(startingChild bool) {
 	// Entering that group refines attribution on the same uninterrupted pane stream.
 	if !startingChild {
 		p.pane.ForegroundChanged()
-		p.promptAfter = time.Time{}
 	}
 	observation := p.pane.Snapshot()
 	p.pendingPublication = observation.Activity == status.Withdrawn || observation.Outcome != status.NoOutcome || startingChild && observation.Activity != status.Unreported
@@ -139,32 +135,12 @@ func (s *Source) protocolOutput(row sourcePane, data []byte) error {
 
 	p := row.protocol
 	observation, publish := p.pane.Feed(data)
-	p.trackPrompt(publish)
 	if !publish {
 		return nil
 	}
 
 	_, err = s.applyProtocol(p, observation)
 	return err
-}
-
-func (p *protocolBinding) trackPrompt(reported bool) {
-	if reported || !p.pane.PromptPending() {
-		p.promptAfter = time.Time{}
-	}
-	if p.pane.PromptPending() && p.promptAfter.IsZero() {
-		p.promptAfter = time.Now()
-	}
-}
-
-func (p *protocolBinding) resolvePrompt(startedAt time.Time, atRoot bool) {
-	if p == nil || p.promptAfter.IsZero() || startedAt.Before(p.promptAfter) {
-		return
-	}
-	p.promptAfter = time.Time{}
-	if p.pane.ResolvePrompt(atRoot) {
-		p.pendingPublication = true
-	}
 }
 
 func (s *Source) applyProtocol(p *protocolBinding, observation protocols.Observation) (bool, error) {

@@ -13,14 +13,11 @@ import (
 
 func TestProtocolWithdrawalSurvivesForegroundReconciliation(t *testing.T) {
 	cases := []struct {
-		name   string
-		before []byte
-		after  []byte
+		name  string
+		input []byte
 	}{
-		{"prompt before inventory", shellMarker("A"), nil},
-		{"prompt after inventory", nil, shellMarker("A")},
-		{"native handoff without prompt", nil, nil},
-		{"explicit clear before inventory", protocolReport("state=clear"), nil},
+		{"native handoff", nil},
+		{"explicit clear before inventory", protocolReport("state=clear")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -30,7 +27,7 @@ func TestProtocolWithdrawalSurvivesForegroundReconciliation(t *testing.T) {
 			require.NoError(t, s.Output(scope, protocolReport("state=working")))
 			old, ok := s.core.Target(row.pane.Ref, service.Protocol)
 			require.True(t, ok)
-			require.NoError(t, s.Output(scope, tc.before))
+			require.NoError(t, s.Output(scope, tc.input))
 			facts := row.facts
 			facts.Foreground = facts.Root
 
@@ -38,7 +35,6 @@ func TestProtocolWithdrawalSurvivesForegroundReconciliation(t *testing.T) {
 			scope.Foreground = facts.Foreground
 			scope.Generation++
 			s.Reset(scope)
-			require.NoError(t, s.Output(scope, tc.after))
 			sequence := s.protocolSequence
 			for range 3 {
 				updateProtocolFacts(t, s, facts, Selection{}, true)
@@ -104,7 +100,6 @@ func TestPendingWithdrawalCannotCrossLostContinuity(t *testing.T) {
 				scope := sourceScope(row.facts)
 				s.Reset(scope)
 				require.NoError(t, s.Output(scope, protocolReport("state=working")))
-				require.NoError(t, s.Output(scope, shellMarker("A")))
 				facts := row.facts
 				facts.Foreground = facts.Root
 				updateProtocolFacts(t, s, facts, Selection{}, true)
@@ -143,7 +138,6 @@ func TestProfileReleaseRequiresValidatedSelection(t *testing.T) {
 	scope.Foreground = facts.Foreground
 	scope.Generation++
 	s.Reset(scope)
-	require.NoError(t, s.Output(scope, shellMarker("A")))
 	requireSourceState(t, s, row.pane.Ref, status.Unreported)
 	require.ErrorIs(t, s.core.Apply(target, 2, status.Value{State: status.Unknown}), service.ErrStale)
 }
@@ -179,7 +173,6 @@ func TestPendingWithdrawalEndsWithPaneLifetime(t *testing.T) {
 	scope.Root, scope.Foreground = facts.Root, facts.Foreground
 	scope.Generation++
 	s.Reset(scope)
-	require.NoError(t, s.Output(scope, shellMarker("A")))
 
 	require.NotEqual(t, row.pane.Ref, replacement.pane.Ref)
 	requireSourceState(t, s, replacement.pane.Ref, status.Unreported)

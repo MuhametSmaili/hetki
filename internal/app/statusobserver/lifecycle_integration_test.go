@@ -21,11 +21,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNativePromptWithdrawalSurvivesForegroundRefresh(t *testing.T) {
+func TestNativeActivityClearsOnShellReturnWithoutMarkers(t *testing.T) {
 	runner, server, sampler, id, _ := nativeStreamsFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	startLifecycleShell(t, ctx, runner, id, shellBoundaryFixture)
+	startLifecycleShell(t, ctx, runner, id, foregroundLifecycleFixture)
 	var pause atomic.Bool
 	reached, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
@@ -63,9 +63,6 @@ func TestNativePromptWithdrawalSurvivesForegroundRefresh(t *testing.T) {
 		t.Fatal("inventory did not reach the returning shell")
 	}
 
-	// The marker alone cannot prove shell return while native facts still name a child.
-	sendShellInput(t, ctx, runner, id, "prompt")
-	awaitPendingPrompt(t, source, id)
 	requireSourceState(t, source, ref, status.Working)
 	unblock()
 	awaitLifecycleForeground(t, source, id, false)
@@ -78,8 +75,7 @@ func TestNativeEarlyChildReportSurvivesForegroundRefresh(t *testing.T) {
 	runner, server, sampler, id, _ := nativeStreamsFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	script := strings.Replace(shellBoundaryFixture, `printf "\033]7501;state=working\007"`, `printf "\033]7501;state=working\007\033]133;A\007\033]133;B\007\033]133;C\007"`, 1)
-	startLifecycleShell(t, ctx, runner, id, script)
+	startLifecycleShell(t, ctx, runner, id, foregroundLifecycleFixture)
 	var armed atomic.Bool
 	reached, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
@@ -130,7 +126,7 @@ func TestNativeScreenProfileReleaseReturnsShellToUnreported(t *testing.T) {
 	runner, server, sampler, id, _ := nativeStreamsFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
-	script := strings.Replace(shellBoundaryFixture, `printf "\033]7501;state=working\007"`, `printf "WORKING\n"`, 1)
+	script := strings.Replace(foregroundLifecycleFixture, `printf "\033]7501;state=working\007"`, `printf "WORKING\n"`, 1)
 	startLifecycleShell(t, ctx, runner, id, script)
 	evaluator, err := screen.Compile(screen.Config{
 		LastNonblankRows: 4,
@@ -165,7 +161,7 @@ func TestNativeScreenProfileReleaseReturnsShellToUnreported(t *testing.T) {
 
 	sendShellInput(t, ctx, runner, id, "finish")
 	awaitLifecycleForeground(t, source, id, false)
-	sendShellInput(t, ctx, runner, id, "prompt")
+	sendShellInput(t, ctx, runner, id, "continue")
 	refreshLifecycleSource(t, source)
 
 	requireSourceState(t, source, ref, status.Unreported)
@@ -197,16 +193,6 @@ func awaitLifecycleState(t *testing.T, source *Source, ref status.PaneRef, state
 	}, 3*time.Second, 10*time.Millisecond)
 }
 
-func awaitPendingPrompt(t *testing.T, source *Source, id string) {
-	t.Helper()
-	require.Eventually(t, func() bool {
-		source.mu.Lock()
-		defer source.mu.Unlock()
-		binding := source.panes[id].protocol
-		return binding != nil && binding.pane.PromptPending()
-	}, 3*time.Second, 10*time.Millisecond)
-}
-
 func refreshLifecycleSource(t *testing.T, source *Source) {
 	t.Helper()
 	source.mu.Lock()
@@ -219,3 +205,18 @@ func refreshLifecycleSource(t *testing.T, source *Source) {
 		return source.nativeRevision > before
 	}, 3*time.Second, 10*time.Millisecond)
 }
+
+// Reads synchronize each boundary with the test, without timed shell sleeps or
+// shell integration. The child owns foreground while the parent waits for it.
+const foregroundLifecycleFixture = `stty -echo
+set -m
+while IFS= read -r command; do
+    /bin/sh -c '
+        IFS= read -r start || exit 1
+        printf "\033]7501;state=working\007"
+        IFS= read -r finish || exit 1
+        exit 7
+    '
+    IFS= read -r ack || exit 1
+done
+`

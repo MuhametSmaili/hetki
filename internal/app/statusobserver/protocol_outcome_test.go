@@ -73,7 +73,6 @@ func TestProtocolOutcomesReachCacheAndEndOnNewEvidence(t *testing.T) {
 	}{
 		{"working", protocolReport("state=working"), status.Working, status.NoOutcome},
 		{"success", protocolReport("state=done"), status.Unknown, status.Completed},
-		{"render zones", append(shellMarker("A"), shellMarker("C")...), status.Unknown, status.Completed},
 		{"error", protocolReport("state=error"), status.Unknown, status.Failed},
 		{"fresh activity", protocolReport("state=working"), status.Working, status.NoOutcome},
 		{"another success", protocolReport("state=done"), status.Unknown, status.Completed},

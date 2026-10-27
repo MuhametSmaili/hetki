@@ -56,9 +56,6 @@ func (s *Source) prepare(inventory observe.Inventory) error {
 	panes := make([]service.Pane, 0)
 	for id, facts := range inventory.All() {
 		row := s.reconcilePane(s.panes[id], facts, selected[id], inventory.Problem(id) == nil)
-		if row.valid {
-			row.protocol.resolvePrompt(inventory.StartedAt(), facts.Foreground == facts.Root)
-		}
 		rows[id] = row
 		panes = append(panes, row.pane)
 	}
