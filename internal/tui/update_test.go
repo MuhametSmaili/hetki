@@ -189,14 +189,52 @@ func TestEnterOpensSelectedItemFromFilter(t *testing.T) {
 		return ActionResult{}, nil
 	})
 	m.items.SetQuery("server")
+	m.view, m.preview.enabled = ViewTree, true
 	require.Equal(t, list.ItemID{ID: "window-2"}, selectedNodeID(m))
 
 	m, cmd := updateModel(t, m, specialKey(tea.KeyEnter))
 	require.Equal(t, modeBrowse, m.mode)
 	require.True(t, m.busy)
 	require.NotNil(t, cmd)
-	cmd()
+	result := cmd()
 	require.Equal(t, ActionRequest{ActionID: ActionOpen, ItemID: list.ItemID{ID: "window-2"}}, got)
+
+	m, cmd = updateModel(t, m, result)
+
+	require.Nil(t, cmd)
+	require.False(t, m.busy)
+	require.False(t, m.quitting)
+	require.Equal(t, "server", m.items.Query())
+	require.Equal(t, list.ItemID{ID: "window-2"}, selectedNodeID(m))
+	require.Equal(t, State{View: ViewTree, Scope: ScopeAll, Preview: true}, m.result().State)
+	m, cmd = updateModel(t, m, specialKey(tea.KeyEnter))
+	require.NotNil(t, cmd, "completed open must allow another switch")
+	_, cmd = updateModel(t, m, controlKey('c'))
+	requireQuit(t, cmd)
+}
+
+func TestLastSessionSnapshotPreservesPickerState(t *testing.T) {
+	refreshed := interactionSnapshot()
+	refreshed.Items[1].Children[0].Primary += " ↶"
+	m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
+		require.Equal(t, ActionRequest{ActionID: ActionLastSession}, request)
+		return ActionResult{Snapshot: &refreshed}, nil
+	})
+	m.items.SetQuery("server")
+	m.view, m.preview.enabled = ViewTree, true
+	selected := selectedNodeID(m)
+
+	m, cmd := updateModel(t, m, controlKey('o'))
+	require.NotNil(t, cmd)
+	m, cmd = updateModel(t, m, cmd())
+
+	require.Nil(t, cmd)
+	require.NoError(t, m.err)
+	require.False(t, m.busy)
+	require.False(t, m.quitting)
+	require.Equal(t, "server", m.items.Query())
+	require.Equal(t, selected, selectedNodeID(m))
+	require.Equal(t, State{View: ViewTree, Scope: ScopeAll, Preview: true}, m.result().State)
 }
 
 func TestLastSessionKeyWorksWithoutVisibleRowsAndRespectsOverlays(t *testing.T) {

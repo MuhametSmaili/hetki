@@ -185,7 +185,12 @@ hetki --scope tracked
 hetki --scope all
 hetki --view tree --scope tracked --preview
 hetki --preview --preview-width 45
+hetki --stay-open
 ```
+
+`--stay-open` keeps the picker running after switching to a session, window, or pane, including with `Ctrl+O`.
+It requires running inside tmux. The current filter, selection, view, and preview remain in memory; `Ctrl+C` still quits.
+Without the flag, switching exits the picker. This does not manage pane placement or save UI state across restarts.
 
 `--preview` (or `--preview=true`) initially shows the pane preview. Use `--preview=false` to initially hide it, even when `ui.preview` is `true`.
 Omit the flag to use the configured value or built-in default. `Alt+P` can still toggle the preview during the run.

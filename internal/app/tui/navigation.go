@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
@@ -46,6 +47,55 @@ func (a *LiveAdapter) openItem(ctx context.Context, item liveItem) (ui.ActionRes
 		return ui.ActionResult{}, fmt.Errorf("validate selected item %q: %w", item.ID, err)
 	}
 
+	return a.prepareItemNavigation(state, item)
+}
+
+func (a *LiveAdapter) openLastSession(ctx context.Context) (ui.ActionResult, error) {
+	a.pendingNavigation = nil
+
+	state, err := a.queryState(ctx)
+	if err != nil {
+		return ui.ActionResult{}, err
+	}
+
+	a.mu.RLock()
+	input, view := a.input, a.projection
+	a.mu.RUnlock()
+	if input == nil {
+		return ui.ActionResult{}, errors.New("live state is not loaded")
+	}
+
+	// Reuse loaded scores so refreshing history does not reload or rerank frecency.
+	prepared, err := newProjectionInput(state, input.scores, input.notice).project(view)
+	if err != nil {
+		return ui.ActionResult{}, err
+	}
+
+	var last liveItem
+	for _, item := range prepared.index {
+		if item.Last {
+			last = item
+			break
+		}
+	}
+	if last.ID.IsZero() {
+		return ui.ActionResult{}, errors.New("no previous session available")
+	}
+
+	result, err := a.prepareItemNavigation(state.StateResult, last)
+	if err != nil {
+		return ui.ActionResult{}, err
+	}
+	if err := a.publishSnapshot(ctx, prepared); err != nil {
+		a.pendingNavigation = nil
+		return ui.ActionResult{}, err
+	}
+
+	result.Snapshot = &prepared.snapshot
+	return result, nil
+}
+
+func (a *LiveAdapter) prepareItemNavigation(state backend.StateResult, item liveItem) (ui.ActionResult, error) {
 	navigation := prepareNavigation(state, item)
 	if navigation == nil {
 		return ui.ActionResult{}, fmt.Errorf("selected item %q is stale", item.ID)
@@ -135,7 +185,7 @@ func activePane(panes []backend.Pane) (backend.Pane, bool) {
 	return backend.Pane{}, false
 }
 
-// Navigate consumes the prepared Open or LastSession target after terminal restoration.
+// Navigate consumes the prepared Open or LastSession target.
 func (a *LiveAdapter) Navigate(ctx context.Context, navigation list.ItemID) error {
 	if err := ctx.Err(); err != nil {
 		return err

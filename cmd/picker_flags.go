@@ -13,6 +13,7 @@ func init() {
 
 func addPickerFlags(command *cobra.Command) {
 	flags := command.Flags()
+	flags.Bool("stay-open", false, "Keep the picker running after switching (requires tmux)")
 	flags.String("height", "", "Picker height in rows or percent (100% selects fullscreen)")
 	flags.String("border", "", "Outer picker border: rounded or none")
 	flags.Bool("preview", false, "Show pane preview initially (use --preview=false to disable)")
@@ -33,6 +34,12 @@ func pickerOverrides(command *cobra.Command) (apptui.Overrides, error) {
 	overrides, err := pickerLayoutOverrides(flags)
 	if err != nil {
 		return overrides, err
+	}
+	if flags.Changed("stay-open") {
+		overrides.StayOpen, err = flags.GetBool("stay-open")
+		if err != nil {
+			return overrides, err
+		}
 	}
 
 	if flags.Changed("preview") {

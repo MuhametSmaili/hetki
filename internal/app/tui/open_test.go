@@ -156,6 +156,34 @@ func TestPreparedServiceMissingAndEmptyConfigAreQuiet(t *testing.T) {
 	}
 }
 
+func TestPreparedServiceStayOpenRequiresTmux(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		tmux     string
+		stayOpen bool
+		wantErr  bool
+	}{
+		{name: "enabled inside tmux", tmux: "isolated,1,0", stayOpen: true},
+		{name: "enabled outside tmux", stayOpen: true, wantErr: true},
+		{name: "default outside tmux"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			privateConfig(t, "")
+			t.Setenv("TMUX", tt.tmux)
+
+			service, err := prepareService(t.Context(), nil, Overrides{StayOpen: tt.stayOpen})
+
+			if tt.wantErr {
+				require.ErrorContains(t, err, "--stay-open requires running inside tmux")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.stayOpen, service.StayOpen)
+			require.Equal(t, ui.DefaultOptions(), service.Options)
+		})
+	}
+}
+
 func TestOpenSanitizesBackendDiagnosticsAndPreservesCause(t *testing.T) {
 	privateConfig(t, "ui: {view: invalid}")
 	path := "backend\x1b[31m\n/socket"

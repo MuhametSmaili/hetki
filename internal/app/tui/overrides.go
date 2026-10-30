@@ -5,6 +5,7 @@ import ui "github.com/MuhametSmaili/hetki/internal/tui"
 // Overrides contains only explicitly supplied invocation choices.
 // Nil fields leave the corresponding file preference or default unchanged.
 type Overrides struct {
+	StayOpen     bool // Invocation-only; there is no file preference.
 	Height       *ui.Height
 	Border       *ui.BorderMode
 	Preview      *bool

@@ -24,6 +24,10 @@ type Service struct {
 	Driver  Driver
 	Options ui.Options
 	RunUI   RunUIFunc
+
+	// StayOpen requires navigation that does not take over the terminal.
+	StayOpen bool
+
 	// Notice is a terminal-safe application diagnostic for the initial snapshot only.
 	Notice string
 }
@@ -43,7 +47,7 @@ func (s Service) Run(ctx context.Context) error {
 	}
 	effectsCtx, cancelEffects := context.WithCancel(ctx)
 	defer cancelEffects()
-	effects := uiEffects{ctx: effectsCtx, cancel: cancelEffects, driver: s.Driver}
+	effects := uiEffects{ctx: effectsCtx, cancel: cancelEffects, driver: s.Driver, stayOpen: s.StayOpen}
 
 	initial, err := s.Driver.Load(effectsCtx, s.Options.Initial.View)
 	if err != nil {

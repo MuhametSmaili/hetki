@@ -73,22 +73,6 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 	}
 }
 
-func (a *LiveAdapter) openLastSession(ctx context.Context) (ui.ActionResult, error) {
-	a.mu.RLock()
-	var last liveItem
-	for _, item := range a.index {
-		if item.Last {
-			last = item
-			break
-		}
-	}
-	a.mu.RUnlock()
-	if last.ID.IsZero() {
-		return ui.ActionResult{}, fmt.Errorf("no previous session available")
-	}
-	return a.openItem(ctx, last)
-}
-
 func (a *LiveAdapter) executeItem(ctx context.Context, request ui.ActionRequest, item liveItem) (ui.ActionResult, error) {
 	if item.ID.IsZero() {
 		return ui.ActionResult{}, fmt.Errorf("action requires a selected item")

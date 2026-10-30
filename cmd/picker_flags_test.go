@@ -21,6 +21,10 @@ func TestPickerFlagsPassOnlyExplicitOverrides(t *testing.T) {
 		want apptui.Overrides
 	}{
 		{name: "absent flags", want: apptui.Overrides{}},
+		{name: "stay open", args: []string{"--stay-open"}, want: apptui.Overrides{StayOpen: true}},
+		{name: "stay open explicitly enabled", args: []string{"--stay-open=true"}, want: apptui.Overrides{StayOpen: true}},
+		{name: "stay open explicitly disabled", args: []string{"--stay-open=false"}, want: apptui.Overrides{}},
+		{name: "last stay open wins", args: []string{"--stay-open", "--stay-open=false"}, want: apptui.Overrides{}},
 		{name: "rows", args: []string{"--height", "20"}, want: apptui.Overrides{Height: new(ui.Height{Value: 20})}},
 		{name: "percentage", args: []string{"--height=40%"}, want: apptui.Overrides{Height: new(ui.Height{Value: 40, Percent: true})}},
 		{name: "explicit fullscreen default", args: []string{"--height=100%"}, want: apptui.Overrides{Height: new(ui.Height{Value: 100, Percent: true})}},
@@ -32,8 +36,9 @@ func TestPickerFlagsPassOnlyExplicitOverrides(t *testing.T) {
 		{name: "preview explicitly disabled", args: []string{"--preview=false"}, want: apptui.Overrides{Preview: new(false)}},
 		{
 			name: "combined",
-			args: []string{"--height=12", "--border=none", "--preview", "--scope=tracked", "--view=tree", "--preview-width=45"},
+			args: []string{"--height=12", "--border=none", "--preview", "--scope=tracked", "--view=tree", "--preview-width=45", "--stay-open"},
 			want: apptui.Overrides{
+				StayOpen:     true,
 				Height:       new(ui.Height{Value: 12}),
 				Border:       new(ui.BorderNone),
 				Preview:      new(true),
@@ -90,6 +95,7 @@ func TestInvalidPickerFlagsFailWithoutOpeningTUI(t *testing.T) {
 		{"--height=1.5%"}, {"--height="}, {"--border=other"},
 		{"--fullscreen"}, {"--fullscreen=false"},
 		{"--preview=invalid"}, {"--preview="},
+		{"--stay-open=invalid"}, {"--stay-open="},
 		{"--scope="}, {"--scope=other"}, {"--scope=working"}, {"--scope=Tracked"}, {"--scope"},
 		{"--filter=tracked"},
 		{"--view="}, {"--view=other"}, {"--view=Tree"}, {"--view"},
@@ -136,7 +142,7 @@ func TestPickerFlagValueCompletion(t *testing.T) {
 
 func TestPickerFlagsAreLocalAndHelpDoesNotOpenPicker(t *testing.T) {
 	for _, subcommand := range rootCmd.Commands() {
-		for _, name := range []string{"height", "fullscreen", "border", "preview", "filter", "scope", "view", "preview-width", "query"} {
+		for _, name := range []string{"height", "fullscreen", "border", "preview", "filter", "scope", "view", "preview-width", "query", "stay-open"} {
 			require.Nil(t, subcommand.InheritedFlags().Lookup(name))
 		}
 	}
@@ -150,6 +156,7 @@ func TestPickerFlagsAreLocalAndHelpDoesNotOpenPicker(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Contains(t, output.String(), "--height")
+	require.Contains(t, output.String(), "--stay-open")
 	require.Contains(t, output.String(), "--border")
 	require.Contains(t, output.String(), "--preview")
 	require.Contains(t, output.String(), "--preview=false")

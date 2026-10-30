@@ -5,15 +5,17 @@ import (
 	"sync"
 
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 type uiEffects struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	driver Driver
-	status *statusDelivery
-	mu     sync.Mutex
-	active sync.WaitGroup
+	ctx      context.Context
+	cancel   context.CancelFunc
+	driver   Driver
+	status   *statusDelivery
+	stayOpen bool
+	mu       sync.Mutex
+	active   sync.WaitGroup
 }
 
 func (e *uiEffects) begin() error {
@@ -44,6 +46,11 @@ func (e *uiEffects) dispatch(request ui.ActionRequest) (ui.ActionResult, error) 
 	}
 	defer e.active.Done()
 	result, err := e.driver.Execute(e.ctx, request)
+	if err == nil && e.stayOpen && !result.Navigation.IsZero() {
+		err = e.driver.Navigate(e.ctx, result.Navigation)
+		// Navigation is consumed here; returning it would make the UI quit.
+		result.Navigation = list.ItemID{}
+	}
 	if err == nil && result.Snapshot != nil && e.status != nil {
 		result.Status = e.status.projectionStatus()
 	}

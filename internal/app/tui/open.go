@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/MuhametSmaili/hetki/internal/config"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
@@ -30,6 +31,10 @@ func prepareService(ctx context.Context, detectBackend func() (Backend, error), 
 		return Service{}, err
 	}
 
+	if overrides.StayOpen && os.Getenv("TMUX") == "" {
+		return Service{}, errors.New("--stay-open requires running inside tmux")
+	}
+
 	preferences, loadErr := loadConfig(ctx)
 	if err := ctx.Err(); err != nil {
 		return Service{}, err
@@ -52,7 +57,13 @@ func prepareService(ctx context.Context, detectBackend func() (Backend, error), 
 		return Service{}, err
 	}
 
-	return Service{Driver: NewLiveAdapter(detectBackend), Options: options, RunUI: ui.Run, Notice: configNotice(warning)}, nil
+	return Service{
+		Driver:   NewLiveAdapter(detectBackend),
+		Options:  options,
+		StayOpen: overrides.StayOpen,
+		RunUI:    ui.Run,
+		Notice:   configNotice(warning),
+	}, nil
 }
 
 func loadConfig(ctx context.Context) (config.Config, error) {
