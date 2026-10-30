@@ -73,12 +73,12 @@ func TestDefaultContextMenuBindingsAreScopedToNormalAndFilter(t *testing.T) {
 	keys := DefaultKeyMap()
 	require.Equal(t, []string{"ctrl+k"}, keys.Keys(KeyModeNormal, ActionContextMenu))
 	require.Equal(t, []string{"ctrl+k"}, keys.Keys(KeyModeFilter, ActionContextMenu))
-	require.Empty(t, keys.Keys(KeyModeInput, ActionContextMenu))
+	require.Empty(t, keys.Keys(KeyModePrompt, ActionContextMenu))
 	require.Empty(t, keys.Keys(KeyModeConfirm, ActionContextMenu))
 	require.Empty(t, keys.Keys(KeyModeMenu, ActionContextMenu))
 }
 
-func TestDefaultMenuBindingsUseLocalControlsAndNormalActionFallback(t *testing.T) {
+func TestDefaultMenuBindingsHaveTheirOwnControlsAndActions(t *testing.T) {
 	keys := DefaultKeyMap()
 	require.Equal(t, []string{"o"}, keys.Keys(KeyModeMenu, ActionOpen))
 	require.Equal(t, []string{"enter", "ctrl+y"}, keys.Keys(KeyModeMenu, ActionConfirm))
@@ -99,11 +99,10 @@ func TestDefaultMenuBindingsUseLocalControlsAndNormalActionFallback(t *testing.T
 		{ActionRefresh, []string{"ctrl+r"}},
 		{ActionToggleProjection, []string{"ctrl+t"}},
 	} {
-		require.Empty(t, keys.Keys(KeyModeMenu, test.action))
-		require.Equal(t, KeyModeNormal, keys.menuMode(test.action))
-		require.Equal(t, test.keys, keys.Keys(keys.menuMode(test.action), test.action))
+		t.Run(string(test.action), func(t *testing.T) {
+			require.Equal(t, test.keys, keys.Keys(KeyModeMenu, test.action))
+		})
 	}
-	require.Equal(t, KeyModeMenu, keys.menuMode(ActionOpen))
 }
 
 func TestDefaultConfirmationBindingsPreserveUppercaseChoices(t *testing.T) {
@@ -113,12 +112,12 @@ func TestDefaultConfirmationBindingsPreserveUppercaseChoices(t *testing.T) {
 }
 
 func TestModalControlsUseTheResolvedBindings(t *testing.T) {
-	keys, err := ResolveKeyMap(map[KeyMode][]Binding{KeyModeInput: {
+	keys, err := ResolveKeyMap(map[KeyMode][]Binding{KeyModePrompt: {
 		{Action: ActionConfirm, Keys: []string{"z"}},
 		{Action: ActionCancel, Keys: []string{"x"}},
 	}})
 	require.NoError(t, err)
-	require.Equal(t, "z submit | x cancel", modalControls(keys, KeyModeInput, "submit"))
+	require.Equal(t, "z submit | x cancel", modalControls(keys, KeyModePrompt, "submit"))
 }
 
 func TestMenuControlsUseTheResolvedBindings(t *testing.T) {

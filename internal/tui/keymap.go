@@ -14,7 +14,7 @@ type KeyMode string
 const (
 	KeyModeNormal  KeyMode = "normal"
 	KeyModeFilter  KeyMode = "filter"
-	KeyModeInput   KeyMode = "input"
+	KeyModePrompt  KeyMode = "prompt"
 	KeyModeConfirm KeyMode = "confirm"
 	KeyModeMenu    KeyMode = "menu"
 )
@@ -32,9 +32,9 @@ func ResolveKeyMap(bindings map[KeyMode][]Binding) (KeyMap, error) {
 	resolved := KeyMap{bindings: make(map[KeyMode]map[ActionID]key.Binding, len(bindings))}
 	for mode, modeBindings := range bindings {
 		switch mode {
-		case KeyModeNormal, KeyModeFilter, KeyModeInput, KeyModeConfirm, KeyModeMenu:
+		case KeyModeNormal, KeyModeFilter, KeyModePrompt, KeyModeConfirm, KeyModeMenu:
 		default:
-			return KeyMap{}, fmt.Errorf("invalid key mode %q", mode)
+			return KeyMap{}, fmt.Errorf("invalid key mode %q: %w", mode, ErrUnknownKeyMode)
 		}
 
 		actions, err := resolveModeBindings(mode, modeBindings)
@@ -50,16 +50,19 @@ func resolveModeBindings(mode KeyMode, bindings []Binding) (map[ActionID]key.Bin
 	actions := make(map[ActionID]key.Binding, len(bindings))
 	used := make(map[string]ActionID)
 	for _, binding := range bindings {
-		if binding.Action == "" || len(binding.Keys) == 0 {
-			return nil, fmt.Errorf("mode %q has an empty action or key list", mode)
+		if binding.Action == "" {
+			return nil, fmt.Errorf("mode %q has an empty action: %w", mode, ErrUnsupportedKeyAction)
+		}
+		if len(binding.Keys) == 0 {
+			return nil, fmt.Errorf("mode %q action %q has an empty key list: %w", mode, binding.Action, ErrInvalidKeyCount)
 		}
 
 		if !slices.Contains(declaredActions[:], binding.Action) {
-			return nil, fmt.Errorf("mode %q has an invalid action %q", mode, binding.Action)
+			return nil, fmt.Errorf("mode %q has an invalid action %q: %w", mode, binding.Action, ErrUnsupportedKeyAction)
 		}
 
 		if _, exists := actions[binding.Action]; exists {
-			return nil, fmt.Errorf("mode %q defines action %q more than once", mode, binding.Action)
+			return nil, fmt.Errorf("mode %q defines action %q more than once: %w", mode, binding.Action, ErrKeyBindingConflict)
 		}
 		keys, err := resolveBindingKeys(mode, binding, used)
 		if err != nil {
@@ -75,13 +78,13 @@ func resolveBindingKeys(mode KeyMode, binding Binding, used map[string]ActionID)
 	for i, raw := range binding.Keys {
 		value := strings.TrimSpace(raw)
 		if value == "" {
-			return nil, fmt.Errorf("mode %q action %q has an empty key", mode, binding.Action)
+			return nil, fmt.Errorf("mode %q action %q has an empty key: %w", mode, binding.Action, ErrInvalidKeySyntax)
 		}
 		if value == "ctrl+c" {
-			return nil, fmt.Errorf("ctrl+c is reserved for emergency quit")
+			return nil, fmt.Errorf("mode %q action %q key %q: %w", mode, binding.Action, value, ErrReservedQuitKey)
 		}
 		if previous, exists := used[value]; exists {
-			return nil, fmt.Errorf("mode %q key %q is assigned to %q and %q", mode, value, previous, binding.Action)
+			return nil, fmt.Errorf("mode %q key %q is assigned to %q and %q: %w", mode, value, previous, binding.Action, ErrKeyBindingConflict)
 		}
 		used[value] = binding.Action
 		keys[i] = value
@@ -138,7 +141,7 @@ func DefaultKeyMap() KeyMap {
 			{Action: ActionClearFilter, Keys: []string{"ctrl+l"}},
 			{Action: ActionContextMenu, Keys: []string{"ctrl+k"}},
 		},
-		KeyModeInput: {
+		KeyModePrompt: {
 			{Action: ActionCancel, Keys: []string{"esc"}},
 			{Action: ActionConfirm, Keys: []string{"enter", "ctrl+y"}},
 			{Action: ActionBackspace, Keys: []string{"backspace", "delete"}},
@@ -151,6 +154,14 @@ func DefaultKeyMap() KeyMap {
 		},
 		KeyModeMenu: {
 			{Action: ActionOpen, Keys: []string{"o"}},
+			{Action: ActionRename, Keys: []string{"r"}},
+			{Action: ActionRenameSession, Keys: []string{"R"}},
+			{Action: ActionCreateWindow, Keys: []string{"a"}},
+			{Action: ActionCreateSession, Keys: []string{"A"}},
+			{Action: ActionDelete, Keys: []string{"x"}},
+			{Action: ActionDeleteSession, Keys: []string{"X"}},
+			{Action: ActionRefresh, Keys: []string{"ctrl+r"}},
+			{Action: ActionToggleProjection, Keys: []string{"ctrl+t"}},
 			{Action: ActionCancel, Keys: []string{"esc"}},
 			{Action: ActionConfirm, Keys: []string{"enter", "ctrl+y"}},
 			{Action: ActionMoveUp, Keys: []string{"up", "k", "ctrl+p"}},
@@ -161,14 +172,6 @@ func DefaultKeyMap() KeyMap {
 		panic(err)
 	}
 	return keymap
-}
-
-// Menu item shortcuts inherit normal bindings; menu controls and Open are local.
-func (k KeyMap) menuMode(action ActionID) KeyMode {
-	if _, exists := k.bindings[KeyModeMenu][action]; exists {
-		return KeyModeMenu
-	}
-	return KeyModeNormal
 }
 
 func (k KeyMap) IsZero() bool { return k.bindings == nil }

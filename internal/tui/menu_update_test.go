@@ -183,7 +183,7 @@ func TestOldMenuRefreshAndToggleLettersDoNothing(t *testing.T) {
 	}
 }
 
-func TestMenuInheritsInjectedNormalBindingsForDisplayAndDispatch(t *testing.T) {
+func TestMenuUsesInjectedLocalBindingsForDisplayAndDispatch(t *testing.T) {
 	keys, err := ResolveKeyMap(map[KeyMode][]Binding{
 		KeyModeNormal: {
 			{Action: ActionContextMenu, Keys: []string{"ctrl+k"}},
@@ -191,6 +191,8 @@ func TestMenuInheritsInjectedNormalBindingsForDisplayAndDispatch(t *testing.T) {
 			{Action: ActionToggleProjection, Keys: []string{"ctrl+t"}},
 		},
 		KeyModeMenu: {
+			{Action: ActionRefresh, Keys: []string{"ctrl+r"}},
+			{Action: ActionToggleProjection, Keys: []string{"ctrl+g"}},
 			{Action: ActionCancel, Keys: []string{"esc"}},
 			{Action: ActionConfirm, Keys: []string{"enter"}},
 			{Action: ActionMoveUp, Keys: []string{"up"}},
@@ -200,12 +202,13 @@ func TestMenuInheritsInjectedNormalBindingsForDisplayAndDispatch(t *testing.T) {
 	require.NoError(t, err)
 	entries := []MenuEntry{{Action: ActionRefresh, Label: "Refresh"}, {Action: ActionToggleProjection, Label: "Toggle projection"}}
 	for _, test := range []struct {
-		action ActionID
-		key    tea.KeyPressMsg
-		badge  string
+		action    ActionID
+		key       tea.KeyPressMsg
+		normalKey tea.KeyPressMsg
+		badge     string
 	}{
-		{ActionRefresh, controlKey('f'), "‹ctrl+f› Refresh"},
-		{ActionToggleProjection, controlKey('t'), "‹ctrl+t› Toggle projection"},
+		{ActionRefresh, controlKey('r'), controlKey('f'), "‹ctrl+r› Refresh"},
+		{ActionToggleProjection, controlKey('g'), controlKey('t'), "‹ctrl+g› Toggle projection"},
 	} {
 		t.Run(string(test.action), func(t *testing.T) {
 			var got ActionRequest
@@ -219,6 +222,8 @@ func TestMenuInheritsInjectedNormalBindingsForDisplayAndDispatch(t *testing.T) {
 			require.NoError(t, err)
 			m = openTestMenu(t, selectNode(t, browseModel(m), list.ItemID{ID: "window-2"}))
 			require.Contains(t, terminal.Sanitize(m.View().Content), test.badge)
+			m, ignored := updateModel(t, m, test.normalKey)
+			require.Nil(t, ignored, "normal bindings must not activate menu entries")
 			_, cmd := updateModel(t, m, test.key)
 			require.NotNil(t, cmd)
 			cmd()
@@ -282,6 +287,62 @@ func TestMenuInputAndConfirmationHandoffsRestoreFilterState(t *testing.T) {
 	m, _ = updateModel(t, m, cmd())
 	require.ErrorIs(t, m.err, failed)
 	requireState(t, m)
+}
+
+func TestIndependentMenuShortcutsSubmitThroughCustomDialogControls(t *testing.T) {
+	keys, err := DefaultKeyMap().WithOverrides(map[KeyMode][]Binding{
+		KeyModeMenu: {
+			{Action: ActionRename, Keys: []string{"w"}},
+			{Action: ActionDelete, Keys: []string{"r"}},
+		},
+		KeyModePrompt:  {{Action: ActionConfirm, Keys: []string{"ctrl+s"}}},
+		KeyModeConfirm: {{Action: ActionConfirm, Keys: []string{"ctrl+s"}}},
+	})
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name   string
+		key    string
+		mode   uiMode
+		prompt ActionResult
+		want   ActionRequest
+	}{
+		{
+			name: "rename input", key: "w", mode: modeInput,
+			prompt: ActionResult{Input: &InputPrompt{Title: "RENAME", InitialValue: "editor"}},
+			want:   ActionRequest{ActionID: ActionRename, ItemID: list.ItemID{ID: "window-2"}, Value: new("editor")},
+		},
+		{
+			name: "delete confirmation", key: "r", mode: modeConfirm,
+			prompt: ActionResult{Confirmation: &Confirmation{Title: "DELETE"}},
+			want:   ActionRequest{ActionID: ActionDelete, ItemID: list.ItemID{ID: "window-2"}, Confirmed: true},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var got ActionRequest
+			m, err := newModelWithKeys(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
+				if request.ActionID == ActionContextMenu {
+					return ActionResult{Menu: menuPtr(testItemMenu())}, nil
+				}
+				got = request
+				return test.prompt, nil
+			}, keys)
+			require.NoError(t, err)
+			m = selectNode(t, browseModel(m), test.want.ItemID)
+			m.mode = modeFilter
+			m = openTestMenu(t, m)
+
+			m, cmd := updateModel(t, m, printableKey(test.key))
+			require.NotNil(t, cmd)
+			m, _ = updateModel(t, m, cmd())
+			require.Equal(t, test.mode, m.mode)
+			m, cmd = updateModel(t, m, controlKey('s'))
+			require.NotNil(t, cmd)
+			cmd()
+
+			require.Equal(t, test.want, got)
+			require.Equal(t, modeFilter, m.mode)
+		})
+	}
 }
 
 func TestDeleteResultSelectsParentThenNextOrPreviousSurvivor(t *testing.T) {
@@ -369,31 +430,36 @@ func TestContextMenuRejectsEmptyAndInvalidEntries(t *testing.T) {
 	}
 }
 
-func TestContextMenuRejectsResolvedFallbackKeyCollisions(t *testing.T) {
+func TestContextMenuDoesNotFallBackToNormalBindings(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		normal  Binding
-		menu    Binding
-		entries []MenuEntry
-		key     string
+		name       string
+		normal     Binding
+		menu       Binding
+		entries    []MenuEntry
+		key        tea.KeyPressMsg
+		wantCursor int
 	}{
 		{
-			name: "entry with explicit menu binding", key: "o",
-			normal:  Binding{Action: ActionRename, Keys: []string{"o"}},
-			menu:    Binding{Action: ActionOpen, Keys: []string{"o"}},
-			entries: []MenuEntry{{Action: ActionOpen, Label: "Open"}, {Action: ActionRename, Label: "Rename"}},
-		},
-		{
-			name: "absent menu action shadows inherited entry", key: "o",
-			normal:  Binding{Action: ActionRename, Keys: []string{"o"}},
+			name:    "unbound menu action",
+			normal:  Binding{Action: ActionRename, Keys: []string{"v"}},
 			menu:    Binding{Action: ActionOpen, Keys: []string{"o"}},
 			entries: []MenuEntry{{Action: ActionRename, Label: "Rename"}},
+			key:     printableKey("v"),
 		},
 		{
-			name: "entry with menu control", key: "down",
-			normal:  Binding{Action: ActionRename, Keys: []string{"down"}},
-			menu:    Binding{Action: ActionMoveDown, Keys: []string{"down"}},
-			entries: []MenuEntry{{Action: ActionRename, Label: "Rename"}},
+			name:       "normal action shares a menu control",
+			normal:     Binding{Action: ActionRename, Keys: []string{"down"}},
+			menu:       Binding{Action: ActionMoveDown, Keys: []string{"down"}},
+			entries:    []MenuEntry{{Action: ActionOpen, Label: "Open"}, {Action: ActionRename, Label: "Rename"}},
+			key:        specialKey(tea.KeyDown),
+			wantCursor: 1,
+		},
+		{
+			name:    "bound action absent from this menu",
+			normal:  Binding{Action: ActionRename, Keys: []string{"r"}},
+			menu:    Binding{Action: ActionRename, Keys: []string{"v"}},
+			entries: []MenuEntry{{Action: ActionOpen, Label: "Open"}},
+			key:     printableKey("v"),
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -404,20 +470,21 @@ func TestContextMenuRejectsResolvedFallbackKeyCollisions(t *testing.T) {
 				},
 				KeyModeMenu: {test.menu},
 			})
-			require.NoError(t, err, "the collision only exists in the combined menu keyspace")
+			require.NoError(t, err)
 			calls := 0
 			m, err := newModelWithKeys(interactionSnapshot(), func(ActionRequest) (ActionResult, error) {
 				calls++
 				return ActionResult{Menu: menuPtr(ItemMenu{Entries: test.entries})}, nil
 			}, keys)
 			require.NoError(t, err)
-			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
-			m, cmd := updateModel(t, m, controlKey('k'))
-			m, _ = updateModel(t, m, cmd())
-			require.Equal(t, modeBrowse, m.mode)
-			require.Empty(t, m.menu.Entries)
-			require.ErrorContains(t, m.err, "menu key \""+test.key+"\" is assigned")
-			require.Equal(t, 1, calls, "a rejected menu must not dispatch an entry")
+			m = openTestMenu(t, selectNode(t, browseModel(m), list.ItemID{ID: "window-2"}))
+
+			m, cmd := updateModel(t, m, test.key)
+
+			require.Nil(t, cmd)
+			require.Equal(t, modeMenu, m.mode)
+			require.Equal(t, test.wantCursor, m.menu.Cursor)
+			require.Equal(t, 1, calls, "normal or unavailable actions must not dispatch from a menu")
 		})
 	}
 }

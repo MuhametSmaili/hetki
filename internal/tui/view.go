@@ -156,7 +156,7 @@ func (m model) viewOverlay(width, height int) string {
 		}
 		return renderInputModal(inputModalProps{
 			LineWidth: width, MaxHeight: height, Title: m.input.Title, Prompt: prompt, Value: m.input.Value,
-			Hint: modalControls(m.keys, KeyModeInput, "submit"), Theme: m.theme,
+			Hint: modalControls(m.keys, KeyModePrompt, "submit"), Theme: m.theme,
 		})
 	case modeConfirm:
 		return renderConfirmModal(confirmModalProps{

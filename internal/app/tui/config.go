@@ -40,6 +40,7 @@ func resolveConfig(preferences config.Config) (ui.Options, string) {
 		}
 	}
 	warnings = append(warnings, resolvePresentation(preferences.UI, &options)...)
+	warnings = append(warnings, resolveKeymap(preferences.Keymap, &options)...)
 	return options, strings.Join(warnings, "; ")
 }
 

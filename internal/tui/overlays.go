@@ -43,7 +43,7 @@ func (m *model) openOverlay(result ActionResult, pending *ActionRequest) {
 	switch {
 	case result.Menu != nil:
 		menu := result.Menu
-		if err := validateItemMenu(*menu, m.keys); err != nil {
+		if err := validateItemMenu(*menu); err != nil {
 			m.err = err
 			return
 		}
@@ -82,11 +82,6 @@ func (m model) updateMenuMode(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m.actionUnavailable(action)
 		}
 		return m.dispatchAction(action, list.ItemID{})
-	}
-	for i, entry := range m.menu.Entries {
-		if m.keys.Matches(m.keys.menuMode(entry.Action), entry.Action, msg) {
-			return m.activateMenuEntry(i)
-		}
 	}
 	return m, nil
 }
@@ -204,15 +199,9 @@ func primaryReturnMode(mode uiMode) uiMode {
 	return modeBrowse
 }
 
-func validateItemMenu(menu ItemMenu, keys KeyMap) error {
+func validateItemMenu(menu ItemMenu) error {
 	if len(menu.Entries) == 0 {
 		return fmt.Errorf("selected item has no available actions")
-	}
-	used := map[string]ActionID{"ctrl+c": ActionQuit}
-	for action, binding := range keys.bindings[KeyModeMenu] {
-		for _, bound := range binding.Keys() {
-			used[bound] = action
-		}
 	}
 	actions := make(map[ActionID]struct{}, len(menu.Entries))
 	for _, entry := range menu.Entries {
@@ -225,20 +214,7 @@ func validateItemMenu(menu ItemMenu, keys KeyMap) error {
 		if _, exists := actions[entry.Action]; exists {
 			return fmt.Errorf("menu action %q appears more than once", entry.Action)
 		}
-		if err := registerMenuActionKeys(entry.Action, keys, used); err != nil {
-			return err
-		}
 		actions[entry.Action] = struct{}{}
-	}
-	return nil
-}
-
-func registerMenuActionKeys(action ActionID, keys KeyMap, used map[string]ActionID) error {
-	for _, bound := range keys.Keys(keys.menuMode(action), action) {
-		if previous, exists := used[bound]; exists && previous != action {
-			return fmt.Errorf("menu key %q is assigned to %q and %q", bound, previous, action)
-		}
-		used[bound] = action
 	}
 	return nil
 }

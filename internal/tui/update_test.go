@@ -319,7 +319,7 @@ func TestBoundDeleteSessionUsesOneActionFlowInEveryMode(t *testing.T) {
 	}{
 		{name: "normal", mode: modeBrowse, keyMode: KeyModeNormal, returnMode: modeBrowse},
 		{name: "filter", mode: modeFilter, keyMode: KeyModeFilter, returnMode: modeFilter},
-		{name: "input", mode: modeInput, keyMode: KeyModeInput, returnMode: modeFilter},
+		{name: "input", mode: modeInput, keyMode: KeyModePrompt, returnMode: modeFilter},
 		{name: "confirm", mode: modeConfirm, keyMode: KeyModeConfirm, returnMode: modeFilter},
 		{name: "menu", mode: modeMenu, keyMode: KeyModeMenu, returnMode: modeFilter},
 	} {

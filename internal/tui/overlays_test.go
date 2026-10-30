@@ -15,7 +15,7 @@ func TestBoundModeTransitionsDiscardTheOwnedOverlay(t *testing.T) {
 		mode    uiMode
 		keyMode KeyMode
 	}{
-		{name: "input to filter", mode: modeInput, keyMode: KeyModeInput},
+		{name: "input to filter", mode: modeInput, keyMode: KeyModePrompt},
 		{name: "confirmation to filter", mode: modeConfirm, keyMode: KeyModeConfirm},
 		{name: "menu to filter", mode: modeMenu, keyMode: KeyModeMenu},
 	} {

@@ -17,7 +17,10 @@ const maxBytes = 64 * 1024
 const maxDepth = 16
 
 // Config preserves omitted preferences so the application can supply defaults.
-type Config struct{ UI UI }
+type Config struct {
+	UI     UI
+	Keymap map[string]map[string][]string
+}
 
 // UI contains only explicitly configured startup choices.
 type UI struct {
@@ -110,19 +113,27 @@ func decodeDocument(root *yaml.Node) (Config, error) {
 	seen := false
 	for i := 0; i < len(root.Content); i += 2 {
 		key, value := root.Content[i], root.Content[i+1]
-		if key.Value != "ui" {
+		var err error
+		switch key.Value {
+		case "ui":
+			if seen {
+				return Config{}, fmt.Errorf("duplicate ui field")
+			}
+			seen = true
+
+			result.UI, err = decodeUI(value)
+		case "keymap":
+			if result.Keymap != nil {
+				return Config{}, fmt.Errorf("duplicate keymap field")
+			}
+
+			result.Keymap, err = decodeKeymap(value)
+		default:
 			return Config{}, fmt.Errorf("configuration has an unknown field")
 		}
-		if seen {
-			return Config{}, fmt.Errorf("duplicate ui field")
-		}
-		seen = true
-
-		ui, err := decodeUI(value)
 		if err != nil {
 			return Config{}, err
 		}
-		result.UI = ui
 	}
 	return result, nil
 }

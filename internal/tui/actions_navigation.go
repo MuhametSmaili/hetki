@@ -12,7 +12,7 @@ func keyModeFor(mode uiMode) KeyMode {
 	case modeFilter:
 		return KeyModeFilter
 	case modeInput:
-		return KeyModeInput
+		return KeyModePrompt
 	case modeConfirm:
 		return KeyModeConfirm
 	case modeMenu:

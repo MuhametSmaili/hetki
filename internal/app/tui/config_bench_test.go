@@ -38,9 +38,12 @@ func BenchmarkConfigLoadResolve(b *testing.B) {
 		}
 	})
 	typical := "ui: {view: tree, scope: tracked, preview: true, preview_width: 45}\n"
+	fullKeymap := fullKeymapFixture(b)
 	for _, fixture := range []struct{ name, input string }{
 		{"missing", ""},
 		{"typical", typical},
+		{"small_keymap", typical + "keymap: {normal: {toggle_preview: [p]}, filter: {toggle_preview: [alt+v]}}\n"},
+		{"full_keymap", typical + fullKeymap},
 		{"max_permitted", typical + "#" + strings.Repeat("x", 65536-len(typical)-1)},
 	} {
 		b.Run(fixture.name, func(b *testing.B) {

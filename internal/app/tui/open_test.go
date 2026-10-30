@@ -31,7 +31,7 @@ func privateConfig(t testing.TB, contents string) string {
 }
 
 func TestPreparedServiceUsesConfigSnapshot(t *testing.T) {
-	path := privateConfig(t, "ui: {view: tree, scope: tracked, preview: false, preview_width: 45}")
+	path := privateConfig(t, "ui: {view: tree, scope: tracked, preview: false, preview_width: 45}\nkeymap: {normal: {toggle_preview: [p]}}")
 	stub := &stubBackend{state: liveState()}
 	detections := 0
 	service, err := prepareService(t.Context(), func() (Backend, error) {
@@ -46,6 +46,7 @@ func TestPreparedServiceUsesConfigSnapshot(t *testing.T) {
 		runs++
 		require.Equal(t, ui.State{View: ui.ViewTree, Scope: ui.ScopeTracked, Preview: false}, options.Initial)
 		require.Equal(t, 45, options.PreviewWidth)
+		require.Equal(t, []string{"p"}, options.Keys.Keys(ui.KeyModeNormal, ui.ActionTogglePreview))
 		require.Len(t, snapshot.Items, 1)
 		require.Len(t, snapshot.Items[0].Children, 1)
 		require.Equal(t, 1, stub.queryCalls, "initial tree needs one inventory query")
@@ -59,6 +60,7 @@ func TestPreparedServiceUsesConfigSnapshot(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, ui.ViewFlat, toggled.View)
 		require.Equal(t, 2, stub.queryCalls, "toggle uses the loaded inventory")
+		require.Equal(t, []string{"p"}, service.Options.Keys.Keys(ui.KeyModeNormal, ui.ActionTogglePreview), "configuration is not reread")
 		return ui.Result{}, nil
 	}
 
@@ -103,6 +105,7 @@ func TestPreparedServiceIgnoresBrokenConfig(t *testing.T) {
 		{name: "wrong width type discards valid fields", contents: "ui: {view: tree, scope: tracked, preview: true, preview_width: \"secret\\e[31m\"}"},
 		{name: "malformed overflow width discards valid fields", contents: "ui: {view: tree, preview: true, preview_width: 0" + strings.Repeat("7", 100) + "9}"},
 		{name: "duplicate width discards valid fields", contents: "ui: {view: tree, preview: true, preview_width: 0, preview_width: 45}"},
+		{name: "wrong keymap type discards valid fields", contents: "ui: {view: tree}\nkeymap: {normal: {quit: false}}"},
 		{name: "remembering remains unsupported", contents: "ui: {preview_width: 45, remember_state: true}"},
 		{name: "wrong type discards valid fields", contents: "ui: {view: tree, scope: null, preview: true}"},
 		{name: "nonregular file", setup: func(t *testing.T, path string) {

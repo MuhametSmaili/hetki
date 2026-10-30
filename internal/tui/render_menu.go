@@ -45,7 +45,7 @@ func renderMenu(props menuProps) string {
 	}
 	for i, entry := range entries {
 		key := ""
-		if bound := props.Keys.Keys(props.Keys.menuMode(entry.Action), entry.Action); len(bound) > 0 {
+		if bound := props.Keys.Keys(KeyModeMenu, entry.Action); len(bound) > 0 {
 			key = "‹" + terminal.Sanitize(strings.Join(bound, "/")) + "› "
 		}
 		label := terminal.Sanitize(entry.Label)
