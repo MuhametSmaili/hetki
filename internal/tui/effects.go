@@ -52,6 +52,9 @@ func (m model) applyActionSnapshot(result ActionResult, pending *ActionRequest, 
 		m.err = err
 		return m, nil
 	}
+	if result.View == ViewTree && m.view != ViewTree {
+		m.items.RestoreExpansion(nil)
+	}
 	if result.View != "" {
 		m.view = result.View
 	}
