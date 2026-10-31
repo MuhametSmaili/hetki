@@ -2,9 +2,11 @@ package daemon
 
 import (
 	"context"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -80,6 +82,44 @@ func TestInspectReportsTransitionWithoutWaiting(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, Transition, result.State)
 			require.Nil(t, result.Instance)
+		})
+	}
+}
+
+func TestInterruptedEndpointErrors(t *testing.T) {
+	wrappedDisconnect := &net.OpError{
+		Op:  "writev",
+		Net: "unix",
+		Err: &os.SyscallError{
+			Syscall: "writev",
+			Err:     syscall.ENOTCONN,
+		},
+	}
+
+	for _, test := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"peer not connected", syscall.ENOTCONN, true},
+		{"wrapped peer not connected", wrappedDisconnect, true},
+		{"peer EOF", io.EOF, true},
+		{"truncated reply", io.ErrUnexpectedEOF, true},
+		{"peer reset", syscall.ECONNRESET, true},
+		{"broken pipe", syscall.EPIPE, true},
+		{"permission denied", os.ErrPermission, false},
+		{"I/O failure", syscall.EIO, false},
+		{"invalid identity", ErrIdentity, false},
+		{"invalid protocol", ErrProtocol, false},
+		{"unavailable reply", ErrUnavailable, false},
+		{"caller canceled", context.Canceled, false},
+		{"deadline exceeded", context.DeadlineExceeded, false},
+		{"local connection closed", net.ErrClosed, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := interrupted(test.err)
+
+			require.Equal(t, test.want, got)
 		})
 	}
 }
