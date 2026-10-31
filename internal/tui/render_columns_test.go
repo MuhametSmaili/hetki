@@ -118,7 +118,7 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 				require.Equal(t, width, terminal.Width(line))
 				require.NotContains(t, line, "\x1b]")
 				require.False(t, strings.ContainsAny(line, "\n\r\t"))
-				requireSelectedBackground(t, line, width, styles)
+				requireSelectedStyle(t, line, width, styles)
 			}
 		})
 	}
@@ -127,11 +127,8 @@ func TestColumnRowsFitAndKeepSelectedBackground(t *testing.T) {
 	screen := lipgloss.NewCanvas(80, 1)
 	uv.NewStyledString(line).Draw(screen, screen.Bounds())
 	require.Equal(t, "│", screen.CellAt(0, 0).Content)
-	require.Equal(t, lipgloss.Color(colorActive), screen.CellAt(0, 0).Style.Fg)
 	require.Equal(t, "?", screen.CellAt(79, 0).Content)
-	require.Equal(t, lipgloss.Color(colorBlocked), screen.CellAt(79, 0).Style.Fg)
-	annotationColumn := terminal.Width(strings.Split(terminal.Sanitize(line), "·10")[0])
-	require.Equal(t, lipgloss.Color(colorMuted), screen.CellAt(annotationColumn, 0).Style.Fg)
+	requireSelectedStyle(t, line, 80, styles)
 }
 
 func TestFlatListKeepsStatusAtNarrowWidths(t *testing.T) {

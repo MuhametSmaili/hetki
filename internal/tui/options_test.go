@@ -18,6 +18,7 @@ func TestRunRejectsInvalidOptionsBeforeTerminal(t *testing.T) {
 		{"missing scope", func(o *Options) { o.Initial.Scope = "" }, "invalid scope"},
 		{"unknown scope", func(o *Options) { o.Initial.Scope = "other" }, "invalid scope"},
 		{"missing keys", func(o *Options) { o.Keys = KeyMap{} }, "keymap"},
+		{"missing palette", func(o *Options) { o.Palette = Palette{} }, "theme.text"},
 		{"missing start mode", func(o *Options) { o.StartMode = "" }, "invalid start mode"},
 		{"unknown start mode", func(o *Options) { o.StartMode = "other" }, "invalid start mode"},
 		{"zero width", func(o *Options) { o.PreviewWidth = 0 }, "preview width"},

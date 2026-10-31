@@ -70,14 +70,14 @@ func TestSuccessBecomesIdleAtFiveSecondsAndStillExpires(t *testing.T) {
 	require.Equal(t, now.Add(5*time.Second), due)
 	require.Equal(t, status.Completed, current.Outcome)
 	require.Equal(t, status.Value{State: status.Idle}, idle)
-	glyph, _ := statusIndicator(idle, due)
+	glyph := statusIndicator(idle, due)
 	require.Equal(t, "○", glyph)
 	require.Equal(t, now.Add(time.Minute), m.nextStatusFrame(due))
 
 	due = now.Add(time.Minute)
 	expired := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due)
 	require.Equal(t, status.NoOutcome, expired.Outcome)
-	glyph, _ = statusIndicator(expired, due)
+	glyph = statusIndicator(expired, due)
 	require.Equal(t, "·", glyph)
 	require.True(t, m.nextStatusFrame(due).IsZero())
 }
@@ -128,7 +128,7 @@ func TestEndedOutcomesDisappearWithoutAnIdleOrUnknownIndicator(t *testing.T) {
 
 			before := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due.Add(-time.Nanosecond))
 			after := m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, values, due)
-			glyph, _ := statusIndicator(after, due)
+			glyph := statusIndicator(after, due)
 
 			require.Equal(t, now.Add(5*time.Second), due)
 			require.Equal(t, outcome, before.Outcome)
@@ -189,7 +189,7 @@ func TestKiroScreenProfileUsesSharedIndicators(t *testing.T) {
 			bindings := StatusBindings{list.ItemID{ID: "kiro"}: {pane}}
 
 			value := bindings.ValueAt(list.ItemID{ID: "kiro"}, values, now)
-			glyph, _ := statusIndicator(value, now)
+			glyph := statusIndicator(value, now)
 
 			require.Equal(t, tc.glyph, glyph)
 			require.Equal(t, status.NoOutcome, value.Outcome)

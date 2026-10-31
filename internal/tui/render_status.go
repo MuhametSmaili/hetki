@@ -1,10 +1,10 @@
 package tui
 
 import (
+	"image/color"
 	"strings"
 	"time"
 
-	"charm.land/lipgloss/v2"
 	"github.com/MuhametSmaili/hetki/internal/status"
 	"github.com/MuhametSmaili/hetki/internal/terminal"
 )
@@ -17,32 +17,32 @@ const (
 
 var statusSpinnerFrames = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-func statusIndicator(value status.Value, now time.Time) (string, string) {
+func statusIndicator(value status.Value, now time.Time) string {
 	switch value.State {
 	case status.Working:
 		frame := now.Nanosecond() / int(statusSpinnerPeriod)
-		return statusSpinnerFrames[frame], colorAccent
+		return statusSpinnerFrames[frame]
 	case status.Blocked:
-		return "?", colorBlocked
+		return "?"
 	case status.Idle:
-		return "○", colorIdle
+		return "○"
 	case status.Unknown:
 		switch value.Outcome {
 		case status.Completed:
-			return "✓", colorSuccess
+			return "✓"
 		case status.Failed:
-			return "×", colorError
+			return "×"
 		default:
-			return "·", colorMuted
+			return "·"
 		}
 	default:
-		return "", ""
+		return ""
 	}
 }
 
 func rowTrailingWidth(row rowProps) int {
 	width := terminal.Width(columnText(row.Trailing))
-	glyph, _ := statusIndicator(row.Status, row.StatusTime)
+	glyph := statusIndicator(row.Status, row.StatusTime)
 	if width == 0 && glyph == "" {
 		return 0
 	}
@@ -54,7 +54,7 @@ func renderTrailing(row rowProps, width int, styles theme) string {
 		return ""
 	}
 
-	style := styles.itemStyle(row.Active, row.Selected)
+	style := styles.commandStyle(row.Active, row.Selected)
 	commandWidth := max(0, width-commandStatusWidth)
 	command := truncateWidth(columnText(row.Trailing), commandWidth)
 	padding := strings.Repeat(" ", max(0, commandWidth-terminal.Width(command)))
@@ -63,9 +63,37 @@ func renderTrailing(row rowProps, width int, styles theme) string {
 		text += statusGap
 	}
 
-	glyph, color := statusIndicator(row.Status, row.StatusTime)
+	glyph := statusIndicator(row.Status, row.StatusTime)
 	if glyph == "" {
 		return style.Render(text + strings.Repeat(" ", statusCellWidth))
 	}
-	return style.Render(text) + style.Foreground(lipgloss.Color(color)).Render(glyph)
+	if row.Selected && style.GetReverse() {
+		return style.Render(text + glyph)
+	}
+
+	indicator := style.Foreground(styles.palette.statusColor(row.Status))
+	if row.Status.State == status.Unknown && row.Status.Outcome == status.NoOutcome {
+		indicator = styles.meta.Inherit(style)
+	}
+	return style.Render(text) + indicator.Render(glyph)
+}
+
+func (p Palette) statusColor(value status.Value) color.Color {
+	switch value.State {
+	case status.Working:
+		return p.Working
+	case status.Blocked:
+		return p.Blocked
+	case status.Idle:
+		return p.Idle
+	default:
+		switch value.Outcome {
+		case status.Completed:
+			return p.Success
+		case status.Failed:
+			return p.Error
+		default:
+			return p.Muted
+		}
+	}
 }

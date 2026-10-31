@@ -14,14 +14,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func requireSelectedBackground(t *testing.T, line string, width int, styles theme) {
+func requireSelectedStyle(t *testing.T, line string, width int, styles theme) {
 	t.Helper()
 
 	screen := lipgloss.NewCanvas(width, 1)
 	uv.NewStyledString(line).Draw(screen, screen.Bounds())
+	reference := lipgloss.NewCanvas(1, 1)
+	uv.NewStyledString(styles.itemStyle(false, true).Render("x")).Draw(reference, reference.Bounds())
+	want := reference.CellAt(0, 0).Style
+
 	for x := 0; x < width; {
 		cell := screen.CellAt(x, 0)
-		require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg, "cell %d", x)
+		if styles.selectedRow.GetReverse() && strings.TrimSpace(cell.Content) != "" {
+			require.Equal(t, want.Fg, cell.Style.Fg, "foreground at cell %d", x)
+		}
+		require.Equal(t, want.Bg, cell.Style.Bg, "background at cell %d in %q", x, line)
+		require.Equal(t, want.Attrs&uv.AttrReverse, cell.Style.Attrs&uv.AttrReverse, "inverse at cell %d", x)
 		x += max(1, cell.Width)
 	}
 }
@@ -64,7 +72,7 @@ func TestStackedTreeWindowFitsUnicodeAndStatus(t *testing.T) {
 				require.Equal(t, width, terminal.Width(line))
 				require.NotContains(t, line, "\x1b]")
 				require.False(t, strings.ContainsAny(line, "\n\r\t"))
-				requireSelectedBackground(t, line, width, styles)
+				requireSelectedStyle(t, line, width, styles)
 			}
 		})
 	}
@@ -114,7 +122,7 @@ func TestNarrowTreeStacksWindowsButNotSessionHeadings(t *testing.T) {
 	require.Equal(t, "  └─ ~/work/0/1", strings.TrimRight(terminal.Sanitize(lines[4]), " "))
 
 	for _, line := range lines[1:3] {
-		requireSelectedBackground(t, line, m.layout().listWidth, m.theme)
+		requireSelectedStyle(t, line, m.layout().listWidth, m.theme)
 	}
 }
 

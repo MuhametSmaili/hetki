@@ -123,6 +123,8 @@ Both can terminate processes. Use `--dry-run` first to see result.
 The picker reads an optional `$XDG_CONFIG_HOME/hetki/config.yaml` on Linux and macOS.
 If `XDG_CONFIG_HOME` is unset or relative, it uses `~/.config/hetki/config.yaml` instead.
 
+For color settings and defaults, see [Picker colors](docs/theme.md).
+
 ```yaml
 ui:
   view: tree

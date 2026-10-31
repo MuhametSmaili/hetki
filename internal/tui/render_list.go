@@ -49,7 +49,7 @@ func renderList(props listProps) []string {
 	secondaryWidth := 0
 	trailingWidth := commandStatusWidth
 	for i, row := range props.Rows {
-		left[i] = renderRowLine(row, props.Compact)
+		left[i] = props.Theme.renderPrimaryLabel(row, renderRowLine(row, props.Compact))
 		columnWidth = max(columnWidth, terminal.Width(left[i]))
 		secondaryWidth = max(secondaryWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Secondary))))
 		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
@@ -101,7 +101,8 @@ func composeRowLine(row rowProps, left string, columnWidth, width int, styles th
 	available := width - leftBudget - gap
 	shortened := shortenPath(secondary, available)
 	padding := leftBudget - leftWidth + gap
-	return left + strings.Repeat(" ", padding) + secondaryStyle.Render(shortened)
+	gapStyle := styles.itemStyle(row.Active, row.Selected)
+	return left + gapStyle.Render(strings.Repeat(" ", padding)) + secondaryStyle.Render(shortened)
 }
 
 func shortenPath(path string, maxWidth int) string {
@@ -160,7 +161,12 @@ func renderRowPrefix(row rowProps) string {
 }
 
 func styleRowLine(row rowProps, line string, width int, styles theme) string {
-	style := styles.itemStyle(row.Active, row.Selected)
+	style := styles.primaryStyle(row)
+	if !style.GetReverse() {
+		// Primary labels supply bold; keep paths and metadata nonbold.
+		style = style.Bold(false)
+	}
+
 	if row.Selected {
 		return style.Width(width).Render(line)
 	}

@@ -76,10 +76,10 @@ func TestRenderListUsesFullWidthSelectionAndCompactIndicators(t *testing.T) {
 	got := renderList(listProps{Width: 24, Compact: true, Theme: theme, Rows: []rowProps{{
 		Primary: "editor", Secondary: "~/code", Active: true, Selected: true,
 	}}})[0]
-	want := selected.Width(24).Render("│ editor  " + secondarySelected.Render("~/code"))
-	if got != want {
-		t.Fatalf("selected row was not styled as one full-width line:\n got %q\nwant %q", got, want)
-	}
+	require.Equal(t, 24, terminal.Width(got))
+	requireSelectedStyle(t, got, 24, theme)
+	path := renderedTextCell(t, []string{got}, 24, "~/code")
+	require.NotZero(t, path.Style.Attrs&uv.AttrItalic)
 	if plain := strings.TrimRight(terminal.Sanitize(got), " "); plain != "│ editor  ~/code" {
 		t.Fatalf("selected row has excess markers or spacing: %q", plain)
 	}
@@ -94,15 +94,17 @@ func TestRenderListMakesOnlyTheActiveFlatRowBold(t *testing.T) {
 		{Primary: "inactive"},
 		{Primary: "active", Active: true},
 	}})
-	if lines[0] != theme.row.Render("  inactive") {
-		t.Fatalf("inactive flat row used the wrong typography: %q", lines[0])
-	}
-	if lines[1] != theme.activeRow.Render("│ active") {
-		t.Fatalf("active flat row used the wrong typography: %q", lines[1])
-	}
+	require.Equal(t, "  inactive", terminal.Sanitize(lines[0]))
+	require.Equal(t, "│ active", terminal.Sanitize(lines[1]))
+	inactive := renderedTextCell(t, lines[:1], 24, "inactive")
+	active := renderedTextCell(t, lines[1:], 24, "active")
+	require.Equal(t, lipgloss.Color("1"), inactive.Style.Fg)
+	require.Zero(t, inactive.Style.Attrs&uv.AttrBold)
+	require.Equal(t, lipgloss.Color("2"), active.Style.Fg)
+	require.NotZero(t, active.Style.Attrs&uv.AttrBold)
 }
 
-func TestRenderListDefaultThemeStylesEveryRowShapeTheSame(t *testing.T) {
+func TestRenderListDefaultThemePreservesHierarchyAcrossRowShapes(t *testing.T) {
 	theme := defaultTheme()
 	const width = 24
 	shapes := []struct {
@@ -112,7 +114,10 @@ func TestRenderListDefaultThemeStylesEveryRowShapeTheSame(t *testing.T) {
 		active   string
 		selected string
 	}{
-		{name: "flat", row: rowProps{Primary: "flat"}, normal: "  flat", active: "│ flat", selected: "  flat"},
+		{
+			name: "flat", row: rowProps{Primary: "flat"},
+			normal: "  flat", active: "│ flat", selected: "  flat",
+		},
 		{
 			name: "tree root", row: rowProps{Primary: "root", Branch: true},
 			normal: "  ▸ root", active: "│ ▸ root", selected: "  ▸ root",
@@ -124,30 +129,41 @@ func TestRenderListDefaultThemeStylesEveryRowShapeTheSame(t *testing.T) {
 	}
 	for _, shape := range shapes {
 		t.Run(shape.name, func(t *testing.T) {
-			if got := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{shape.row}, Theme: theme})[0]; got != theme.row.Render(shape.normal) {
-				t.Fatalf("normal row style = %q", got)
-			}
 			active := shape.row
 			active.Active = true
-			if got := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{active}, Theme: theme})[0]; got != theme.activeRow.Render(shape.active) {
-				t.Fatalf("active row style = %q", got)
-			}
 			selected := shape.row
 			selected.Selected = true
-			want := theme.selectedRow.Inherit(theme.row).Width(width).Render(shape.selected)
-			if got := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{selected}, Theme: theme})[0]; got != want {
-				t.Fatalf("selected row style = %q, want %q", got, want)
-			}
+			selectedActive := active
+			selectedActive.Selected = true
+
+			normalLines := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{shape.row}, Theme: theme})
+			activeLines := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{active}, Theme: theme})
+			selectedLines := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{selected}, Theme: theme})
+			selectedActiveLines := renderList(listProps{Width: width, Height: 1, Rows: []rowProps{selectedActive}, Theme: theme})
+
+			require.Equal(t, shape.normal, terminal.Sanitize(normalLines[0]))
+			require.Equal(t, shape.active, terminal.Sanitize(activeLines[0]))
+			require.Equal(t, shape.selected, strings.TrimRight(terminal.Sanitize(selectedLines[0]), " "))
+			require.Nil(t, renderedTextCell(t, normalLines, width, shape.row.Primary).Style.Fg)
+			activeCell := renderedTextCell(t, activeLines, width, shape.row.Primary)
+			require.Equal(t, theme.palette.Active, activeCell.Style.Fg)
+			require.NotZero(t, activeCell.Style.Attrs&uv.AttrBold)
+			selectedCell := renderedTextCell(t, selectedLines, width, shape.row.Primary)
+			require.Equal(t, theme.palette.SelectionFG, selectedCell.Style.Fg)
+			require.NotZero(t, selectedCell.Style.Attrs&uv.AttrBold)
+			require.Equal(t, width, terminal.Width(selectedLines[0]))
+			requireSelectedStyle(t, selectedLines[0], width, theme)
+			selectedActiveCell := renderedTextCell(t, selectedActiveLines, width, shape.row.Primary)
+			require.Equal(t, theme.palette.Active, selectedActiveCell.Style.Fg)
+			require.NotZero(t, selectedActiveCell.Style.Attrs&uv.AttrBold)
+			requireSelectedStyle(t, selectedActiveLines[0], width, theme)
 		})
 	}
 
 	path := theme.secondarySelected.Render("~/code")
-	if foreground := fmt.Sprint(theme.secondarySelected.GetForeground()); foreground != colorEmphasis {
-		t.Fatalf("selected path foreground = %q, want %q", foreground, colorEmphasis)
-	}
-	if background := fmt.Sprint(theme.secondarySelected.GetBackground()); background != colorSelection {
-		t.Fatalf("selected path background = %q, want %q", background, colorSelection)
-	}
+	require.Equal(t, theme.palette.Secondary, theme.secondarySelected.GetForeground())
+	require.Equal(t, theme.selectedRow.GetBackground(), theme.secondarySelected.GetBackground())
+	require.Equal(t, theme.selectedRow.GetReverse(), theme.secondarySelected.GetReverse())
 	line := renderList(listProps{Width: width, Rows: []rowProps{{Primary: "flat", Secondary: "~/code", Selected: true}}, Theme: theme})[0]
 	if !strings.Contains(line, path) {
 		t.Fatalf("selected path lost its contrast style: %q", line)
@@ -245,13 +261,7 @@ func TestSelectedRowBackgroundCoversEveryCellThroughTheCommand(t *testing.T) {
 				}})[0]
 				require.NotContains(t, line, "\n")
 				require.Equal(t, width, terminal.Width(line), "selected row must occupy one full-width line")
-				screen := uv.NewScreenBuffer(width, 1)
-				uv.NewStyledString(line).Draw(screen, screen.Bounds())
-				for x := range width {
-					cell := screen.CellAt(x, 0)
-					require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg,
-						"width %d: wrong highlight at cell %d (%q)", width, x, cell.Content)
-				}
+				requireSelectedStyle(t, line, width, styles)
 			}
 		}
 	}

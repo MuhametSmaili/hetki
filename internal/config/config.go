@@ -20,6 +20,7 @@ const maxDepth = 16
 type Config struct {
 	UI     UI
 	Keymap map[string]map[string][]string
+	Theme  *Theme
 }
 
 // UI contains only explicitly configured startup choices.
@@ -128,6 +129,12 @@ func decodeDocument(root *yaml.Node) (Config, error) {
 			}
 
 			result.Keymap, err = decodeKeymap(value)
+		case "theme":
+			if result.Theme != nil {
+				return Config{}, fmt.Errorf("duplicate theme field")
+			}
+
+			result.Theme, err = decodeTheme(value)
 		default:
 			return Config{}, fmt.Errorf("configuration has an unknown field")
 		}

@@ -53,6 +53,7 @@ type Options struct {
 	PreviewWidth int
 	Height       Height
 	Border       BorderMode
+	Palette      Palette
 }
 
 // Runtime contains effects owned, canceled and joined by the caller.
@@ -77,6 +78,7 @@ func DefaultOptions() Options {
 		PreviewWidth: DefaultPreviewWidth,
 		Height:       Height{Value: 100, Percent: true},
 		Border:       BorderRounded,
+		Palette:      DefaultPalette(),
 	}
 }
 
@@ -98,6 +100,9 @@ func (o Options) Validate() error {
 		return err
 	}
 	if err := o.Border.Validate(); err != nil {
+		return err
+	}
+	if err := o.Palette.Validate(); err != nil {
 		return err
 	}
 	return ValidatePreviewWidth(o.PreviewWidth)

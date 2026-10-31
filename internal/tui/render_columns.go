@@ -77,9 +77,10 @@ func (c columnWidths) fit(width int) columnWidths {
 
 func renderColumnRow(row rowProps, columns columnWidths, width int, styles theme) string {
 	style := styles.itemStyle(row.Active, row.Selected)
-	muted := styles.meta.Inherit(style)
+	contextStyle := styles.contextStyle(row.Active, row.Selected)
+	muted := styles.annotationStyle(row.Active, row.Selected)
 	prefix := padColumn(renderRowPrefix(row), columns.prefix)
-	line := padColumn(columnText(row.Context), columns.context) +
+	line := contextStyle.Render(padColumn(columnText(row.Context), columns.context)) +
 		muted.Render(contextSeparator) + style.Render(padColumn(columnText(row.Primary), columns.primary))
 	if columns.annotation > 0 {
 		line += muted.Render(columnGap + padColumn(columnText(row.Annotation), columns.annotation))

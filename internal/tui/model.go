@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,7 +18,12 @@ func Run(ctx context.Context, initial list.Snapshot, options Options, runtime Ru
 	if err != nil {
 		return Result{}, err
 	}
-	p := tea.NewProgram(m, tea.WithFPS(120))
+	programOptions := []tea.ProgramOption{tea.WithFPS(120)}
+	if os.Getenv("NO_COLOR") != "" {
+		m.theme = m.theme.withMonochromeSelection()
+		programOptions = append(programOptions, tea.WithEnvironment(monochromeEnvironment()))
+	}
+	p := tea.NewProgram(m, programOptions...)
 
 	// Quit instead of tea.WithContext: a cancelled context kills the program,
 	// which closes the terminal input while its reader goroutine still uses it.
@@ -109,7 +115,7 @@ func newModelWithOptions(ctx context.Context, snapshot list.Snapshot, options Op
 		view:         options.Initial.View,
 		dispatch:     runtime.Dispatch,
 		keys:         options.Keys,
-		theme:        defaultTheme(),
+		theme:        newTheme(options.Palette),
 		mode:         modeBrowse,
 		ctx:          ctx,
 		preview:      previewState{enabled: options.Initial.Preview, width: options.PreviewWidth},

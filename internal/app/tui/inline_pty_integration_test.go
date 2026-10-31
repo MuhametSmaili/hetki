@@ -18,6 +18,8 @@ import (
 
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +30,7 @@ func TestInlineTerminalLifecycle(t *testing.T) {
 		runInlinePTYHelper(t, mode)
 		return
 	}
-	for _, mode := range []string{"select", "cancel", "context", "resize", "error", "rows", "middle", "bottom", "configured"} {
+	for _, mode := range []string{"select", "cancel", "context", "resize", "error", "rows", "middle", "bottom", "configured", "palette", "themed", "monochrome"} {
 		t.Run(mode, func(t *testing.T) {
 			output := runInlinePTY(t, mode)
 
@@ -37,6 +39,17 @@ func TestInlineTerminalLifecycle(t *testing.T) {
 			require.NotContains(t, output, "\x1b[?1049h")
 			require.NotContains(t, output, "\x1b[2J", "must not clear the full main screen")
 			require.NotContains(t, output, "\x1b[3J", "must not clear scrollback")
+
+			switch mode {
+			case "themed":
+				require.Contains(t, output, "48;2;16;32;48")
+			case "palette":
+				require.Contains(t, output, "48;2;57;55;74", "default selection uses the soft lavender surface")
+				require.Contains(t, output, "38;2;224;222;244", "selected session names use the selected text color")
+			case "monochrome":
+				requireMonochromeOutput(t, output)
+			}
+
 			if mode != "cancel" && mode != "context" && mode != "error" {
 				require.Contains(t, output, "NAVIGATION_RESTORED")
 			} else {
@@ -62,6 +75,13 @@ func runInlinePTY(t *testing.T, mode string) string {
 	}
 	cmd := exec.CommandContext(ctx, script, args...)
 	cmd.Env = append(os.Environ(), inlinePTYEnv+"="+mode, "TERM=xterm-256color")
+	if mode == "palette" || mode == "themed" || mode == "monochrome" {
+		noColor := ""
+		if mode == "monochrome" {
+			noColor = "anything"
+		}
+		cmd.Env = append(cmd.Env, "TMUX=", "COLORTERM=truecolor", "NO_COLOR="+noColor)
+	}
 	input, err := cmd.StdinPipe()
 	require.NoError(t, err)
 	defer input.Close()
@@ -154,16 +174,25 @@ func runInlinePTYHelper(t *testing.T, mode string) {
 		require.Equal(t, ui.Height{Value: 80, Percent: true}, options.Height)
 		require.Equal(t, ui.BorderNone, options.Border)
 	}
-	service := Service{Driver: inlinePTYDriver{ptyDriver: driver, mode: mode}, Options: options, RunUI: func(ctx context.Context, snapshot list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
-		if mode == "context" {
-			read := runtime.Preview
-			runtime.Preview = func(ctx context.Context, request ui.PreviewRequest) (string, error) {
-				cancel()
-				return read(ctx, request)
+	if mode == "themed" || mode == "monochrome" {
+		options = themedInlineOptions(t, ctx, options)
+	}
+
+	service := Service{
+		Driver:  inlinePTYDriver{ptyDriver: driver, mode: mode},
+		Options: options,
+		RunUI: func(ctx context.Context, snapshot list.Snapshot, options ui.Options, runtime ui.Runtime) (ui.Result, error) {
+			if mode == "context" {
+				read := runtime.Preview
+				runtime.Preview = func(ctx context.Context, request ui.PreviewRequest) (string, error) {
+					cancel()
+					return read(ctx, request)
+				}
 			}
-		}
-		return ui.Run(ctx, snapshot, options, runtime)
-	}}
+
+			return ui.Run(ctx, snapshot, options, runtime)
+		},
+	}
 
 	err := service.Run(ctx)
 
@@ -176,9 +205,55 @@ func runInlinePTYHelper(t *testing.T, mode string) {
 	fmt.Println("SHELL_AFTER")
 }
 
+func themedInlineOptions(t *testing.T, ctx context.Context, options ui.Options) ui.Options {
+	t.Helper()
+
+	privateConfig(t, "theme: {text: '#123456', selection_fg: '#abcdef', selection_bg: '#102030'}")
+	prepared, err := prepareService(ctx, nil, Overrides{Height: &options.Height, Border: &options.Border})
+	require.NoError(t, err)
+
+	return prepared.Options
+}
+
+func requireMonochromeOutput(t *testing.T, output string) {
+	t.Helper()
+
+	var parser ansi.Parser
+	parser.SetParamsSize(32)
+	var inverse bool
+	parser.SetHandler(ansi.Handler{HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
+		if cmd != 'm' {
+			return
+		}
+
+		var style uv.Style
+		uv.ReadStyle(params, &style)
+		require.Nil(t, style.Fg, "monochrome output contains a foreground color")
+		require.Nil(t, style.Bg, "monochrome output contains a background color")
+		inverse = inverse || style.Attrs&uv.AttrReverse != 0
+	}})
+
+	sequences := regexp.MustCompile("\x1b\\[[0-9;:]*m").FindAllString(output, -1)
+	for _, sequence := range sequences {
+		for _, b := range []byte(sequence) {
+			parser.Advance(b)
+		}
+	}
+
+	require.True(t, inverse, "monochrome selection must remain visible")
+}
+
 type inlinePTYDriver struct {
 	ptyDriver
 	mode string
+}
+
+func (d inlinePTYDriver) Preview(ctx context.Context, request ui.PreviewRequest) (string, error) {
+	text, err := d.ptyDriver.Preview(ctx, request)
+	if d.mode == "themed" || d.mode == "monochrome" {
+		text = "\x1b[31m" + text + "\x1b[0m"
+	}
+	return text, err
 }
 
 func (d inlinePTYDriver) Execute(ctx context.Context, request ui.ActionRequest) (ui.ActionResult, error) {

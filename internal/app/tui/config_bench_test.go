@@ -42,6 +42,7 @@ func BenchmarkConfigLoadResolve(b *testing.B) {
 	for _, fixture := range []struct{ name, input string }{
 		{"missing", ""},
 		{"typical", typical},
+		{"small_theme", typical + "theme: {accent: '#89b4fa', selection_bg: '#313244'}\n"},
 		{"small_keymap", typical + "keymap: {normal: {toggle_preview: [p]}, filter: {toggle_preview: [alt+v]}}\n"},
 		{"full_keymap", typical + fullKeymap},
 		{"max_permitted", typical + "#" + strings.Repeat("x", 65536-len(typical)-1)},

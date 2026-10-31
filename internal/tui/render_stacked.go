@@ -35,6 +35,7 @@ func renderStackedList(props listProps) []string {
 	for _, row := range props.Rows {
 		if row.Context == "" && row.Depth == 0 {
 			line := truncateWidth(renderRowLine(row, props.Compact), props.Width)
+			line = props.Theme.renderPrimaryLabel(row, line)
 			lines = append(lines, styleRowLine(row, line, props.Width, props.Theme))
 			continue
 		}
@@ -57,13 +58,14 @@ func stackedIdentityLine(row rowProps, trailingWidth, width int, styles theme) s
 
 	prefix := terminal.Cut(renderRowPrefix(row), 0, bodyWidth)
 	style := styles.itemStyle(row.Active, row.Selected)
-	muted := styles.meta.Inherit(style)
+	muted := styles.annotationStyle(row.Active, row.Selected)
 	identity := row
 	identity.TreePrefix = strings.ReplaceAll(row.TreePrefix, "├─", "│ ")
 	identity.TreePrefix = strings.ReplaceAll(identity.TreePrefix, "└─", "│ ")
-	label := decoratedLabel(identity, true)
+	label := styles.renderPrimaryLabel(row, decoratedLabel(identity, true))
 	if row.Context != "" {
-		label = columnText(row.Context) + muted.Render(contextSeparator) + style.Render(columnText(row.Primary))
+		contextStyle := styles.contextStyle(row.Active, row.Selected)
+		label = contextStyle.Render(columnText(row.Context)) + muted.Render(contextSeparator) + style.Render(columnText(row.Primary))
 	}
 	if annotation := columnText(row.Annotation); annotation != "" {
 		label += muted.Render(columnGap + annotation)

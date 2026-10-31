@@ -27,7 +27,7 @@ func TestStatusIndicatorFrames(t *testing.T) {
 			frames := make([]string, len(test.want))
 
 			for i := range frames {
-				frames[i], _ = statusIndicator(status.Value{State: test.state}, now.Add(time.Duration(i)*test.period))
+				frames[i] = statusIndicator(status.Value{State: test.state}, now.Add(time.Duration(i)*test.period))
 			}
 
 			require.Equal(t, test.want, frames)
@@ -42,18 +42,17 @@ func TestStatusRenderingPreservesSelectionAndTrailingContent(t *testing.T) {
 		command string
 		offset  time.Duration
 		glyph   string
-		color   string
 		outcome status.Outcome
 	}{
-		{"working without command", status.Working, "", 0, "⠋", colorAccent, status.NoOutcome},
-		{"blocked without command", status.Blocked, "", 0, "?", colorBlocked, status.NoOutcome},
-		{"idle without command", status.Idle, "", 0, "○", colorIdle, status.NoOutcome},
-		{"unknown without command", status.Unknown, "", 0, "·", colorMuted, status.NoOutcome},
-		{"working with command", status.Working, "opencode", 0, "⠋", colorAccent, status.NoOutcome},
-		{"blocked later without command", status.Blocked, "", 750 * time.Millisecond, "?", colorBlocked, status.NoOutcome},
-		{"blocked later with command", status.Blocked, "opencode", 750 * time.Millisecond, "?", colorBlocked, status.NoOutcome},
-		{"success with command", status.Unknown, "pi", 0, "✓", colorSuccess, status.Completed},
-		{"error with command", status.Unknown, "pi", 750 * time.Millisecond, "×", colorError, status.Failed},
+		{"working without command", status.Working, "", 0, "⠋", status.NoOutcome},
+		{"blocked without command", status.Blocked, "", 0, "?", status.NoOutcome},
+		{"idle without command", status.Idle, "", 0, "○", status.NoOutcome},
+		{"unknown without command", status.Unknown, "", 0, "·", status.NoOutcome},
+		{"working with command", status.Working, "opencode", 0, "⠋", status.NoOutcome},
+		{"blocked later without command", status.Blocked, "", 750 * time.Millisecond, "?", status.NoOutcome},
+		{"blocked later with command", status.Blocked, "opencode", 750 * time.Millisecond, "?", status.NoOutcome},
+		{"success with command", status.Unknown, "pi", 0, "✓", status.Completed},
+		{"error with command", status.Unknown, "pi", 0, "×", status.Failed},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stamp := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC).Add(test.offset)
@@ -76,12 +75,7 @@ func TestStatusRenderingPreservesSelectionAndTrailingContent(t *testing.T) {
 			require.Equal(t, wantTrailing, terminal.Sanitize(terminal.Cut(line, position, 40)))
 			cell := screen.CellAt(39, 0)
 			require.Equal(t, test.glyph, cell.Content)
-			if test.glyph != " " {
-				require.Equal(t, lipgloss.Color(test.color), cell.Style.Fg)
-			}
-			for x := range 40 {
-				require.Equal(t, styles.selectedRow.GetBackground(), screen.CellAt(x, 0).Style.Bg)
-			}
+			requireSelectedStyle(t, line, 40, styles)
 		})
 	}
 }
@@ -118,13 +112,7 @@ func TestStatusRowsFitNarrowWidths(t *testing.T) {
 
 			require.Equal(t, width, terminal.Width(line))
 			require.NotContains(t, line, "\x1b]0")
-			screen := lipgloss.NewCanvas(width, 1)
-			uv.NewStyledString(line).Draw(screen, screen.Bounds())
-			for x := 0; x < width; {
-				cell := screen.CellAt(x, 0)
-				require.Equal(t, styles.selectedRow.GetBackground(), cell.Style.Bg, "cell %d", x)
-				x += max(1, cell.Width)
-			}
+			requireSelectedStyle(t, line, width, styles)
 		})
 	}
 }
