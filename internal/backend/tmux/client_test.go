@@ -139,6 +139,10 @@ func TestClientCancellationPreservesCauses(t *testing.T) {
 		{"execute", func(ctx context.Context, c *client) error {
 			return c.Execute(ctx, shellAction{})
 		}, "", true},
+		{"interrupted limited state", func(ctx context.Context, c *client) error {
+			_, err := (&TmuxBackend{client: c}).QueryStateLimited(ctx)
+			return err
+		}, "", true},
 		{"interrupted query", runQuery, "", true},
 		{"interrupted query with diagnostics", runQuery, "denied", false},
 	} {
@@ -203,6 +207,7 @@ func TestClientRunLimitedBoundsOutputAtReadTime(t *testing.T) {
 
 	// An endless producer catches implementations that truncate only after exit.
 	output, err = c.RunLimited(ctx, 8, "-c", `while :; do printf 123456789; done`)
+	require.ErrorIs(t, err, backend.ErrOutputLimitExceeded)
 	require.ErrorContains(t, err, "stdout exceeds 8 bytes")
 	require.NotErrorIs(t, err, context.Canceled, "overflow is not caller cancellation")
 	assert.False(t, backend.IsCancellationOnly(errors.Join(context.Canceled, err)))
@@ -210,6 +215,7 @@ func TestClientRunLimitedBoundsOutputAtReadTime(t *testing.T) {
 	require.NoError(t, ctx.Err(), "overflow must cancel only the owned process")
 
 	_, err = c.RunLimited(ctx, 8, "-c", `while :; do printf 123456789 >&2; done`)
+	require.ErrorIs(t, err, backend.ErrOutputLimitExceeded)
 	require.ErrorContains(t, err, "stderr exceeds 4096 bytes")
 	assert.Less(t, len(err.Error()), 4600, "stderr diagnostics must stay bounded")
 	require.NoError(t, ctx.Err())

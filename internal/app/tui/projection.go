@@ -108,6 +108,10 @@ type liveStateResult struct {
 	statusErr error
 }
 
+type statusStateProvider interface {
+	QueryStatusState(context.Context) (backend.StateResult, observe.Server, error)
+}
+
 func (a *LiveAdapter) queryState(ctx context.Context) (liveStateResult, error) {
 	if err := ctx.Err(); err != nil {
 		return liveStateResult{}, err
@@ -116,21 +120,42 @@ func (a *LiveAdapter) queryState(ctx context.Context) (liveStateResult, error) {
 	if err != nil {
 		return liveStateResult{}, fmt.Errorf("failed to detect backend: %w", err)
 	}
-	if provider, ok := b.(interface {
-		QueryStatusState(context.Context) (backend.StateResult, observe.Server, error)
-	}); ok {
-		state, server, statusErr := provider.QueryStatusState(ctx)
-		if statusErr == nil {
-			return liveStateResult{StateResult: state, server: server}, nil
-		}
-		result, err := b.QueryState(ctx)
-		return liveStateResult{StateResult: result, statusErr: statusErr}, err
+	if provider, ok := b.(statusStateProvider); ok {
+		return queryStatusState(ctx, provider)
 	}
 	result, err := b.QueryState(ctx)
 	if err != nil {
 		return liveStateResult{}, fmt.Errorf("failed to query sessions: %w", err)
 	}
 	return liveStateResult{StateResult: result}, nil
+}
+
+func queryStatusState(ctx context.Context, provider statusStateProvider) (liveStateResult, error) {
+	state, server, statusErr := provider.QueryStatusState(ctx)
+	if statusErr == nil {
+		return liveStateResult{StateResult: state, server: server}, nil
+	}
+
+	var interrupted *backend.CanceledProcessError
+	if errors.Is(statusErr, backend.ErrOutputLimitExceeded) || errors.Is(statusErr, context.Canceled) || errors.Is(statusErr, context.DeadlineExceeded) || errors.As(statusErr, &interrupted) {
+		return liveStateResult{}, fmt.Errorf("failed to query sessions: %w", statusErr)
+	}
+	if err := ctx.Err(); err != nil {
+		return liveStateResult{}, fmt.Errorf("failed to query sessions: %w", errors.Join(statusErr, err))
+	}
+
+	bounded, ok := provider.(interface {
+		QueryStateLimited(context.Context) (backend.StateResult, error)
+	})
+	if !ok {
+		return liveStateResult{}, fmt.Errorf("status query failed and bounded fallback is unavailable: %w", statusErr)
+	}
+
+	result, err := bounded.QueryStateLimited(ctx)
+	if err != nil {
+		return liveStateResult{}, fmt.Errorf("failed to query sessions: %w", errors.Join(statusErr, err))
+	}
+	return liveStateResult{StateResult: result, statusErr: statusErr}, nil
 }
 
 func (a *LiveAdapter) loadFrecency(ctx context.Context) (frecency.Scores, string, error) {

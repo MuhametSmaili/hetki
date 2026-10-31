@@ -15,9 +15,10 @@ import (
 
 type projectionStatusBackend struct {
 	stubBackend
-	server     observe.Server
-	statusErr  error
-	afterQuery func()
+	server       observe.Server
+	statusErr    error
+	afterQuery   func()
+	limitedCalls int
 }
 
 func (b *projectionStatusBackend) QueryStatusState(context.Context) (backend.StateResult, observe.Server, error) {
@@ -26,6 +27,11 @@ func (b *projectionStatusBackend) QueryStatusState(context.Context) (backend.Sta
 		b.afterQuery()
 	}
 	return b.state, b.server, b.statusErr
+}
+
+func (b *projectionStatusBackend) QueryStateLimited(ctx context.Context) (backend.StateResult, error) {
+	b.limitedCalls++
+	return b.QueryState(ctx)
 }
 
 func TestInitialTreeLoadsOnceAndRefreshRetainsView(t *testing.T) {

@@ -40,7 +40,7 @@ func (r *stateQueryRunner) RunLimited(ctx context.Context, limit int, args ...st
 	combined := append(slices.Clone(args), ";")
 	combined = append(combined, r.query.Args()...)
 	// Large picker inventories remain independent of the daemon's pane ceiling.
-	output, err := r.client.RunLimited(ctx, 16<<20, combined...)
+	output, err := r.client.RunLimited(ctx, stateOutputLimit, combined...)
 	if err != nil {
 		return "", err
 	}

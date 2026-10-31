@@ -89,6 +89,7 @@ func requireLastSessionMarker(t *testing.T, ctx context.Context, b *TmuxBackend,
 			read func(context.Context) (backend.StateResult, error)
 		}{
 			{"ordinary", b.QueryState},
+			{"bounded", b.QueryStateLimited},
 			{"status-aware", func(ctx context.Context) (backend.StateResult, error) {
 				state, _, err := b.QueryStatusState(ctx)
 				return state, err

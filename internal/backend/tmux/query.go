@@ -26,10 +26,14 @@ func (e *queryParseError) Unwrap() error { return e.err }
 
 func RunQuery[T any](ctx context.Context, c Client, q Query[T]) (T, error) {
 	output, err := c.Run(ctx, q.Args()...)
+	return parseQueryResult(q, output, err)
+}
+
+func parseQueryResult[T any](q Query[T], output string, err error) (T, error) {
 	if err != nil {
 		var canceled *backend.CanceledProcessError
-		if backend.IsCancellationOnly(err) || errors.As(err, &canceled) {
-			// Interrupted commands may return partial output; preserve the execution error.
+		if errors.Is(err, backend.ErrOutputLimitExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &canceled) {
+			// Failed acquisition may leave a valid-looking prefix, not a complete state.
 			var zero T
 			return zero, err
 		}

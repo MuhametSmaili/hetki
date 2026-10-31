@@ -64,10 +64,10 @@ func (c *client) run(ctx context.Context, limit int, args ...string) (string, er
 
 	err := runCommand(ctx, cmd)
 	if stdoutLimit != nil && stdoutLimit.exceeded {
-		err = errors.Join(err, fmt.Errorf("stdout exceeds %d bytes", limit))
+		err = errors.Join(err, fmt.Errorf("%w: stdout exceeds %d bytes", backend.ErrOutputLimitExceeded, limit))
 	}
 	if stderrLimit != nil && stderrLimit.exceeded {
-		err = errors.Join(err, fmt.Errorf("stderr exceeds %d bytes", stderrLimit.limit))
+		err = errors.Join(err, fmt.Errorf("%w: stderr exceeds %d bytes", backend.ErrOutputLimitExceeded, stderrLimit.limit))
 	}
 	// Raw output: #{q:...} parsers need exact record boundaries.
 	output := out.String()

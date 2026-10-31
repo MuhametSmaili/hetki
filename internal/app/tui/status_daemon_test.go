@@ -119,6 +119,10 @@ func (b *replacedServerBackend) QueryStatusState(context.Context) (backend.State
 	return backend.StateResult{}, observe.Server{}, observe.ErrServerChanged
 }
 
+func (b *replacedServerBackend) QueryStateLimited(ctx context.Context) (backend.StateResult, error) {
+	return b.QueryState(ctx)
+}
+
 func TestOpeningStatusDefersDaemonWorkUntilRead(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		adapter := &LiveAdapter{statusServer: observe.Server{PID: -1}}

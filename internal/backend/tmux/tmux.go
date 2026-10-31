@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	queryTimeout    = 5 * time.Second
-	mutationTimeout = 10 * time.Second
+	queryTimeout     = 5 * time.Second
+	mutationTimeout  = 10 * time.Second
+	stateOutputLimit = 16 << 20
 )
 
 type TmuxBackend struct {
@@ -40,12 +41,30 @@ func (b *TmuxBackend) Name() string {
 }
 
 func (b *TmuxBackend) QueryState(ctx context.Context) (backend.StateResult, error) {
+	return queryLiveState(ctx, func(ctx context.Context, args ...string) (string, error) {
+		return b.client.Run(ctx, args...)
+	})
+}
+
+// QueryStateLimited acquires picker inventory with at most 16 MiB of stdout,
+// 4 KiB of stderr and the ordinary state-query timeout.
+func (b *TmuxBackend) QueryStateLimited(ctx context.Context) (backend.StateResult, error) {
+	return queryLiveState(ctx, func(ctx context.Context, args ...string) (string, error) {
+		return b.client.RunLimited(ctx, stateOutputLimit, args...)
+	})
+}
+
+func queryLiveState(ctx context.Context, run func(context.Context, ...string) (string, error)) (backend.StateResult, error) {
 	if err := ctx.Err(); err != nil {
 		return backend.StateResult{}, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
-	result, err := RunQuery(ctx, b.client, LoadStateQuery{IncludeClients: isInsideTmux(), IncludeProgramInfo: true})
+
+	query := LoadStateQuery{IncludeClients: isInsideTmux(), IncludeProgramInfo: true}
+	output, err := run(ctx, query.Args()...)
+	result, err := parseQueryResult(query, output, err)
 	return projectLiveState(ctx, result, err)
 }
 
@@ -55,7 +74,7 @@ func projectLiveState(ctx context.Context, result LoadStateResult, err error) (b
 	if err != nil {
 		var parseErr *queryParseError
 		var canceled *backend.CanceledProcessError
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &canceled) || errors.As(err, &parseErr) || len(result.Sessions) != 0 || !isEmptyServerError(err) {
+		if errors.Is(err, backend.ErrOutputLimitExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.As(err, &canceled) || errors.As(err, &parseErr) || len(result.Sessions) != 0 || !isEmptyServerError(err) {
 			return backend.StateResult{}, err
 		}
 	}
