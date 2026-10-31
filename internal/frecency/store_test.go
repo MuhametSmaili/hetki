@@ -28,7 +28,7 @@ func TestDefaultPath(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(xdg, "hetki", "frecency.json")
+		want := filepath.Join(xdg, "hetki", "frecency-v2.json")
 		if got != want {
 			t.Fatalf("DefaultPath() = %q, want %q", got, want)
 		}
@@ -40,7 +40,7 @@ func TestDefaultPath(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := filepath.Join(home, ".local", "state", "hetki", "frecency.json")
+		want := filepath.Join(home, ".local", "state", "hetki", "frecency-v2.json")
 		if got != want {
 			t.Fatalf("DefaultPath() = %q, want %q", got, want)
 		}
@@ -55,11 +55,11 @@ func TestDefaultPath(t *testing.T) {
 	})
 }
 
-func TestStoreRecordReloadsMergesAgesAndWritesDeterministically(t *testing.T) {
+func TestStoreRecordDoesNotAgeUnrelatedKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state", "frecency.json")
 	writeStateFixture(t, path, []Record{
-		{Path: "/z", Session: "old", Rank: 1, LastUsed: 1},
-		{Path: "/a", Session: "work", Rank: 9999, LastUsed: 2},
+		{Path: "/z", Session: "old", Rank: 1, LastUsed: 1234},
+		{Path: "/a", Session: "work", Rank: 9999, LastUsed: 1234},
 	})
 
 	store := NewStore(path)
@@ -72,7 +72,10 @@ func TestStoreRecordReloadsMergesAgesAndWritesDeterministically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Record{{Path: "/a", Session: "work", Rank: 9000, LastUsed: 1234}}
+	want := []Record{
+		{Path: "/a", Session: "work", Rank: 10000, LastUsed: 1234},
+		{Path: "/z", Session: "old", Rank: 1, LastUsed: 1234},
+	}
 	if !recordsEqual(records, want) {
 		t.Fatalf("records = %#v, want %#v", records, want)
 	}
@@ -81,8 +84,8 @@ func TestStoreRecordReloadsMergesAgesAndWritesDeterministically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `"version":1`) {
-		t.Fatalf("state lacks version 1: %s", data)
+	if !strings.Contains(string(data), `"version":2`) {
+		t.Fatalf("state lacks version 2: %s", data)
 	}
 }
 
@@ -119,28 +122,28 @@ func TestStoreLoadStrictValidationAndBounds(t *testing.T) {
 		name string
 		data string
 	}{
-		{name: "unknown version", data: `{"version":2,"records":[]}`},
+		{name: "unknown version", data: `{"version":99,"records":[]}`},
 		{name: "missing version", data: `{"records":[]}`},
-		{name: "missing records", data: `{"version":1}`},
-		{name: "null records", data: `{"version":1,"records":null}`},
-		{name: "unknown field", data: `{"version":1,"records":[],"extra":true}`},
-		{name: "record unknown field", data: `{"version":1,"records":[{"path":"/repo","session":"work","rank":1,"last_used":1,"extra":true}]}`},
-		{name: "missing last used", data: `{"version":1,"records":[{"path":"/repo","session":"work","rank":1}]}`},
-		{name: "excessive JSON depth", data: `{"version":1,"records":[],"extra":` + strings.Repeat("[", maxJSONDepth+1) + `0` + strings.Repeat("]", maxJSONDepth+1) + `}`},
-		{name: "duplicate object field", data: `{"version":2,"version":1,"records":[]}`},
-		{name: "unpaired surrogate", data: `{"version":1,"records":[{"path":"\ud800","session":"work","rank":1,"last_used":1}]}`},
-		{name: "unpaired low surrogate", data: `{"version":1,"records":[{"path":"\udc00","session":"work","rank":1,"last_used":1}]}`},
-		{name: "high surrogate followed by non-surrogate", data: `{"version":1,"records":[{"path":"\ud800\u0041","session":"work","rank":1,"last_used":1}]}`},
-		{name: "invalid Unicode digits", data: `{"version":1,"records":[{"path":"\uGGGG","session":"work","rank":1,"last_used":1}]}`},
-		{name: "trailing document", data: `{"version":1,"records":[]} {}`},
-		{name: "duplicate exact key", data: `{"version":1,"records":[` + validRecord + `,` + validRecord + `]}`},
-		{name: "empty path", data: `{"version":1,"records":[{"path":"","session":"work","rank":1,"last_used":1}]}`},
-		{name: "empty session", data: `{"version":1,"records":[{"path":"/repo","session":"","rank":1,"last_used":1}]}`},
-		{name: "zero rank", data: `{"version":1,"records":[{"path":"/repo","session":"work","rank":0,"last_used":1}]}`},
-		{name: "rank below eviction floor", data: `{"version":1,"records":[{"path":"/repo","session":"work","rank":0.9,"last_used":1}]}`},
-		{name: "rank above bound", data: `{"version":1,"records":[{"path":"/repo","session":"work","rank":10001,"last_used":1}]}`},
-		{name: "path above bound", data: `{"version":1,"records":[{"path":"` + strings.Repeat("p", maxPathBytes+1) + `","session":"work","rank":1,"last_used":1}]}`},
-		{name: "session above bound", data: `{"version":1,"records":[{"path":"/repo","session":"` + strings.Repeat("s", maxSessionBytes+1) + `","rank":1,"last_used":1}]}`},
+		{name: "missing records", data: `{"version":2}`},
+		{name: "null records", data: `{"version":2,"records":null}`},
+		{name: "unknown field", data: `{"version":2,"records":[],"extra":true}`},
+		{name: "record unknown field", data: `{"version":2,"records":[{"path":"/repo","session":"work","rank":1,"last_used":1,"extra":true}]}`},
+		{name: "missing last used", data: `{"version":2,"records":[{"path":"/repo","session":"work","rank":1}]}`},
+		{name: "excessive JSON depth", data: `{"version":2,"records":[],"extra":` + strings.Repeat("[", maxJSONDepth+1) + `0` + strings.Repeat("]", maxJSONDepth+1) + `}`},
+		{name: "duplicate object field", data: `{"version":99,"version":2,"records":[]}`},
+		{name: "unpaired surrogate", data: `{"version":2,"records":[{"path":"\ud800","session":"work","rank":1,"last_used":1}]}`},
+		{name: "unpaired low surrogate", data: `{"version":2,"records":[{"path":"\udc00","session":"work","rank":1,"last_used":1}]}`},
+		{name: "high surrogate followed by non-surrogate", data: `{"version":2,"records":[{"path":"\ud800\u0041","session":"work","rank":1,"last_used":1}]}`},
+		{name: "invalid Unicode digits", data: `{"version":2,"records":[{"path":"\uGGGG","session":"work","rank":1,"last_used":1}]}`},
+		{name: "trailing document", data: `{"version":2,"records":[]} {}`},
+		{name: "duplicate exact key", data: `{"version":2,"records":[` + validRecord + `,` + validRecord + `]}`},
+		{name: "empty path", data: `{"version":2,"records":[{"path":"","session":"work","rank":1,"last_used":1}]}`},
+		{name: "empty session", data: `{"version":2,"records":[{"path":"/repo","session":"","rank":1,"last_used":1}]}`},
+		{name: "zero rank", data: `{"version":2,"records":[{"path":"/repo","session":"work","rank":0,"last_used":1}]}`},
+		{name: "negative rank", data: `{"version":2,"records":[{"path":"/repo","session":"work","rank":-0.9,"last_used":1}]}`},
+		{name: "rank above bound", data: `{"version":2,"records":[{"path":"/repo","session":"work","rank":10001,"last_used":1}]}`},
+		{name: "path above bound", data: `{"version":2,"records":[{"path":"` + strings.Repeat("p", maxPathBytes+1) + `","session":"work","rank":1,"last_used":1}]}`},
+		{name: "session above bound", data: `{"version":2,"records":[{"path":"/repo","session":"` + strings.Repeat("s", maxSessionBytes+1) + `","rank":1,"last_used":1}]}`},
 	}
 
 	for _, tt := range tests {
@@ -186,7 +189,7 @@ func TestStoreLoadUnicodeEscapes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "frecency.json")
-			data := `{"version":1,"records":[{"path":"` + tc.path + `","session":"work","rank":1,"last_used":1}]}`
+			data := `{"version":2,"records":[{"path":"` + tc.path + `","session":"work","rank":1,"last_used":1}]}`
 			require.NoError(t, os.WriteFile(path, []byte(data), 0600))
 
 			records, err := NewStore(path).Load()
@@ -235,7 +238,7 @@ func TestStoreCorruptAndUnknownRecovery(t *testing.T) {
 
 func TestStoreUnreadableRecovery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frecency.json")
-	if err := os.WriteFile(path, []byte(`{"version":1,"records":[]}`), 0000); err != nil {
+	if err := os.WriteFile(path, []byte(`{"version":2,"records":[]}`), 0000); err != nil {
 		t.Fatal(err)
 	}
 	store := NewStore(path)
@@ -305,7 +308,7 @@ func TestStorePreservationFailureNeverOverwrites(t *testing.T) {
 func TestStorePersistsRecordsInDeterministicKeyOrder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "frecency.json")
 	writeRawStateFixture(t, path, []Record{
-		{Path: "/z", Session: "b", Rank: 1, LastUsed: 1},
+		{Path: "/z", Session: "b", Rank: 1, LastUsed: 2},
 		{Path: "/a", Session: "z", Rank: 1, LastUsed: 1},
 		{Path: "/a", Session: "a", Rank: 1, LastUsed: 1},
 	})
@@ -455,21 +458,26 @@ func TestStoreRecordCancelsWhileWaitingForProcessLock(t *testing.T) {
 	}
 }
 
-func TestStoreConcurrentSubprocessWriters(t *testing.T) {
+func TestDefaultStoreConcurrentWriters(t *testing.T) {
 	if os.Getenv("HETKI_FRECENCY_WRITER") != "" {
 		t.Skip("writer helper is run by TestStoreWriterProcess")
 	}
-	path := filepath.Join(t.TempDir(), "frecency.json")
+	stateHome := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	path := filepath.Join(stateHome, "hetki", "frecency-v2.json")
 	const processes = 4
 	const writes = 12
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
 
 	commands := make([]*exec.Cmd, processes)
 	outputs := make([]bytes.Buffer, processes)
 	for i := range commands {
-		commands[i] = exec.Command(os.Args[0], "-test.run=^TestStoreWriterProcess$")
+		commands[i] = exec.CommandContext(ctx, os.Args[0], "-test.run=^TestStoreWriterProcess$")
+		commands[i].WaitDelay = time.Second
 		commands[i].Env = append(os.Environ(),
 			"HETKI_FRECENCY_WRITER=1",
-			"HETKI_FRECENCY_PATH="+path,
 			"HETKI_FRECENCY_WRITES="+strconv.Itoa(writes),
 		)
 		commands[i].Stdout = &outputs[i]
@@ -477,7 +485,13 @@ func TestStoreConcurrentSubprocessWriters(t *testing.T) {
 		if err := commands[i].Start(); err != nil {
 			t.Fatal(err)
 		}
+
+		command := commands[i]
+		t.Cleanup(func() {
+			stopWriterProcess(t, command)
+		})
 	}
+
 	for i, command := range commands {
 		if err := command.Wait(); err != nil {
 			t.Fatalf("writer failed: %v\n%s", err, outputs[i].Bytes())
@@ -493,6 +507,23 @@ func TestStoreConcurrentSubprocessWriters(t *testing.T) {
 	}
 }
 
+func stopWriterProcess(t *testing.T, command *exec.Cmd) {
+	t.Helper()
+	if command.ProcessState != nil {
+		return
+	}
+
+	if err := command.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		t.Errorf("kill writer: %v", err)
+	}
+
+	err := command.Wait()
+	var exitError *exec.ExitError
+	if err != nil && !errors.As(err, &exitError) {
+		t.Errorf("reap writer: %v", err)
+	}
+}
+
 func TestStoreWriterProcess(t *testing.T) {
 	if os.Getenv("HETKI_FRECENCY_WRITER") == "" {
 		return
@@ -501,9 +532,14 @@ func TestStoreWriterProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := NewStore(os.Getenv("HETKI_FRECENCY_PATH"))
+	store, err := DefaultStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.now = func() time.Time { return time.Unix(1234, 0) }
+
 	for range writes {
-		if err := store.Record(context.Background(), "/repo", "work"); err != nil {
+		if err := store.Record(t.Context(), "/repo", "work"); err != nil {
 			t.Fatal(err)
 		}
 	}

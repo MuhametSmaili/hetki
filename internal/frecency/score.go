@@ -1,8 +1,15 @@
 package frecency
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
-// Record is one exact raw path and session-name history entry.
+const halfLife = 7 * 24 * time.Hour
+
+// Record stores history for one raw path and session name.
+// Rank is the score at LastUsed, not the total number of visits.
+// LastUsed is a Unix timestamp in seconds.
 type Record struct {
 	Path     string  `json:"path"`
 	Session  string  `json:"session"`
@@ -15,31 +22,24 @@ type recordKey struct {
 	session string
 }
 
-// Scores contains scores calculated at one instant.
+// Scores contains record scores and path sums at one time.
 type Scores struct {
 	paths   map[string]float64
 	records map[recordKey]float64
 }
 
-// Score applies the zoxide age bucket for a record.
+// Score applies continuous decay with a seven-day half-life.
+// A future LastUsed does not increase the rank.
 func Score(record Record, now time.Time) float64 {
 	if record.LastUsed >= now.Unix() {
-		return record.Rank * 4
+		return record.Rank
 	}
+
 	age := uint64(now.Unix()) - uint64(record.LastUsed)
-	switch {
-	case age < uint64(time.Hour/time.Second):
-		return record.Rank * 4
-	case age < uint64(24*time.Hour/time.Second):
-		return record.Rank * 2
-	case age < uint64(7*24*time.Hour/time.Second):
-		return record.Rank / 2
-	default:
-		return record.Rank / 4
-	}
+	return record.Rank * math.Exp2(-float64(age)/halfLife.Seconds())
 }
 
-// NewScores calculates per-record scores and path sums.
+// NewScores calculates record scores and their sums for each path.
 func NewScores(records []Record, now time.Time) Scores {
 	scores := Scores{
 		paths:   make(map[string]float64, len(records)),
@@ -53,7 +53,7 @@ func NewScores(records []Record, now time.Time) Scores {
 	return scores
 }
 
-// Path returns the sum of independently decayed scores for path.
+// Path returns the sum of the record scores for path.
 func (s Scores) Path(path string) float64 {
 	return s.paths[path]
 }

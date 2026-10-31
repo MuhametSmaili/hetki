@@ -7,6 +7,7 @@ import (
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/frecency"
+	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -291,6 +292,35 @@ func TestProjectFlatUsesTotalFrecencyOrderAndFilteredTieBreaks(t *testing.T) {
 	model.SetQuery("shared")
 	require.Len(t, model.Rows(), 2)
 	assert.Equal(t, destinationItemID("$3", "@4", "%4"), model.Rows()[0].Item.ID)
+}
+
+func TestExponentialFrecencyKeepsTextRelevanceAndStructuralTreeOrder(t *testing.T) {
+	now := time.Unix(20_000_000, 0)
+	scores := frecency.NewScores([]frecency.Record{
+		{Path: "/old", Session: "alpha", Rank: 64, LastUsed: now.Add(-42 * 24 * time.Hour).Unix()},
+		{Path: "/recent", Session: "zeta", Rank: 3, LastUsed: now.Unix()},
+	}, now)
+	state := backend.StateResult{Sessions: []backend.Session{
+		{ID: "$1", Name: "alpha", Windows: []backend.Window{{ID: "@1", Name: "needle", Panes: []backend.Pane{{ID: "%1", Path: "/old"}}}}},
+		{ID: "$2", Name: "zeta", Windows: []backend.Window{{ID: "@2", Name: "needles", Panes: []backend.Pane{{ID: "%2", Path: "/recent"}}}}},
+	}}
+
+	flat, _, err := projectState(state, ui.ViewFlat, scores, "")
+	require.NoError(t, err)
+	model, err := list.New(flat)
+	require.NoError(t, err)
+
+	require.Equal(t, destinationItemID("$2", "@2", "%2"), model.Rows()[0].Item.ID)
+
+	model.SetQuery("needle")
+
+	require.Len(t, model.Rows(), 2)
+	require.Equal(t, destinationItemID("$1", "@1", "%1"), model.Rows()[0].Item.ID)
+
+	tree, _, err := projectState(state, ui.ViewTree, scores, "")
+
+	require.NoError(t, err)
+	require.Equal(t, sessionItemID("$1"), tree.Items[0].ID)
 }
 
 func TestDestinationOrderHasDeterministicFallbacks(t *testing.T) {

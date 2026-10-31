@@ -17,13 +17,14 @@ import (
 )
 
 const (
-	Version         = 1
+	// Version is the format version of the state file.
+	Version         = 2
 	maxJSONBytes    = 16 << 20
 	maxPathBytes    = 4_096
 	maxSessionBytes = 255
 	maxRank         = 10_000
+	maxRecords      = 10_000
 	maxJSONDepth    = 64
-	ageThreshold    = 10_000
 	lockRetry       = 10 * time.Millisecond
 )
 
@@ -44,7 +45,7 @@ type inputRecord struct {
 	LastUsed *int64  `json:"last_used"`
 }
 
-// Store persists frecency records at one state-file path.
+// Store reads and writes history at one state-file path.
 type Store struct {
 	path   string
 	now    func() time.Time
@@ -56,19 +57,21 @@ func NewStore(path string) *Store {
 	return &Store{path: path, now: time.Now, rename: os.Rename}
 }
 
-// DefaultStore creates a store at the XDG state path.
+// DefaultStore creates a version-2 store at the XDG state path.
+// It ignores frecency.json because the old ranks use a different decay model.
 func DefaultStore() (*Store, error) {
 	path, err := DefaultPath()
 	if err != nil {
 		return nil, err
 	}
+
 	return NewStore(path), nil
 }
 
-// DefaultPath returns the platform-independent XDG state location.
+// DefaultPath returns the XDG path for the version-2 state file.
 func DefaultPath() (string, error) {
 	if stateHome := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(stateHome) {
-		return filepath.Join(stateHome, "hetki", "frecency.json"), nil
+		return filepath.Join(stateHome, "hetki", "frecency-v2.json"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -77,17 +80,17 @@ func DefaultPath() (string, error) {
 	if !filepath.IsAbs(home) {
 		return "", errors.New("determine home directory: path is not absolute")
 	}
-	return filepath.Join(home, ".local", "state", "hetki", "frecency.json"), nil
+	return filepath.Join(home, ".local", "state", "hetki", "frecency-v2.json"), nil
 }
 
-// Load reads and validates deterministic version-1 records. A missing file is
-// an empty history; every other read or validation failure is returned.
+// Load reads and validates history in key order.
+// A missing file gives empty history.
+// Load returns all other read or validation errors.
 func (s *Store) Load() ([]Record, error) {
 	return s.LoadContext(context.Background())
 }
 
-// LoadContext reads history with cancellation checks between bounded file and
-// decode operations.
+// LoadContext reads history and checks for cancellation between file and decode operations.
 func (s *Store) LoadContext(ctx context.Context) ([]Record, error) {
 	if ctx == nil {
 		return nil, errors.New("load frecency state: nil context")
@@ -96,8 +99,9 @@ func (s *Store) LoadContext(ctx context.Context) ([]Record, error) {
 	return records, err
 }
 
-// Record reloads history under a cancellable process lock, increments one exact
-// raw path/session pair, ages if needed, and atomically replaces the state file.
+// Record adds one visit to the exact raw path and session pair.
+// It holds a process lock for the read, update, and atomic file replacement.
+// The lock wait supports cancellation.
 func (s *Store) Record(ctx context.Context, path, session string) error {
 	if ctx == nil {
 		return errors.New("record frecency: nil context")
@@ -167,31 +171,39 @@ func recordVisit(records []Record, path, session string, now time.Time) []Record
 	found := false
 	for i := range records {
 		if records[i].Path == path && records[i].Session == session {
-			records[i].Rank++
+			records[i].Rank = min(Score(records[i], now)+1, maxRank)
+			// A new visit resets a future timestamp so the score can decrease.
 			records[i].LastUsed = now.Unix()
+
 			found = true
 			break
 		}
 	}
+
 	if !found {
 		records = append(records, Record{Path: path, Session: session, Rank: 1, LastUsed: now.Unix()})
 	}
 
-	var total float64
-	for _, record := range records {
-		total += record.Rank
-	}
-	if total > ageThreshold {
-		kept := records[:0]
-		for _, record := range records {
-			record.Rank *= 0.9
-			if record.Rank >= 1 {
-				kept = append(kept, record)
-			}
-		}
-		records = kept
+	if len(records) > maxRecords {
+		// Higher scores on older records must not remove the new visit.
+		weakest := weakestRecord(records[:len(records)-1], now)
+		records[weakest] = records[len(records)-1]
+		records = records[:len(records)-1]
 	}
 	return records
+}
+
+func weakestRecord(records []Record, now time.Time) int {
+	weakest := 0
+	weakestScore := Score(records[0], now)
+	for i := 1; i < len(records); i++ {
+		score := Score(records[i], now)
+		if score < weakestScore || (score == weakestScore && recordKeyLess(records[weakest], records[i])) {
+			weakest = i
+			weakestScore = score
+		}
+	}
+	return weakest
 }
 
 func (s *Store) load(ctx context.Context) ([]Record, bool, error) {
@@ -472,13 +484,17 @@ func hexQuad(data []byte, start int) (uint16, bool) {
 }
 
 func validateRecords(records []Record) error {
+	if len(records) > maxRecords {
+		return fmt.Errorf("record count exceeds %d", maxRecords)
+	}
+
 	seen := make(map[recordKey]struct{}, len(records))
 	for i, record := range records {
 		if err := validateKey(record.Path, record.Session); err != nil {
 			return fmt.Errorf("records[%d]: %w", i, err)
 		}
-		if math.IsNaN(record.Rank) || math.IsInf(record.Rank, 0) || record.Rank < 1 || record.Rank > maxRank {
-			return fmt.Errorf("records[%d]: rank must be finite and in [1, %d]", i, maxRank)
+		if math.IsNaN(record.Rank) || math.IsInf(record.Rank, 0) || record.Rank <= 0 || record.Rank > maxRank {
+			return fmt.Errorf("records[%d]: rank must be finite, positive and at most %d", i, maxRank)
 		}
 		key := recordKey{path: record.Path, session: record.Session}
 		if _, ok := seen[key]; ok {
@@ -513,11 +529,15 @@ func validateKey(path, session string) error {
 
 func sortRecords(records []Record) {
 	sort.Slice(records, func(i, j int) bool {
-		if records[i].Path != records[j].Path {
-			return records[i].Path < records[j].Path
-		}
-		return records[i].Session < records[j].Session
+		return recordKeyLess(records[i], records[j])
 	})
+}
+
+func recordKeyLess(left, right Record) bool {
+	if left.Path != right.Path {
+		return left.Path < right.Path
+	}
+	return left.Session < right.Session
 }
 
 func (s *Store) lock(ctx context.Context) (*os.File, error) {
