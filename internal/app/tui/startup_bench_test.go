@@ -135,8 +135,22 @@ func benchmarkProjectedList(b *testing.B, name string, snapshot list.Snapshot, w
 			}
 		}
 	})
+	benchmarkProjectedFiltering(b, name, &model)
+}
+
+// A roundtrip measures both applying and clearing a query, not one keystroke.
+func benchmarkProjectedFiltering(b *testing.B, name string, model *list.Model) {
 	for _, query := range []string{"project", "project-0999", "no-match"} {
-		b.Run(name+"_filter/"+query, func(b *testing.B) {
+		b.Run(name+"_filter_roundtrip/"+query, func(b *testing.B) {
+			model.SetQuery("")
+			b.ReportAllocs()
+			for b.Loop() {
+				model.SetQuery(query)
+				model.SetQuery("")
+			}
+		})
+		b.Run(name+"_filter_unchanged/"+query, func(b *testing.B) {
+			model.SetQuery(query)
 			b.ReportAllocs()
 			for b.Loop() {
 				model.SetQuery(query)

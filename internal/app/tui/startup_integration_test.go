@@ -15,11 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Mask the optional status capability to measure the same native row query
-// without the status hookup. Both cases omit terminal rendering and frecency I/O.
+// Mask the optional status capability to measure the row-only query.
 type rowsOnlyBackend struct{ Backend }
 
-func BenchmarkNativePickerOpening(b *testing.B) {
+// BenchmarkNativePickerSnapshot measures synchronous query/setup, excluding
+// config/frecency I/O, asynchronous status reads, rendering and input.
+func BenchmarkNativePickerSnapshot(b *testing.B) {
 	executable := filepath.Join(b.TempDir(), "hetki")
 	args := append([]string{"build"}, testenv.BuildFlags()...)
 	args = append(args, "-o", executable, "../../..")
@@ -37,7 +38,7 @@ func BenchmarkNativePickerOpening(b *testing.B) {
 		backend Backend
 	}{
 		{"rows_only", rowsOnlyBackend{native}},
-		{"with_status", native},
+		{"with_status_metadata", native},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			adapter := newLiveAdapter(func() (Backend, error) { return tc.backend, nil }, nil, nil)
