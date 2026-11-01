@@ -8,19 +8,42 @@ A keyboard-first tool for Linux and macOS.
 - Preview panes and see activity from supported apps.
 - Save tmux sessions as YAML workspaces and start them again.
 
-> **Alpha:** expect breaking changes.
+<img width="867" height="564" alt="Hetki session picker with a pane preview" src="https://github.com/user-attachments/assets/6902d842-42b4-4ec0-9c06-7867c5c0a649" />
 
-<img width="867" height="564" alt="image" src="https://github.com/user-attachments/assets/6902d842-42b4-4ec0-9c06-7867c5c0a649" />
+## How Hetki works
 
-## Install
+Hetki works with your tmux server. Your sessions remain in tmux when you close Hetki.
 
-Requires tmux. On macOS, requires Ventura 13 or later.
+| Term               | Meaning                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| **Picker**         | The terminal interface for finding and selecting items on the current tmux server. |
+| **Workspace**      | A YAML file that describes sessions, windows, panes, and startup commands.         |
+| **Status service** | A background process that tracks application activity in tmux panes (OSC 7501).    |
+| **Tracked**        | An item with any [current status](docs/status.md).                                 |
+
+A workspace saves session structure, not running process state or terminal contents.
+The picker starts the status service automatically.
+
+## Install and open the picker
+
+Install tmux and make sure that it is on your `PATH`.
+On macOS, use Ventura 13 or later.
+Status tracking supports stable [tmux releases from 3.2 through 3.8](docs/status.md#tmux-versions).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MuhametSmaili/hetki/main/install.sh | bash
 ```
 
-Or use a package manager:
+1. Run `hetki` in a terminal.
+2. Type part of a session, window, or pane name.
+3. Use the arrow keys to select an item.
+4. Press Enter to switch to it.
+
+Inside tmux, Hetki switches the current client. Outside tmux, it attaches to the selected session.
+By default, the picker closes after you switch.
+
+<details>
+<summary>Other installation methods</summary>
 
 | Method   | Install command                                        |
 | -------- | ------------------------------------------------------ |
@@ -28,14 +51,17 @@ Or use a package manager:
 | mise     | `mise use -g go:github.com/MuhametSmaili/hetki@latest` |
 | Go       | `go install github.com/MuhametSmaili/hetki@latest`     |
 
-Go and mise installations require Go 1.27.3 or newer.
-For the latest unreleased main commit with Homebrew, add `--HEAD` to its install command.
+Go and mise installations require Go 1.27.3 or later.
+For the latest unreleased main commit with Homebrew, add `--HEAD` to the install command.
 
-Prebuilt binaries are available on the [releases page](https://github.com/MuhametSmaili/hetki/releases).
+You can also download a binary from the [releases page](https://github.com/MuhametSmaili/hetki/releases).
 
-### Update
+</details>
 
-Update Hetki with the tool you installed it with:
+<details>
+<summary>Update Hetki</summary>
+
+Use the tool that you used to install Hetki:
 
 | Installed with | Update with                                                   |
 | -------------- | ------------------------------------------------------------- |
@@ -46,15 +72,18 @@ Update Hetki with the tool you installed it with:
 | mise           | `mise upgrade go:github.com/MuhametSmaili/hetki`              |
 | mise, `@main`  | `mise install --force go:github.com/MuhametSmaili/hetki@main` |
 
-The status service stops when its binary is replaced. The picker starts the new build the next time it opens.
-If a service from another build still runs, the picker and `hetki service restart` replace it.
+The status service stops when its binary is replaced.
+The picker starts the new build the next time it opens.
+The picker and `hetki service restart` also replace a service from another build.
+
+</details>
 
 <details>
-<summary>Load completion for Hetki</summary>
+<summary>Set up shell completion</summary>
 
 ### Zsh
 
-Generate the completion file once:
+Generate the completion file:
 
 ```zsh
 mkdir -p ~/.local/share/zsh/site-functions
@@ -67,8 +96,8 @@ In `~/.zshrc`, add this line before your shell's completion setup:
 fpath=("$HOME/.local/share/zsh/site-functions" $fpath)
 ```
 
-Zsh's completion system must be enabled. Most shell frameworks handle this automatically.
-Otherwise, add these lines after `fpath`:
+Most shell frameworks enable Zsh completion.
+If yours does not, add these lines after `fpath`:
 
 ```zsh
 autoload -Uz compinit
@@ -77,7 +106,8 @@ compinit
 
 ### Bash
 
-Requires Bash 4.2 or newer with `bash-completion` 2.x enabled. Generate its user-local completion file once:
+Use Bash 4.2 or later with `bash-completion` 2.x enabled.
+Generate the completion file:
 
 ```bash
 dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
@@ -87,43 +117,97 @@ hetki completion bash > "$dir/hetki"
 
 If you set `BASH_COMPLETION_USER_DIR`, use one of those directories with a `completions` subdirectory instead.
 
-Restart your shell after setup. Regenerate the completion file after upgrading Hetki.
-These setups load completion functions on demand. Hetki reads workspace names only during completion.
+Restart your shell after setup. Generate the file again after you update Hetki.
+These setups load completion functions on demand.
+Hetki reads workspace names only when you request completion.
 
 </details>
 
-## Commands
+## Everyday use
 
-| Command                          | What it does                                          |
-| -------------------------------- | ----------------------------------------------------- |
-| `hetki`                          | Open the picker.                                      |
-| `hetki save work`                | Save the current session from inside tmux.            |
-| `hetki start work`               | Start a saved workspace.                              |
-| `hetki start work --detach`      | Start without attaching or switching sessions.        |
-| `hetki start work --dry-run`     | Preview workspace changes without applying them.      |
-| `hetki start --file ./work.yaml` | Start a workspace from a YAML file.                   |
-| `hetki save work --all-sessions` | Replace the saved session set with all live sessions. |
-| `hetki service status`           | Show status service information.                      |
-| `hetki service start`            | Start the status service.                             |
-| `hetki service stop`             | Stop the status service, not tmux.                    |
-| `hetki service restart`          | Restart the status service.                           |
+### Find and switch
 
-Named workspace files live in `~/.config/hetki/workspaces` by default.
-Use exactly one selector: a workspace name such as `work`, or `--file ./work.yaml` (`-f ./work.yaml`).
-Names never select local files. A name combined with `--file` is an error.
+Choose a flat list or a tree of sessions, windows, and panes.
+The flat list uses **frecency**: directories you use often or recently rank higher.
+Press `Ctrl+T` to switch views.
 
-The picker starts its status service automatically. Use `hetki --help` or `hetki <command> --help` for more options.
+The picker opens in filter mode. Type to filter the list.
+Press Escape to enter normal mode. Press `/` to filter again.
 
-**Caution:** `--force` can replace or delete windows in sessions listed in the workspace.
-`--prune-sessions` can delete unrelated sessions on the selected tmux server.
-Both can terminate processes. Use `--dry-run` first to see result.
+| Key      | Action                                |
+| -------- | ------------------------------------- |
+| `Enter`  | Open the selection.                   |
+| `Ctrl+K` | Open the actions menu.                |
+| `Ctrl+T` | Switch between flat and tree views.   |
+| `Tab`    | Switch between All and Tracked items. |
+| `Alt+P`  | Show or hide the pane preview.        |
+| `Ctrl+O` | Switch to the previous session.       |
+| `Ctrl+C` | Quit from any mode.                   |
 
-## Configuration
+These are the default keys. You can [change keys for each mode](docs/key-bindings.md).
 
-The picker reads an optional `$XDG_CONFIG_HOME/hetki/config.yaml` on Linux and macOS.
-If `XDG_CONFIG_HOME` is unset or relative, it uses `~/.config/hetki/config.yaml` instead.
+<details>
+<summary>Open an inline picker or keep it open after switching</summary>
 
-For color settings and defaults, see [Picker colors](docs/theme.md).
+Open the picker near your shell prompt:
+
+```bash
+hetki --height 40% --border none
+```
+
+Earlier shell output stays in the main terminal buffer.
+The terminal can scroll to make space.
+Use `--height 100%` for fullscreen mode, which is the default.
+
+Inside tmux, keep the picker open after you switch:
+
+```bash
+hetki --stay-open
+```
+
+Your filter, selection, view, and preview stay in memory.
+`Ctrl+O` also keeps the picker open. Press `Ctrl+C` to quit.
+Hetki does not position the picker pane or save these choices for the next run.
+
+</details>
+
+### Save and start a workspace
+
+From inside tmux, save the current session:
+
+```bash
+hetki save work
+```
+
+For a new workspace, this creates `~/.config/hetki/workspaces/work.yaml`.
+If the workspace already exists, Hetki updates it and keeps other saved sessions.
+
+Preview the changes before you start the workspace:
+
+```bash
+hetki start work --dry-run
+```
+
+Then start it:
+
+```bash
+hetki start work
+```
+
+By default, `start` adds missing sessions and windows without changing existing windows.
+
+**Caution:** `--force` and `--prune-sessions` can replace or delete items and stop running processes.
+Preview destructive changes with `--dry-run`.
+
+Hetki attaches to the first listed session, or switches to it from inside tmux.
+Use `--detach` (`-d`) to skip this step.
+
+See the [workspace guide](docs/workspaces.md) for YAML examples and save behavior.
+
+## Customize the picker
+
+Create `~/.config/hetki/config.yaml` and copy only the options you want to change.
+If you use an absolute `XDG_CONFIG_HOME`, put the file at `$XDG_CONFIG_HOME/hetki/config.yaml` instead.
 
 ```yaml
 ui:
@@ -135,97 +219,31 @@ ui:
   border: none
 ```
 
-| Key                | Valid values                         | Default   |
-| ------------------ | ------------------------------------ | --------- |
-| `ui.view`          | `flat`, `tree`                       | `flat`    |
-| `ui.scope`         | `all`, `tracked`                     | `all`     |
-| `ui.preview`       | `false`, `true`                      | `false`   |
-| `ui.preview_width` | Integer from 1–99                    | `70`      |
-| `ui.height`        | Positive integer rows or `1%`–`100%` | `100%`    |
-| `ui.border`        | `rounded`, `none`                    | `rounded` |
-
-Omit keys to use their defaults. A missing or empty valid file uses defaults without a warning.
-The picker reads the file once when it opens. Runtime changes remain temporary: Hetki does not create or update this file or save picker choices.
-
-`ui.preview_width` sets the preview percentage of the available content width, excluding the frame and separator.
-With `preview: false`, the preview reserves no space. In this example, `Alt+P` shows the preview at 45%.
-The layout clamps both columns to their minimum widths. A narrow terminal hides the preview without changing the requested visibility or percentage.
-
-An invalid view, scope, border or height choice uses the default for that field and keeps other valid choices.
-An integer outside 1–99, including an integer too large to decode, warns and uses width 70 only. Other valid choices remain active.
-`ui.preview` requires an unquoted YAML boolean (`true` or `false`).
-`ui.preview_width` requires an unquoted YAML integer, not a quoted number, percentage string, boolean, float, or null.
-A wrong value type discards the entire configuration.
-Malformed YAML or an invalid file structure discards the entire configuration and uses built-in defaults.
-An unreadable or nonregular file, or a configuration-path error, also uses built-in defaults.
-These problems show a warning in the picker instead of blocking startup. Other commands and help are unaffected.
-
-The format is strict: one YAML document, at most 64 KiB and 16 levels deep. Symlinks to regular files are supported.
-Unknown or duplicate keys, nulls, aliases, merge keys, explicit tags, and wrong value types are invalid.
-
-### Inline picker and command overrides
-
-The inline picker opens near the shell prompt without a separate full-screen buffer.
-Earlier shell output stays in the main buffer, but the terminal can scroll to make space.
-The height includes the header and outer border. Inline mode reserves one terminal row when possible.
-Percentages use the entire terminal height, not the empty space below the cursor. Hetki rounds down to whole rows, with at least one row.
-Percentages recompute when the terminal size changes. The renderer scrolls to make room instead of switching above or below the prompt.
-Very short pickers hide header rows to keep the selected item visible.
-The `none` border option removes the outer frame, not dialog borders.
-
-Explicit command flags override the configuration for one invocation. Omitted flags leave file preferences unchanged.
-The order is built-in defaults, then configuration, then explicit flags. Hetki does not write these choices to the configuration file.
+Command flags override the file for one run:
 
 ```bash
-hetki --height 12 --border none
-hetki --height 40%
-hetki --height 100%
-hetki --border rounded
-hetki --preview
-hetki --preview=false
-hetki --scope tracked
-hetki --scope all
-hetki --view tree --scope tracked --preview
-hetki --preview --preview-width 45
-hetki --stay-open
+hetki --view tree --scope tracked --preview --preview-width 45
 ```
 
-`--stay-open` keeps the picker running after switching to a session, window, or pane, including with `Ctrl+O`.
-It requires running inside tmux. The current filter, selection, view, and preview remain in memory; `Ctrl+C` still quits.
-Without the flag, switching exits the picker. This does not manage pane placement or save UI state across restarts.
+Hetki reads the file when the picker opens. It does not write your picker choices to the file.
 
-`--preview` (or `--preview=true`) initially shows the pane preview. Use `--preview=false` to initially hide it, even when `ui.preview` is `true`.
-Omit the flag to use the configured value or built-in default. `Alt+P` can still toggle the preview during the run.
-The flag does not change `ui.preview_width` or force the preview to fit a narrow terminal.
+- [Configuration](docs/configuration.md): defaults, flags, layout, and file rules.
+- [Key bindings](docs/key-bindings.md): change keys for each mode or see all defaults.
+- [Theme](docs/theme.md): customize picker colors and selection.
 
-`--scope all` selects all items regardless of status. `--scope tracked` selects items with any current status, including idle items and non-AI commands.
-The flag overrides `ui.scope` for the initial item set. The text query matches within that set, and `Tab` still switches between All and Tracked during the run.
-This is not a working-only filter or a text query expression.
+## Application status and help
 
-`--view flat` or `--view tree` overrides `ui.view` for the initial projection. `Ctrl+T` can still switch views during the run.
-`--preview-width N` overrides `ui.preview_width`. Use an integer percentage from 1–99 without a `%` suffix.
-Setting the width does not enable the preview. Existing column minimums and narrow-terminal hiding still apply.
+Status shows activity from apps that report it or match a screen profile.
+Ordinary terminal output alone does not mean that an app is working.
 
-`100%` selects fullscreen mode in a separate screen buffer. It is also the built-in default.
-Other percentages and positive row counts select inline mode. `100` rows is inline, not fullscreen.
-The file accepts an integer or string for `ui.height`, such as `12` or `"40%"`.
-Decimal rows and integer percentages are supported. Fractional percentages, negative heights and adaptive `~` heights are not supported.
-Invalid explicit flags stop startup with an error.
-These flags apply only to the picker, not other commands.
+| Command                 | Action                                                                  |
+| ----------------------- | ----------------------------------------------------------------------- |
+| `hetki service status`  | Show service information and the log path without starting the service. |
+| `hetki service start`   | Start the status service.                                               |
+| `hetki service stop`    | Stop the status service, not tmux.                                      |
+| `hetki service restart` | Restart the status service.                                             |
 
-Inline mode does not add shell keybindings or preserve an unfinished shell command.
-A tmux popup binding still opens a popup. Run Hetki inside the pane to use inline mode there.
+An open picker can start a stopped service again.
+See the [status guide](docs/status.md) for app support, profiles, and troubleshooting.
 
-## Picker default key-bindings
-
-Type to filter. Press `Esc` for normal mode.
-
-| Key      | What it does                                 |
-| -------- | -------------------------------------------- |
-| `Enter`  | Open the selection.                          |
-| `Ctrl+K` | Open the actions menu.                       |
-| `Ctrl+T` | Switch between flat and tree views.          |
-| `Tab`    | Show all items or only status-tracked items. |
-| `Alt+P`  | Toggle the pane preview.                     |
-| `Ctrl+O` | Jump to the previous session.                |
-| `Ctrl+C` | Quit.                                        |
+Use `hetki --help` or `hetki <command> --help` for command options.

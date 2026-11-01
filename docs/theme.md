@@ -1,6 +1,8 @@
 # Picker colors
 
-Add a `theme` section to `~/.config/hetki/config.yaml`.
+[README](../README.md) · [Configuration](configuration.md) · [Key bindings](key-bindings.md) · [Workspaces](workspaces.md) · [Status](status.md)
+
+Add a `theme` section to the [picker configuration](configuration.md#file-location), usually at `~/.config/hetki/config.yaml`.
 If `XDG_CONFIG_HOME` is an absolute path, use `$XDG_CONFIG_HOME/hetki/config.yaml` instead.
 
 ```yaml
@@ -37,13 +39,6 @@ Remove a setting to restore its default. Open the picker again to load changes.
 
 ## Notes
 
-- Changing `accent` also sets `border` and `working`, unless you set them separately.
-- Session names follow window text by default. Set `context` to give them a separate color.
-- Selection uses `selection_bg`. The active item keeps its `active` text color.
-  Other labels use `selection_fg`, unless you set `context` for session names.
-  Paths, commands, counts, and status indicators keep their own colors.
-- The main background and pane-preview colors stay unchanged. There is no automatic light/dark mode.
-  Exact hex colors need true-color support in your terminal and tmux.
 - Any nonempty `NO_COLOR` value disables colors, including preview colors. Selection then uses inverse text and background.
 - Invalid color values show a warning and use their defaults. Other valid settings still apply.
   Invalid YAML, unknown fields, wrong value types, or duplicate keys make Hetki use all defaults.
