@@ -69,6 +69,20 @@ func (f navigationFixture) run(t *testing.T, args ...string) string {
 	return strings.TrimSpace(output)
 }
 
+func (f navigationFixture) newWindow(t *testing.T, session string) (windowID, paneID string) {
+	t.Helper()
+	output := f.run(t, "new-window", "-d", "-t", session+":", "-P", "-F",
+		"#{window_id}|#{pane_id}", "/bin/sh", "-c", "exec sleep 60")
+	fields := strings.Split(output, "|")
+	require.Len(t, fields, 2)
+	return fields[0], fields[1]
+}
+
+func (f navigationFixture) splitPane(t *testing.T, window string) string {
+	t.Helper()
+	return f.run(t, "split-window", "-d", "-t", window, "-P", "-F", "#{pane_id}", "/bin/sh", "-c", "exec sleep 60")
+}
+
 func (f navigationFixture) destinationAt(t *testing.T, level string) backend.Target {
 	t.Helper()
 	target := f.destination
@@ -76,10 +90,10 @@ func (f navigationFixture) destinationAt(t *testing.T, level string) backend.Tar
 		return backend.Target{SessionID: target.SessionID}
 	}
 
-	target.WindowID = f.run(t, "new-window", "-d", "-t", target.SessionID+":", "-P", "-F", "#{window_id}", "/bin/sh", "-c", "exec sleep 60")
+	target.WindowID, _ = f.newWindow(t, target.SessionID)
 	target.PaneID = ""
 	if level != "window" {
-		target.PaneID = f.run(t, "split-window", "-d", "-t", target.WindowID, "-P", "-F", "#{pane_id}", "/bin/sh", "-c", "exec sleep 60")
+		target.PaneID = f.splitPane(t, target.WindowID)
 	}
 	if level == "linked pane" {
 		target.SessionID = f.run(t, "new-session", "-d", "-s", "linked", "-P", "-F", "#{session_id}", "/bin/sh", "-c", "exec sleep 60")

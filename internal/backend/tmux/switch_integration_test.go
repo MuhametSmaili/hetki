@@ -57,9 +57,7 @@ func TestSwitchTargetsStableIDsOnColonNamedSessions(t *testing.T) {
 	require.Len(t, state.Sessions, 1)
 	sessionID := state.Sessions[0].ID
 	windowID := state.Sessions[0].Windows[0].ID
-	windowIndex := state.Sessions[0].Windows[0].Index
 	paneID := state.Sessions[0].Windows[0].Panes[0].ID
-	paneIndex := state.Sessions[0].Windows[0].Panes[0].Index
 	target := backend.Target{SessionID: sessionID, WindowID: windowID, PaneID: paneID}
 
 	require.NoError(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID}))
@@ -79,8 +77,8 @@ func TestSwitchTargetsStableIDsOnColonNamedSessions(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		fmt.Sprintf("attach-session -t %s", sessionID),
-		fmt.Sprintf("attach-session -t %s:%d", sessionID, windowIndex),
-		fmt.Sprintf("attach-session -t %s:%d.%d", sessionID, windowIndex, paneIndex),
+		fmt.Sprintf("attach-session -t %s:%s", sessionID, windowID),
+		fmt.Sprintf("attach-session -t %s:%s.%s", sessionID, windowID, paneID),
 	}, strings.Split(strings.TrimSpace(string(logged)), "\n"))
 }
 
@@ -105,5 +103,5 @@ func TestSwitchScopedPaneKeepsTheSelectedLinkedSession(t *testing.T) {
 	require.Error(t, b.Switch(ctx, target), "removed occurrence must not follow the surviving link")
 	logged, err := os.ReadFile(navLog)
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprintf("attach-session -t %s:9.%d\n", otherID, window.Panes[0].Index), string(logged))
+	require.Equal(t, fmt.Sprintf("attach-session -t %s:%s.%s\n", otherID, window.ID, paneID), string(logged))
 }

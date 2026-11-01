@@ -353,12 +353,12 @@ func TestSwitchResolvesStableOccurrences(t *testing.T) {
 		wantNav string
 	}{
 		{name: "session ID ignores name shadow", target: backend.Target{SessionID: "$1"}, wantNav: "$1"},
-		{name: "window uses current index", target: backend.Target{SessionID: "$1", WindowID: "@1"}, wantNav: "$1:3"},
-		{name: "pane uses current index without base offset", target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}, wantNav: "$1:3.4"},
-		{name: "linked window keeps session", target: backend.Target{SessionID: "$2", WindowID: "@1"}, wantNav: "$2:9"},
-		{name: "linked pane keeps occurrence", target: backend.Target{SessionID: "$2", WindowID: "@1", PaneID: "%1"}, wantNav: "$2:9.4"},
-		{name: "dotted window name", target: backend.Target{SessionID: "$1", WindowID: "@2"}, wantNav: "$1:5"},
-		{name: "colon session name", target: backend.Target{SessionID: "$3", WindowID: "@3"}, wantNav: "$3:0"},
+		{name: "window keeps stable ID", target: backend.Target{SessionID: "$1", WindowID: "@1"}, wantNav: "$1:@1"},
+		{name: "pane keeps stable ID regardless of base index", target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}, wantNav: "$1:@1.%1"},
+		{name: "linked window keeps session", target: backend.Target{SessionID: "$2", WindowID: "@1"}, wantNav: "$2:@1"},
+		{name: "linked pane keeps occurrence", target: backend.Target{SessionID: "$2", WindowID: "@1", PaneID: "%1"}, wantNav: "$2:@1.%1"},
+		{name: "dotted window name", target: backend.Target{SessionID: "$1", WindowID: "@2"}, wantNav: "$1:@2"},
+		{name: "colon session name", target: backend.Target{SessionID: "$3", WindowID: "@3"}, wantNav: "$3:@3"},
 		{name: "missing session", target: backend.Target{SessionID: "$99", WindowID: "@1"}},
 		{name: "missing window", target: backend.Target{SessionID: "$1", WindowID: "@99"}},
 		{name: "missing pane", target: backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%99"}},

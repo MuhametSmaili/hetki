@@ -25,19 +25,20 @@ func validateTarget(target backend.Target) error {
 	return nil
 }
 
-// Linked windows share IDs, so resolve indexes only inside the selected session.
+// Keep the selected session scope without translating stable IDs into indexes
+// that can change between this snapshot and native dispatch.
 func resolveSwitchTarget(sessions []Session, target backend.Target) (string, error) {
 	window, err := findTargetWindow(sessions, target)
 	if err != nil {
 		return "", err
 	}
-	resolved := fmt.Sprintf("%s:%d", target.SessionID, window.Index)
+	resolved := fmt.Sprintf("%s:%s", target.SessionID, window.ID)
 	if target.PaneID == "" {
 		return resolved, nil
 	}
 	for _, pane := range window.Panes {
 		if pane.ID == target.PaneID {
-			return fmt.Sprintf("%s.%d", resolved, pane.Index), nil
+			return fmt.Sprintf("%s.%s", resolved, pane.ID), nil
 		}
 	}
 	return "", fmt.Errorf("pane %q not found in %s:%s", target.PaneID, target.SessionID, target.WindowID)

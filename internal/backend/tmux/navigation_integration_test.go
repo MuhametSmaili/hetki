@@ -5,6 +5,7 @@ package tmux
 import (
 	"testing"
 
+	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -118,4 +119,135 @@ func TestNativeSwitchFailsIfOwnerDetachesAtDispatch(t *testing.T) {
 
 	require.ErrorContains(t, err, "can't find client: "+owner)
 	assert.Equal(t, fixture.source, fixture.clientTarget(t, observer))
+}
+
+func TestNativeSwitchKeepsSelectedWindowAfterReindex(t *testing.T) {
+	fixture := newNavigationFixture(t)
+	owner := fixture.attach(t, fixture.source.SessionID)
+	_, observer := fixture.observe(t)
+	otherWindow, _ := fixture.newWindow(t, fixture.destination.SessionID)
+	fixture.backend.client = navigationDispatchClient{Client: fixture.backend.client, before: func() {
+		fixture.run(t, "swap-window", "-d", "-s", fixture.destination.WindowID, "-t", otherWindow)
+	}}
+
+	err := fixture.backend.Switch(fixture.ctx, backend.Target{
+		SessionID: fixture.destination.SessionID, WindowID: fixture.destination.WindowID,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, fixture.destination, fixture.clientTarget(t, owner))
+	assert.Equal(t, fixture.source, fixture.clientTarget(t, observer))
+}
+
+func TestNativeSwitchKeepsSelectedPaneAfterReindex(t *testing.T) {
+	fixture := newNavigationFixture(t)
+	owner := fixture.attach(t, fixture.source.SessionID)
+	_, observer := fixture.observe(t)
+	otherPane := fixture.splitPane(t, fixture.destination.WindowID)
+	fixture.backend.client = navigationDispatchClient{Client: fixture.backend.client, before: func() {
+		fixture.run(t, "swap-pane", "-d", "-s", fixture.destination.PaneID, "-t", otherPane)
+	}}
+
+	err := fixture.backend.Switch(fixture.ctx, fixture.destination)
+
+	require.NoError(t, err)
+	assert.Equal(t, fixture.destination, fixture.clientTarget(t, owner))
+	assert.Equal(t, fixture.source, fixture.clientTarget(t, observer))
+}
+
+func TestNativeSwitchKeepsLinkedOccurrenceAfterReindex(t *testing.T) {
+	fixture := newNavigationFixture(t)
+	owner := fixture.attach(t, fixture.source.SessionID)
+	_, observer := fixture.observe(t)
+	target := fixture.destinationAt(t, "linked pane")
+	otherWindow, _ := fixture.newWindow(t, target.SessionID)
+	otherPane := fixture.splitPane(t, target.WindowID)
+	fixture.backend.client = navigationDispatchClient{Client: fixture.backend.client, before: func() {
+		fixture.run(t, "swap-window", "-d", "-s", target.SessionID+":"+target.WindowID, "-t", otherWindow)
+		fixture.run(t, "swap-pane", "-d", "-s", target.PaneID, "-t", otherPane)
+	}}
+
+	err := fixture.backend.Switch(fixture.ctx, target)
+
+	require.NoError(t, err)
+	assert.Equal(t, target, fixture.clientTarget(t, owner))
+	assert.Equal(t, fixture.source, fixture.clientTarget(t, observer))
+}
+
+func TestNativeSwitchRejectsRelocatedOrRemovedDestinationAtDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		prepare func(*testing.T, navigationFixture) func()
+		wantErr string
+	}{
+		{
+			name: "window removed with replacement at its old index",
+			prepare: func(t *testing.T, f navigationFixture) func() {
+				t.Helper()
+				other, _ := f.newWindow(t, f.destination.SessionID)
+				return func() {
+					index := f.run(t, "display-message", "-p", "-t", f.destination.WindowID, "#{window_index}")
+					f.run(t, "kill-window", "-t", f.destination.WindowID)
+					f.run(t, "move-window", "-s", other, "-t", f.destination.SessionID+":"+index)
+				}
+			},
+			wantErr: "can't find window",
+		},
+		{
+			name: "pane removed with replacement at its old index",
+			prepare: func(t *testing.T, f navigationFixture) func() {
+				t.Helper()
+				other := f.splitPane(t, f.destination.WindowID)
+				index := f.run(t, "display-message", "-p", "-t", f.destination.PaneID, "#{pane_index}")
+				return func() {
+					f.run(t, "kill-pane", "-t", f.destination.PaneID)
+					require.Equal(t, index, f.run(t, "display-message", "-p", "-t", other, "#{pane_index}"))
+				}
+			},
+			wantErr: "can't find pane",
+		},
+		{
+			name: "window moved to another session",
+			prepare: func(t *testing.T, f navigationFixture) func() {
+				t.Helper()
+				other := f.run(t, "new-session", "-d", "-s", "other", "-P", "-F", "#{window_id}", "/bin/sh", "-c", "exec sleep 60")
+				return func() { f.run(t, "swap-window", "-d", "-s", f.destination.WindowID, "-t", other) }
+			},
+			wantErr: "can't find window",
+		},
+		{
+			name: "pane moved to another window",
+			prepare: func(t *testing.T, f navigationFixture) func() {
+				t.Helper()
+				_, other := f.newWindow(t, f.destination.SessionID)
+				return func() { f.run(t, "swap-pane", "-d", "-s", f.destination.PaneID, "-t", other) }
+			},
+			wantErr: "can't find pane",
+		},
+		{
+			name: "linked occurrence removed while another link survives",
+			prepare: func(t *testing.T, f navigationFixture) func() {
+				t.Helper()
+				other := f.run(t, "new-session", "-d", "-s", "other", "-P", "-F", "#{session_id}", "/bin/sh", "-c", "exec sleep 60")
+				f.run(t, "link-window", "-s", f.destination.WindowID, "-t", other+":4")
+				f.newWindow(t, f.destination.SessionID)
+				return func() { f.run(t, "unlink-window", "-t", f.destination.SessionID+":"+f.destination.WindowID) }
+			},
+			wantErr: "can't find window",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newNavigationFixture(t)
+			owner := fixture.attach(t, fixture.source.SessionID)
+			_, observer := fixture.observe(t)
+			before := test.prepare(t, fixture)
+			fixture.backend.client = navigationDispatchClient{Client: fixture.backend.client, before: before}
+
+			err := fixture.backend.Switch(fixture.ctx, fixture.destination)
+
+			require.ErrorContains(t, err, test.wantErr)
+			assert.Equal(t, fixture.source, fixture.clientTarget(t, owner))
+			assert.Equal(t, fixture.source, fixture.clientTarget(t, observer))
+		})
+	}
 }
