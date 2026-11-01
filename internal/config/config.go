@@ -25,6 +25,7 @@ type Config struct {
 
 // UI contains only explicitly configured startup choices.
 type UI struct {
+	Mode         *string
 	View         *string
 	Scope        *string
 	Preview      *bool
@@ -162,6 +163,8 @@ func decodeUI(node *yaml.Node) (UI, error) {
 func decodeUIField(key string, node *yaml.Node, result *UI) error {
 	var target **string
 	switch key {
+	case "mode":
+		target = &result.Mode
 	case "view":
 		target = &result.View
 	case "scope":

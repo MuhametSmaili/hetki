@@ -19,10 +19,14 @@ func addPickerFlags(command *cobra.Command) {
 	flags.Bool("preview", false, "Show pane preview initially (use --preview=false to disable)")
 	flags.String("scope", "", "Initial item scope: all or tracked (items with status)")
 	flags.String("view", "", "Initial picker view: flat or tree")
+	flags.String("mode", "", "Initial interaction mode: normal or filter (default filter)")
 	flags.Int("preview-width", 0, "Preview width as an integer percentage of content width (1-99)")
 	cobra.CheckErr(command.RegisterFlagCompletionFunc("preview-width", cobra.NoFileCompletions))
 	cobra.CheckErr(command.RegisterFlagCompletionFunc("scope", cobra.FixedCompletions(
 		[]cobra.Completion{string(ui.ScopeAll), string(ui.ScopeTracked)}, cobra.ShellCompDirectiveNoFileComp,
+	)))
+	cobra.CheckErr(command.RegisterFlagCompletionFunc("mode", cobra.FixedCompletions(
+		[]cobra.Completion{string(ui.StartModeNormal), string(ui.StartModeFilter)}, cobra.ShellCompDirectiveNoFileComp,
 	)))
 	cobra.CheckErr(command.RegisterFlagCompletionFunc("view", cobra.FixedCompletions(
 		[]cobra.Completion{string(ui.ViewFlat), string(ui.ViewTree)}, cobra.ShellCompDirectiveNoFileComp,
@@ -49,21 +53,35 @@ func pickerOverrides(command *cobra.Command) (apptui.Overrides, error) {
 		}
 		overrides.Preview = &preview
 	}
+	if err := pickerNavigationOverrides(flags, &overrides); err != nil {
+		return overrides, err
+	}
+	return overrides, overrides.Validate()
+}
+
+func pickerNavigationOverrides(flags *pflag.FlagSet, overrides *apptui.Overrides) error {
 	if flags.Changed("scope") {
 		scope, err := flags.GetString("scope")
 		if err != nil {
-			return overrides, err
+			return err
 		}
 		overrides.Scope = new(ui.Scope(scope))
 	}
 	if flags.Changed("view") {
 		view, err := flags.GetString("view")
 		if err != nil {
-			return overrides, err
+			return err
 		}
 		overrides.View = new(ui.ViewMode(view))
 	}
-	return overrides, overrides.Validate()
+	if flags.Changed("mode") {
+		mode, err := flags.GetString("mode")
+		if err != nil {
+			return err
+		}
+		overrides.Mode = new(ui.StartMode(mode))
+	}
+	return nil
 }
 
 func pickerLayoutOverrides(flags *pflag.FlagSet) (apptui.Overrides, error) {

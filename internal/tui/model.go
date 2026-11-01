@@ -52,12 +52,21 @@ func (m model) result() Result {
 	}
 }
 
+// StartMode selects the initial picker interaction mode.
 type StartMode string
 
 const (
 	StartModeNormal StartMode = "normal"
 	StartModeFilter StartMode = "filter"
 )
+
+// Validate rejects missing and unknown startup modes.
+func (m StartMode) Validate() error {
+	if m != StartModeNormal && m != StartModeFilter {
+		return fmt.Errorf("invalid start mode %q", m)
+	}
+	return nil
+}
 
 func DefaultStartMode() StartMode { return StartModeFilter }
 

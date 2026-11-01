@@ -16,6 +16,7 @@ Hetki reads it when the picker opens. It does not save changes made in the picke
 
 ```yaml
 ui:
+  mode: filter
   view: flat
   scope: all
   preview: false
@@ -33,6 +34,7 @@ These flags apply only to the picker, not to `start`, `save`, or `service`.
 
 | Flag              | File key           | Values              | Purpose                                                                   |
 | ----------------- | ------------------ | ------------------- | ------------------------------------------------------------------------- |
+| `--mode`          | `ui.mode`          | `normal`, `filter`  | Choose the initial interaction mode. Defaults to `filter`.                |
 | `--view`          | `ui.view`          | `flat`, `tree`      | Choose a flat list or a session tree.                                     |
 | `--scope`         | `ui.scope`         | `all`, `tracked`    | Show all items or items with a current status.                            |
 | `--preview`       | `ui.preview`       | `true`, `false`     | Show or hide the pane preview.                                            |
@@ -47,12 +49,14 @@ Invalid flags stop startup with an error.
 ```bash
 hetki --height 40% --border none
 hetki --view tree --scope tracked --preview --preview-width 45
+hetki --mode normal
 hetki --preview=false
 hetki --stay-open
 ```
 
 ## Usage notes
 
+- **Mode:** `filter` accepts search text immediately. `normal` starts with navigation shortcuts. Mode changes in the picker remain available.
 - **Scope:** `tracked` includes items with any [current status](status.md). Your query filters within this scope.
 - **Preview:** width does not enable the preview. A narrow terminal can hide it.
 - **Height:** `100%` is fullscreen; other percentages and row counts use inline mode near your prompt.

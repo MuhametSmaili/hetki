@@ -47,6 +47,14 @@ func resolveConfig(preferences config.Config) (ui.Options, string) {
 
 func resolvePresentation(preferences config.UI, options *ui.Options) []string {
 	var warnings []string
+	if preferences.Mode != nil {
+		mode := ui.StartMode(*preferences.Mode)
+		if mode.Validate() == nil {
+			options.StartMode = mode
+		} else {
+			warnings = append(warnings, "ui.mode: allowed normal or filter; invalid preference ignored")
+		}
+	}
 	if preferences.Height != nil {
 		height, err := ui.ParseHeight(*preferences.Height)
 		if err == nil {

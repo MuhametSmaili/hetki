@@ -21,6 +21,9 @@ func TestPickerFlagsPassOnlyExplicitOverrides(t *testing.T) {
 		want apptui.Overrides
 	}{
 		{name: "absent flags", want: apptui.Overrides{}},
+		{name: "normal mode", args: []string{"--mode", "normal"}, want: apptui.Overrides{Mode: new(ui.StartModeNormal)}},
+		{name: "explicit filter mode", args: []string{"--mode=filter"}, want: apptui.Overrides{Mode: new(ui.StartModeFilter)}},
+		{name: "last mode wins", args: []string{"--mode=normal", "--mode=filter"}, want: apptui.Overrides{Mode: new(ui.StartModeFilter)}},
 		{name: "stay open", args: []string{"--stay-open"}, want: apptui.Overrides{StayOpen: true}},
 		{name: "stay open explicitly enabled", args: []string{"--stay-open=true"}, want: apptui.Overrides{StayOpen: true}},
 		{name: "stay open explicitly disabled", args: []string{"--stay-open=false"}, want: apptui.Overrides{}},
@@ -36,9 +39,10 @@ func TestPickerFlagsPassOnlyExplicitOverrides(t *testing.T) {
 		{name: "preview explicitly disabled", args: []string{"--preview=false"}, want: apptui.Overrides{Preview: new(false)}},
 		{
 			name: "combined",
-			args: []string{"--height=12", "--border=none", "--preview", "--scope=tracked", "--view=tree", "--preview-width=45", "--stay-open"},
+			args: []string{"--height=12", "--border=none", "--preview", "--scope=tracked", "--view=tree", "--preview-width=45", "--stay-open", "--mode=normal"},
 			want: apptui.Overrides{
 				StayOpen:     true,
+				Mode:         new(ui.StartModeNormal),
 				Height:       new(ui.Height{Value: 12}),
 				Border:       new(ui.BorderNone),
 				Preview:      new(true),
@@ -98,6 +102,7 @@ func TestInvalidPickerFlagsFailWithoutOpeningTUI(t *testing.T) {
 		{"--stay-open=invalid"}, {"--stay-open="},
 		{"--scope="}, {"--scope=other"}, {"--scope=working"}, {"--scope=Tracked"}, {"--scope"},
 		{"--filter=tracked"},
+		{"--mode="}, {"--mode=other"}, {"--mode=Normal"}, {"--mode"},
 		{"--view="}, {"--view=other"}, {"--view=Tree"}, {"--view"},
 		{"--query=editor"},
 		{"--preview-width=0"}, {"--preview-width=-1"}, {"--preview-width=100"},
@@ -122,6 +127,7 @@ func TestPickerFlagValueCompletion(t *testing.T) {
 	}{
 		{flag: "scope", want: "all\ntracked\n:4\n"},
 		{flag: "view", want: "flat\ntree\n:4\n"},
+		{flag: "mode", want: "normal\nfilter\n:4\n"},
 		{flag: "preview-width", want: ":4\n"},
 	} {
 		t.Run(tt.flag, func(t *testing.T) {
@@ -142,7 +148,7 @@ func TestPickerFlagValueCompletion(t *testing.T) {
 
 func TestPickerFlagsAreLocalAndHelpDoesNotOpenPicker(t *testing.T) {
 	for _, subcommand := range rootCmd.Commands() {
-		for _, name := range []string{"height", "fullscreen", "border", "preview", "filter", "scope", "view", "preview-width", "query", "stay-open"} {
+		for _, name := range []string{"height", "fullscreen", "border", "preview", "filter", "scope", "view", "preview-width", "query", "stay-open", "mode"} {
 			require.Nil(t, subcommand.InheritedFlags().Lookup(name))
 		}
 	}
@@ -162,6 +168,8 @@ func TestPickerFlagsAreLocalAndHelpDoesNotOpenPicker(t *testing.T) {
 	require.Contains(t, output.String(), "--preview=false")
 	require.Contains(t, output.String(), "--scope")
 	require.Contains(t, output.String(), "all or tracked")
+	require.Contains(t, output.String(), "--mode")
+	require.Contains(t, output.String(), "normal or filter")
 	require.Contains(t, output.String(), "--view")
 	require.Contains(t, output.String(), "flat or tree")
 	require.Contains(t, output.String(), "--preview-width")

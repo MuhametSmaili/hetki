@@ -13,6 +13,7 @@ func TestDecodePresence(t *testing.T) {
 	for _, tt := range []struct {
 		name, input string
 		view, scope *string
+		mode        *string
 		preview     *bool
 		width       *int
 	}{
@@ -20,6 +21,9 @@ func TestDecodePresence(t *testing.T) {
 		{name: "comment", input: "# preferences\n"},
 		{name: "empty mapping", input: "{}"},
 		{name: "empty ui", input: "ui: {}"},
+		{name: "normal mode", input: "ui: {mode: normal}", mode: new("normal")},
+		{name: "filter mode", input: "ui: {mode: filter}", mode: new("filter")},
+		{name: "mode validation belongs to application", input: "ui: {mode: other}", mode: new("other")},
 		{name: "partial", input: "ui:\n  view: tree", view: new("tree")},
 		{name: "arbitrary strings", input: "ui: {view: secret-value, scope: other}", view: new("secret-value"), scope: new("other")},
 		{name: "empty string", input: "ui: {view: ''}", view: new("")},
@@ -35,7 +39,7 @@ func TestDecodePresence(t *testing.T) {
 			got, err := config.Decode(strings.NewReader(tt.input))
 
 			require.NoError(t, err)
-			require.Equal(t, config.Config{UI: config.UI{View: tt.view, Scope: tt.scope, Preview: tt.preview, PreviewWidth: tt.width}}, got)
+			require.Equal(t, config.Config{UI: config.UI{Mode: tt.mode, View: tt.view, Scope: tt.scope, Preview: tt.preview, PreviewWidth: tt.width}}, got)
 		})
 	}
 }
@@ -93,6 +97,11 @@ func TestDecodeRejectsInvalidConfiguration(t *testing.T) {
 		{"scope explicit string tag", "ui: {scope: !!str tracked}", "ui.scope"},
 		{"duplicate scope", "ui: {scope: all, scope: tracked}", "ui.scope"},
 		{"filter key is unsupported", "ui: {filter: tracked}", "ui"},
+		{"mode boolean", "ui: {mode: true}", "ui.mode"},
+		{"mode null", "ui: {mode: null}", "ui.mode"},
+		{"mode sequence", "ui: {mode: [normal]}", "ui.mode"},
+		{"mode explicit string tag", "ui: {mode: !!str normal}", "ui.mode"},
+		{"duplicate mode", "ui: {mode: filter, mode: normal}", "ui.mode"},
 		{"width quoted number", "ui: {preview_width: '45'}", "ui.preview_width"},
 		{"width string", "ui: {preview_width: secret-value}", "ui.preview_width"},
 		{"width percentage", "ui: {preview_width: 45%}", "ui.preview_width"},

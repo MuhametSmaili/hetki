@@ -6,6 +6,7 @@ import ui "github.com/MuhametSmaili/hetki/internal/tui"
 // Nil fields leave the corresponding file preference or default unchanged.
 type Overrides struct {
 	StayOpen     bool // Invocation-only; there is no file preference.
+	Mode         *ui.StartMode
 	Height       *ui.Height
 	Border       *ui.BorderMode
 	Preview      *bool
@@ -15,13 +16,8 @@ type Overrides struct {
 }
 
 func (o Overrides) Validate() error {
-	if o.Height != nil {
-		if err := o.Height.Validate(); err != nil {
-			return err
-		}
-	}
-	if o.Border != nil {
-		if err := o.Border.Validate(); err != nil {
+	if o.Mode != nil {
+		if err := o.Mode.Validate(); err != nil {
 			return err
 		}
 	}
@@ -35,6 +31,20 @@ func (o Overrides) Validate() error {
 			return err
 		}
 	}
+	return o.validateLayout()
+}
+
+func (o Overrides) validateLayout() error {
+	if o.Height != nil {
+		if err := o.Height.Validate(); err != nil {
+			return err
+		}
+	}
+	if o.Border != nil {
+		if err := o.Border.Validate(); err != nil {
+			return err
+		}
+	}
 	if o.PreviewWidth != nil {
 		return ui.ValidatePreviewWidth(*o.PreviewWidth)
 	}
@@ -42,6 +52,9 @@ func (o Overrides) Validate() error {
 }
 
 func (o Overrides) apply(options ui.Options) ui.Options {
+	if o.Mode != nil {
+		options.StartMode = *o.Mode
+	}
 	if o.Height != nil {
 		options.Height = *o.Height
 	}

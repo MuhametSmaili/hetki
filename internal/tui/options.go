@@ -93,8 +93,8 @@ func (o Options) Validate() error {
 	if o.Keys.IsZero() {
 		return fmt.Errorf("keymap is not configured")
 	}
-	if o.StartMode != StartModeNormal && o.StartMode != StartModeFilter {
-		return fmt.Errorf("invalid start mode %q", o.StartMode)
+	if err := o.StartMode.Validate(); err != nil {
+		return err
 	}
 	if err := o.Height.Validate(); err != nil {
 		return err

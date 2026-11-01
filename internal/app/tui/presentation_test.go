@@ -161,6 +161,47 @@ func TestPreparedViewResolvesFileThenExplicitOverrides(t *testing.T) {
 	}
 }
 
+func TestPreparedModeResolvesFileThenExplicitOverrides(t *testing.T) {
+	for _, tt := range []struct {
+		name, file string
+		mode       *ui.StartMode
+		want       ui.StartMode
+		warning    string
+	}{
+		{name: "default", want: ui.StartModeFilter},
+		{name: "configured normal", file: "ui: {mode: normal, view: tree}", want: ui.StartModeNormal},
+		{name: "configured filter", file: "ui: {mode: filter, view: tree}", want: ui.StartModeFilter},
+		{name: "explicit normal overrides filter", file: "ui: {mode: filter, view: tree}", mode: new(ui.StartModeNormal), want: ui.StartModeNormal},
+		{name: "explicit filter overrides normal", file: "ui: {mode: normal, view: tree}", mode: new(ui.StartModeFilter), want: ui.StartModeFilter},
+		{name: "invalid choice preserves other settings", file: "ui: {mode: secret-value, view: tree}", want: ui.StartModeFilter, warning: "configuration warning"},
+		{name: "empty choice falls back", file: "ui: {mode: '', view: tree}", want: ui.StartModeFilter, warning: "configuration warning"},
+		{name: "invalid choice keeps explicit mode", file: "ui: {mode: secret-value, view: tree}", mode: new(ui.StartModeNormal), want: ui.StartModeNormal, warning: "configuration warning"},
+		{name: "invalid structure keeps explicit mode", file: "ui: {mode: null}", mode: new(ui.StartModeNormal), want: ui.StartModeNormal, warning: "configuration ignored"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := privateConfig(t, tt.file)
+
+			service, err := prepareService(t.Context(), nil, Overrides{Mode: tt.mode})
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, service.Options.StartMode)
+			require.NoError(t, service.Options.Validate())
+			if tt.file != "" && tt.warning != "configuration ignored" {
+				require.Equal(t, ui.ViewTree, service.Options.Initial.View)
+			}
+			if tt.warning == "" {
+				require.Empty(t, service.Notice)
+			} else {
+				require.Contains(t, service.Notice, tt.warning)
+				require.NotContains(t, service.Notice, "secret-value")
+			}
+			contents, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.Equal(t, tt.file, string(contents))
+		})
+	}
+}
+
 func TestInvalidPreferencesDoNotClaimDefaultsOverExplicitFlags(t *testing.T) {
 	privateConfig(t, "ui: {view: wrong, scope: wrong, preview_width: 0, preview: true, height: 12, border: none}")
 	overrides := Overrides{View: new(ui.ViewTree), Scope: new(ui.ScopeTracked), PreviewWidth: new(45)}
@@ -185,6 +226,7 @@ func TestInvalidOverridesFailBeforeStartup(t *testing.T) {
 		{Height: new(ui.Height{Value: 101, Percent: true})}, {Border: new(ui.BorderMode("other"))},
 		{Scope: new(ui.Scope(""))}, {Scope: new(ui.Scope("working"))},
 		{View: new(ui.ViewMode(""))}, {View: new(ui.ViewMode("other"))},
+		{Mode: new(ui.StartMode(""))}, {Mode: new(ui.StartMode("other"))},
 		{PreviewWidth: new(0)}, {PreviewWidth: new(-1)}, {PreviewWidth: new(100)},
 	} {
 		err := Open(t.Context(), func() (Backend, error) {
