@@ -189,6 +189,8 @@ func (m *model) clearOverlayState() {
 		m.confirm = confirmState{}
 	case modeMenu:
 		m.menu = menuState{}
+	case modeBrowse, modeFilter:
+		// Browse and filter modes have no overlay state to clear.
 	}
 }
 

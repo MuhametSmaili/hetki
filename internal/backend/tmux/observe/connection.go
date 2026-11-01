@@ -90,9 +90,14 @@ func connectNative(ctx context.Context, socket, session string, layout headerLay
 	if err != nil {
 		return nil, err
 	}
+	unixConn, ok := conn.(*net.UnixConn)
+	if !ok {
+		_ = conn.Close()
+		return nil, fmt.Errorf("unix dial returned %T", conn)
+	}
 
 	c := &Connection{
-		wire:    conn.(*net.UnixConn),
+		wire:    unixConn,
 		layout:  layout,
 		session: session,
 		done:    make(chan struct{}),

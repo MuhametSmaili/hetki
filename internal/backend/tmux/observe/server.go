@@ -20,12 +20,14 @@ var ErrServerChanged = errors.New("tmux status server incarnation changed")
 
 // Server pins observation to one native process incarnation. Socket is a
 // connection address; Identity deliberately does not depend on its spelling.
+// It is also serialized as the status daemon descriptor, so the JSON tags are
+// part of the CLI-to-daemon contract.
 type Server struct {
-	Socket  string
-	PID     int
-	Started uint64
-	Birth   string
-	Version string
+	Socket  string `json:"Socket"`
+	PID     int    `json:"PID"`
+	Started uint64 `json:"Started"`
+	Birth   string `json:"Birth"`
+	Version string `json:"Version"`
 }
 
 // Identity is the stable daemon key for this server incarnation.

@@ -151,11 +151,11 @@ func selectStrategy(opts Options) plan.Strategy {
 
 func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspacePath string, opts Options) error {
 	if opts.DryRun && workspacePath != "" {
-		logger.Plain("Workspace: %s", workspacePath)
+		logger.Plainf("Workspace: %s", workspacePath)
 	}
 
 	if p.IsEmpty() {
-		logger.Info("Workspace already up to date")
+		logger.Infof("Workspace already up to date")
 		return nil
 	}
 
@@ -179,7 +179,7 @@ func warnIfMetadataStampFails(ctx context.Context, b Backend, workspace *manifes
 	if err == nil || (ctx.Err() == context.Canceled && backend.IsCancellationOnly(err)) {
 		return
 	}
-	logger.Warning("workspace metadata not set: %v", err)
+	logger.Warningf("workspace metadata not set: %v", err)
 }
 
 func stampWorkspacePath(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) error {
@@ -216,14 +216,14 @@ func printDryRun(b Backend, actions []backend.Action, p *plan.Plan) error {
 	if err != nil {
 		return fmt.Errorf("failed to render dry run: %w", err)
 	}
-	logger.Info("Dry run - actions to execute:")
+	logger.Infof("Dry run - actions to execute:")
 	for _, action := range p.Actions {
 		if _, ok := action.(plan.KillSessionAction); ok {
-			logger.Plain("  %s", action.Comment())
+			logger.Plainf("  %s", action.Comment())
 		}
 	}
 	for _, line := range lines {
-		logger.Plain("  %s", line)
+		logger.Plainf("  %s", line)
 	}
 	return nil
 }

@@ -78,13 +78,13 @@ func (p *legacyParser) parseCell(depth int) (cell, bool) {
 	}
 	p.offset++
 	c.Kind = "h"
-	close := byte('}')
+	closing := byte('}')
 	if open == '[' {
 		c.Kind = "v"
-		close = ']'
+		closing = ']'
 	}
 
-	return p.children(c, close, depth)
+	return p.children(c, closing, depth)
 }
 
 func (p *legacyParser) rectangle() (cell, bool) {
@@ -114,7 +114,7 @@ func (p *legacyParser) rectangle() (cell, bool) {
 	return c, *c.Width > 0 && *c.Height > 0
 }
 
-func (p *legacyParser) children(c cell, close byte, depth int) (cell, bool) {
+func (p *legacyParser) children(c cell, closing byte, depth int) (cell, bool) {
 	children := 0
 	for {
 		child, ok := p.parseCell(depth + 1)
@@ -126,7 +126,7 @@ func (p *legacyParser) children(c cell, close byte, depth int) (cell, bool) {
 		}
 		children++
 
-		if p.take(close) {
+		if p.take(closing) {
 			return c, children >= 2
 		}
 

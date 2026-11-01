@@ -17,8 +17,8 @@ import (
 
 func TestLoggerSanitizesExternalArgumentsBeforeStyling(t *testing.T) {
 	output := captureLoggerOutput(t, func() {
-		logger.Plain("error: %v", errors.New("failure"))
-		logger.Plain("name: %s", "dev\x1b[31m-red\x1b[0m\nnext")
+		logger.Plainf("error: %v", errors.New("failure"))
+		logger.Plainf("name: %s", "dev\x1b[31m-red\x1b[0m\nnext")
 	})
 	require.Equal(t, "error: failure\nname: dev-red\\nnext\n", output)
 }

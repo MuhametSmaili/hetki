@@ -7,13 +7,13 @@ import (
 )
 
 func parseProcessStat(value string, pid int) (processInfo, error) {
-	open, close := strings.IndexByte(value, '('), strings.LastIndexByte(value, ')')
-	if open < 1 || close <= open {
+	open, closing := strings.IndexByte(value, '('), strings.LastIndexByte(value, ')')
+	if open < 1 || closing <= open {
 		return processInfo{}, fmt.Errorf("invalid native process metadata")
 	}
 
 	observed, err := strconv.Atoi(strings.TrimSpace(value[:open]))
-	fields := strings.Fields(value[close+1:])
+	fields := strings.Fields(value[closing+1:])
 	if err != nil || observed != pid || len(fields) < 20 {
 		return processInfo{}, fmt.Errorf("invalid native process fields")
 	}

@@ -28,23 +28,23 @@ func SetOutput(w io.Writer) io.Writer {
 	return previous
 }
 
-func Success(format string, args ...any) {
+func Successf(format string, args ...any) {
 	successColor.Fprintf(output, format+"\n", safeArgs(args)...)
 }
 
-func Error(format string, args ...any) {
+func Errorf(format string, args ...any) {
 	errorColor.Fprintf(output, format+"\n", safeArgs(args)...)
 }
 
-func Info(format string, args ...any) {
+func Infof(format string, args ...any) {
 	infoColor.Fprintf(output, format+"\n", safeArgs(args)...)
 }
 
-func Warning(format string, args ...any) {
+func Warningf(format string, args ...any) {
 	warningColor.Fprintf(output, format+"\n", safeArgs(args)...)
 }
 
-func Plain(format string, args ...any) {
+func Plainf(format string, args ...any) {
 	fmt.Fprintf(output, format+"\n", safeArgs(args)...)
 }
 

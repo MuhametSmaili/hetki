@@ -13,8 +13,8 @@ func reportCommandError(ctx context.Context, err error) {
 		return
 	}
 
-	logger.Error("Error: %v", err)
+	logger.Errorf("Error: %v", err)
 	if hint := appshared.ErrorHint(err); hint != "" {
-		logger.Plain("Hint: %s", hint)
+		logger.Plainf("Hint: %s", hint)
 	}
 }

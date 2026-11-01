@@ -16,7 +16,7 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(msg)
-	next, previewCmd := updated.(model).syncPreview()
+	next, previewCmd := updated.(model).syncPreview() //nolint:forcetypeassert // update always returns the concrete model.
 	next, frameCmd := next.syncStatusFrame(time.Now())
 	return next, tea.Batch(cmd, previewCmd, frameCmd)
 }
@@ -67,6 +67,8 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 	case modeInput:
 		m.input.Value += singleLinePaste(msg.Content)
 		m.err = nil
+	case modeBrowse, modeConfirm, modeMenu:
+		// Paste is ignored outside filter and input modes.
 	}
 	return m, nil
 }
@@ -99,6 +101,8 @@ func (m model) updateUnboundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.input.Value += msg.Text
 			m.err = nil
 		}
+	case modeBrowse, modeConfirm, modeMenu:
+		// Text is ignored outside filter and input modes.
 	}
 	return m, nil
 }

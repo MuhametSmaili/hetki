@@ -22,13 +22,11 @@ func TestStrictDecodeRejectsUnknownFields(t *testing.T) {
 	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    windwos: []\n    windows:\n      - path: /p\n"), acceptLayout).Load()
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "windwos")
-
 }
 
 func TestStrictDecodeRejectsDuplicateKeys(t *testing.T) {
 	_, err := NewFileLoader(writeConfig(t, "w.yaml", "sessions:\n  - name: dev\n    name: ops\n    windows:\n      - path: /p\n"), acceptLayout).Load()
 	require.Error(t, err, "yaml duplicate keys must fail")
-
 }
 
 func TestParseRejectsOversizedManifest(t *testing.T) {

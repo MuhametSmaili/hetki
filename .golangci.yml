@@ -20,6 +20,8 @@ linters:
     - bodyclose
     - copyloopvar
     - durationcheck
+    - exhaustive
+    - forcetypeassert
     - misspell
     - nilnesserr
     - reassign
@@ -29,7 +31,10 @@ linters:
     # Modern Go idioms.
     - modernize
 
-    # API hygiene.
+    # API and naming hygiene.
+    - goprintffuncname
+    - musttag
+    - predeclared
     - unparam
 
     # Tests and loops.
@@ -42,8 +47,13 @@ linters:
     - usetesting
     - wastedassign
 
+    # Whitespace.
+    - whitespace
+
     - nolintlint
   settings:
+    exhaustive:
+      default-signifies-exhaustive: true
     gocognit:
       min-complexity: 15
     gocritic:
@@ -71,6 +81,17 @@ linters:
       - path: '(internal/app/statusobserver/protocol_lifecycle_test|internal/app/tui/open_test|internal/state/sessions_test|internal/status/daemon/(executable|inspection|runtime)_test|internal/status/service/outcome_test|internal/tui/menu_update_test)\.go'
         linters:
           - thelper
+      # Tests assert on concrete result types; an unchecked assertion there is
+      # deliberate and cannot panic a user-facing process.
+      - path: '_test\.go'
+        linters:
+          - forcetypeassert
+
+issues:
+  # Report every finding; the defaults truncate output to 3 identical issues
+  # and 50 per linter.
+  max-issues-per-linter: 0
+  max-same-issues: 0
 
 formatters:
   enable:

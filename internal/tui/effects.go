@@ -192,6 +192,8 @@ func (m model) startAction(action ActionID, itemID list.ItemID) (tea.Model, tea.
 		status = statusSwitching
 	case ActionRefresh:
 		status = statusRefreshing
+	default:
+		// Other actions keep statusRunningAction.
 	}
 
 	request := ActionRequest{ActionID: action, ItemID: itemID}

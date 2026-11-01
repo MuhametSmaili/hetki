@@ -308,11 +308,11 @@ func (b *stateBuilder) getOrCreateWindow(sess *Session, id, name string, index i
 func (b *stateBuilder) result() LoadStateResult {
 	sessions := make([]Session, 0, len(b.sessions))
 	for _, session := range b.sessions {
-		copy := *session
-		sort.Slice(copy.Windows, func(i, j int) bool {
-			return copy.Windows[i].Index < copy.Windows[j].Index
+		clone := *session
+		sort.Slice(clone.Windows, func(i, j int) bool {
+			return clone.Windows[i].Index < clone.Windows[j].Index
 		})
-		sessions = append(sessions, copy)
+		sessions = append(sessions, clone)
 	}
 	sort.Slice(sessions, func(i, j int) bool {
 		if sessions[i].Name == sessions[j].Name {

@@ -51,6 +51,6 @@ func runSave(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	logger.Success("Saved to %s", outputPath)
+	logger.Successf("Saved to %s", outputPath)
 	return nil
 }

@@ -78,6 +78,8 @@ func (v Value) OutcomeAt(now time.Time) Outcome {
 		switch v.Outcome {
 		case Completed, Failed:
 			return v.Outcome
+		case NoOutcome:
+			return NoOutcome
 		}
 	}
 	return NoOutcome

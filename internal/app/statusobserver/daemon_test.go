@@ -9,6 +9,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDaemonDescriptorJSONContract(t *testing.T) {
+	server := observe.Server{
+		Socket:  "/fixture/tmux.sock",
+		PID:     123,
+		Started: 456,
+		Birth:   "birth",
+		Version: "3.8",
+	}
+
+	encoded, err := json.Marshal(server)
+
+	require.NoError(t, err)
+	require.JSONEq(t, `{"Socket":"/fixture/tmux.sock","PID":123,"Started":456,"Birth":"birth","Version":"3.8"}`, string(encoded))
+}
+
 func TestDaemonDescriptorRejectsWrongIdentityAndMalformedInput(t *testing.T) {
 	server := observe.Server{
 		Socket:  "/fixture/tmux.sock",

@@ -82,5 +82,4 @@ func TestCapturePaneProcessCancellationAndTimeout(t *testing.T) {
 	_, err = b.CapturePane(context.Background(), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Less(t, time.Since(start), 2*time.Second, "capture owns a one-second deadline")
-
 }

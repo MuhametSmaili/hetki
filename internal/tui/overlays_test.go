@@ -41,6 +41,8 @@ func TestBoundModeTransitionsDiscardTheOwnedOverlay(t *testing.T) {
 				require.Equal(t, confirmState{}, m.confirm)
 			case modeMenu:
 				require.Equal(t, menuState{}, m.menu)
+			default:
+				t.Fatalf("unexpected overlay mode %q", test.mode)
 			}
 		})
 	}

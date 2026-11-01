@@ -108,6 +108,8 @@ func (p *Pane) handleFrame(frame terminalstream.Frame) bool {
 			return true
 		case osc7501.ChildApplied:
 			return true
+		case osc7501.Ignored, osc7501.Query, osc7501.Rejected:
+			return false
 		}
 		return false
 	default:
