@@ -8,7 +8,8 @@ A keyboard-first tool for Linux and macOS.
 - Preview panes and see activity from supported apps.
 - Save tmux sessions as YAML workspaces and start them again.
 
-<img width="867" height="564" alt="Hetki session picker with a pane preview" src="https://github.com/user-attachments/assets/6902d842-42b4-4ec0-9c06-7867c5c0a649" />
+<img width="2088" height="1248" alt="SCR-20261101-rfyq" src="https://github.com/user-attachments/assets/702112e8-c40b-4b16-94a9-da55fda67733" />
+
 
 ## How Hetki works
 
