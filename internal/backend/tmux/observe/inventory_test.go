@@ -72,6 +72,7 @@ func TestInventorySharesNativeReadsAndLinkedPaneFacts(t *testing.T) {
 	locations[0].Session = "$99"
 	pane.Command = "mutated"
 	stored, _ := inventory.Lookup("%1")
+	require.NotEqual(t, pane.Command, stored.Command, "mutating a lookup result must not change the inventory")
 	require.Equal(t, "cat", stored.Command)
 	require.Equal(t, "$1", slices.Collect(inventory.Locations())[0].Session)
 }
