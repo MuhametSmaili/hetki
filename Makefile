@@ -29,18 +29,35 @@ check:
 	go vet ./...
 	golangci-lint run --timeout=5m --build-tags=integration
 
-# Requires tmux and PTY utilities; fixtures use isolated servers and terminals.
+# Require native tmux/PTY tools here, not in the ordinary check.
 check-integration:
-	@for tool in tmux script stty; do \
-		command -v "$$tool" >/dev/null 2>&1 || { \
-			printf 'check-integration requires %s on PATH\n' "$$tool" >&2; \
-			exit 1; \
-		}; \
+	@for tool in go tmux script stty python3; do \
+		if ! command -v "$$tool" >/dev/null 2>&1; then \
+			printf 'check-integration requires %s on PATH\n' "$$tool" >&2; exit 1; \
+		fi; \
 	done
+	@tmux -V
+	@for tool in node cc; do \
+		if ! command -v "$$tool" >/dev/null 2>&1; then \
+			printf 'Optional tool %s unavailable; related native fixtures may skip\n' "$$tool"; \
+		fi; \
+	done
+	@if [ -n "$${HETKI_TEST_TMUX_LEGACY:-}" ] || [ -n "$${HETKI_TEST_TMUX_CURRENT:-}" ]; then \
+		for binary in "$${HETKI_TEST_TMUX_LEGACY:-}" "$${HETKI_TEST_TMUX_CURRENT:-}"; do \
+			if [ ! -f "$$binary" ] || [ ! -x "$$binary" ]; then \
+				printf 'Set both HETKI_TEST_TMUX_LEGACY and HETKI_TEST_TMUX_CURRENT to executable paths\n' >&2; exit 1; \
+			fi; \
+			"$$binary" -V || exit 1; \
+		done; \
+	else \
+		printf 'Mixed-version coverage: SKIP (set HETKI_TEST_TMUX_LEGACY and HETKI_TEST_TMUX_CURRENT to enable)\n'; \
+	fi
 	go vet -tags=integration $(INTEGRATION_PACKAGES)
-	go test -race -count=1 -tags=integration $(INTEGRATION_PACKAGES)
+	go test -race -count=1 -timeout=5m -tags=integration $(INTEGRATION_PACKAGES)
 
-check-all: check
+# Recursive recipes preserve order even when the caller uses make -j.
+check-all:
+	$(MAKE) check
 	$(MAKE) check-integration
 
 clean:

@@ -4,6 +4,8 @@ package tmux
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +17,11 @@ import (
 
 func captureFixture(t *testing.T) (*TmuxBackend, func(...string) string) {
 	t.Helper()
-	b := newIsolatedTmuxBackend(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	config := filepath.Join(t.TempDir(), "tmux.conf")
+	// Older tmux otherwise sizes detached windows from its default 80x24 client.
+	require.NoError(t, os.WriteFile(config, []byte("set -g window-size manual\n"), 0600))
+	b := newIsolatedTmuxBackendWithConfig(t, config)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	t.Cleanup(cancel)
 	return b, func(args ...string) string {
 		t.Helper()

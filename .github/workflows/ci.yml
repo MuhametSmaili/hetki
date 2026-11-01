@@ -54,15 +54,85 @@ jobs:
           go test -shuffle=on ./...
           go test -race -shuffle=on ./...
 
-      - name: Run isolated tmux integration tests with race detection
-        if: runner.os == 'Linux'
-        run: make check-integration
-
       - name: Run installer harness
         run: |
           bash -n install.sh scripts/*.sh
           ./scripts/validate-release-tag.sh --self-test
           ./scripts/test-install.sh
+
+  integration:
+    name: Integration (${{ matrix.os }}, tmux ${{ matrix.tmux }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            tmux: 3.2a
+          - os: ubuntu-latest
+            tmux: '3.8'
+          - os: macos-latest
+            tmux: '3.8'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up exact Go version
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Install tmux build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y build-essential libevent-dev libncurses-dev pkg-config bison python3
+
+      - name: Install tmux build dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install libevent ncurses pkgconf bison
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$(brew --prefix libevent)/lib/pkgconfig:$(brew --prefix ncurses)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Build pinned tmux protocol families
+        shell: bash
+        env:
+          TMUX_VERSION: ${{ matrix.tmux }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/hetki-tmux"
+          mkdir -p "$work"
+          while read -r version checksum; do
+            archive="$work/tmux-$version.tar.gz"
+            curl --fail --location --retry 3 --connect-timeout 15 --max-time 120 \
+              --output "$archive" "https://github.com/tmux/tmux/releases/download/$version/tmux-$version.tar.gz"
+            printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 -c -
+            tar -xzf "$archive" -C "$work"
+            (
+              cd "$work/tmux-$version"
+              ./configure
+              make -j2
+            ) </dev/null
+            test "$("$work/tmux-$version/tmux" -V)" = "tmux $version"
+          done <<'SOURCES'
+          3.2a 551553a4f82beaa8dadc9256800bcc284d7c000081e47aa6ecbb6ff36eacd05f
+          3.8 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e
+          SOURCES
+          echo "$work/tmux-$TMUX_VERSION" >> "$GITHUB_PATH"
+          echo "HETKI_TEST_TMUX_LEGACY=$work/tmux-3.2a/tmux" >> "$GITHUB_ENV"
+          echo "HETKI_TEST_TMUX_CURRENT=$work/tmux-3.8/tmux" >> "$GITHUB_ENV"
+
+      - name: Run the shared native and PTY integration gate
+        run: |
+          node --version
+          cc --version
+          make check-integration
 
   security-and-workflow:
     runs-on: ubuntu-latest

@@ -16,6 +16,7 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/manifest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,6 +28,7 @@ func TestPruneSessionsOnIsolatedTmux(t *testing.T) {
 			b, service, workspace := nativePruningFixture(t, ctx)
 			directory := workspace.Sessions[0].Windows[0].Path
 			require.NoError(t, b.Apply(ctx, []backend.Action{backend.CreateWindowAction{Session: "dev", Name: "scratch", Path: directory}}))
+			waitForPruningDirectory(t, ctx, "dev:scratch", directory)
 			before, err := b.QueryState(ctx)
 			require.NoError(t, err)
 			dev := findBackendSession(t, before.Sessions, "dev")
@@ -87,6 +89,9 @@ func TestPruningFailureLeavesCompletedDeletionsAndStopsRemainingWork(t *testing.
 		backend.CreateSessionAction{Name: "old-b", WindowName: "shell", Path: directory},
 		backend.CreateSessionAction{Name: "old-c", WindowName: "shell", Path: directory},
 	}))
+	for _, target := range []string{"old-b:shell", "old-c:shell"} {
+		waitForPruningDirectory(t, ctx, target, directory)
+	}
 	before, err := b.QueryState(ctx)
 	require.NoError(t, err)
 	failed := findBackendSession(t, before.Sessions, "old-b")
@@ -238,6 +243,7 @@ func TestPruningNeverFallsBackToARecreatedSessionName(t *testing.T) {
 	old := findBackendSession(t, before.Sessions, "old")
 	target := backend.KillSessionAction{Name: old.ID}
 	require.NoError(t, b.Apply(ctx, []backend.Action{target, backend.CreateSessionAction{Name: old.Name, WindowName: "replacement", Path: old.Windows[0].Path}}))
+	waitForPruningDirectory(t, ctx, old.Name+":replacement", old.Windows[0].Path)
 	replacement, err := b.QueryState(ctx)
 	require.NoError(t, err)
 	require.NotEqual(t, old.ID, findBackendSession(t, replacement.Sessions, "old").ID)
@@ -259,6 +265,9 @@ func nativePruningFixture(t *testing.T, ctx context.Context) (*backendtmux.TmuxB
 		backend.CreateSessionAction{Name: "dev", WindowName: "editor", Path: directory},
 		backend.CreateSessionAction{Name: "old", WindowName: "shell", Path: directory},
 	}))
+	for _, target := range []string{"dev:editor", "old:shell"} {
+		waitForPruningDirectory(t, ctx, target, directory)
+	}
 	workspace := &manifest.Workspace{Sessions: []manifest.Session{{Name: "dev", Windows: []manifest.Window{
 		{Name: "editor", Path: directory, Panes: []manifest.Pane{{Path: directory}}},
 		{Name: "tools", Path: directory, Panes: []manifest.Pane{{Path: directory}}},
@@ -266,6 +275,18 @@ func nativePruningFixture(t *testing.T, ctx context.Context) (*backendtmux.TmuxB
 	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
 	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) { return workspace, "", nil }
 	return b, service, workspace
+}
+
+func waitForPruningDirectory(t *testing.T, ctx context.Context, target, directory string) {
+	t.Helper()
+	// Pane creation can return before tmux knows the child's working directory.
+	require.EventuallyWithT(t, func(check *assert.CollectT) {
+		output, err := exec.CommandContext(ctx, "tmux", "display-message", "-p", "-t", target,
+			"#{pane_current_path}").CombinedOutput()
+		if assert.NoError(check, err, "%s", output) {
+			assert.Equal(check, directory, strings.TrimSpace(string(output)))
+		}
+	}, 3*time.Second, 10*time.Millisecond, "fixture pane %s must settle in %s", target, directory)
 }
 
 type recordingPruneBackend struct {

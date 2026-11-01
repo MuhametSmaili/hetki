@@ -4,6 +4,7 @@ package tmux
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -12,8 +13,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNativeStatusInventoryAndCaptureRegions(t *testing.T) {
+func nativeCaptureFixture(t *testing.T) (*TmuxBackend, observe.Server, string, string) {
+	t.Helper()
 	b, server, session, pane := nativeStatusFixture(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	// Pin only capture fixtures; observer resize tests must keep automatic sizing.
+	_, err := b.client.Run(ctx, "set-window-option", "-g", "window-size", "manual", ";",
+		"resize-window", "-t", pane, "-x", "100", "-y", "30")
+	require.NoError(t, err)
+	geometry, err := b.client.Run(ctx, "display-message", "-p", "-t", pane, "#{pane_width}|#{pane_height}")
+	require.NoError(t, err)
+	require.Equal(t, "100|30", strings.TrimSpace(geometry))
+	return b, server, session, pane
+}
+
+func TestNativeStatusInventoryAndCaptureRegions(t *testing.T) {
+	b, server, session, pane := nativeCaptureFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	sampler, err := b.StatusSampler(server)
@@ -96,7 +112,7 @@ func TestNativeStatusCapturePreservesPeerWhenPaneShrinks(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			b, server, _, pane := nativeStatusFixture(t)
+			b, server, _, pane := nativeCaptureFixture(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			peer, err := b.client.Run(ctx, "new-window", "-d", "-t", "native-status", "-P", "-F", "#{pane_id}",
@@ -131,7 +147,7 @@ func TestNativeStatusCapturePreservesPeerWhenPaneShrinks(t *testing.T) {
 }
 
 func TestNativeStatusCaptureKeepsPeerWhenPaneCloses(t *testing.T) {
-	b, server, _, pane := nativeStatusFixture(t)
+	b, server, _, pane := nativeCaptureFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	peer, err := b.client.Run(ctx, "new-window", "-d", "-t", "native-status", "-P", "-F", "#{pane_id}",
@@ -162,12 +178,15 @@ func TestNativeStatusCaptureKeepsPeerWhenPaneCloses(t *testing.T) {
 }
 
 func TestNativeStatusCaptureKeepsPeerOfOversizedScreen(t *testing.T) {
-	b, server, _, pane := nativeStatusFixture(t)
+	python, err := exec.LookPath("python3")
+	require.NoError(t, err, "python3 is required for the oversized-screen fixture")
+
+	b, server, _, pane := nativeCaptureFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	waitForNativeCommand(t, ctx, b, pane, "cat")
 	wide, err := b.client.Run(ctx, "new-session", "-d", "-s", "wide", "-x", "1000", "-y", "200", "-P", "-F", "#{pane_id}",
-		`python3 -c "import sys,time; sys.stdout.write(('─'*1000)*199 + '─'*997 + 'END'); sys.stdout.flush(); time.sleep(30)"`)
+		python, "-c", "import sys,time; sys.stdout.write(('─'*1000)*199 + '─'*997 + 'END'); sys.stdout.flush(); time.sleep(30)")
 	require.NoError(t, err)
 	wide = strings.TrimSpace(wide)
 	waitForNativeScreen(t, ctx, b, wide, "END")
@@ -191,7 +210,7 @@ func TestNativeStatusCaptureKeepsPeerOfOversizedScreen(t *testing.T) {
 }
 
 func TestNativeStatusCaptureRejectsRespawnAndRetainsDeadPane(t *testing.T) {
-	b, server, _, pane := nativeStatusFixture(t)
+	b, server, _, pane := nativeCaptureFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	sampler, err := b.StatusSampler(server)
@@ -229,7 +248,7 @@ func TestNativeStatusCaptureRejectsRespawnAndRetainsDeadPane(t *testing.T) {
 }
 
 func TestNativeStatusInventoryForegroundHandoff(t *testing.T) {
-	b, server, _, pane := nativeStatusFixture(t)
+	b, server, _, pane := nativeCaptureFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	sampler, err := b.StatusSampler(server)
