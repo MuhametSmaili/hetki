@@ -33,30 +33,30 @@ type Palette struct {
 	SelectionBG color.Color
 }
 
-// DefaultPalette keeps native text/background with soft, dark-terminal accents
-// inspired by Catppuccin and Rosé Pine. Paths remain italic in the theme.
+// DefaultPalette keeps native text/background with dark-terminal accents.
+// Paths remain italic in the theme.
 func DefaultPalette() Palette {
 	native := lipgloss.NoColor{}
 
 	return Palette{
 		Text:        native,
 		Context:     native,
-		Command:     lipgloss.Color("#89dceb"),
-		Muted:       lipgloss.Color("#7f849c"),
-		Hint:        lipgloss.Color("#87839f"),
-		Secondary:   lipgloss.Color("#9399b2"),
 		Emphasis:    native,
-		Active:      lipgloss.Color("#cba6f7"),
-		Accent:      lipgloss.Color("#b4befe"),
-		Border:      lipgloss.Color("#6e6a86"),
-		Divider:     lipgloss.Color("#6e6a86"),
-		Working:     lipgloss.Color("#b4befe"),
-		Blocked:     lipgloss.Color("#f9e2af"),
-		Idle:        lipgloss.Color("#a6da95"),
-		Success:     lipgloss.Color("#a6da95"),
-		Error:       lipgloss.Color("#f38ba8"),
-		SelectionFG: lipgloss.Color("#cdd6f4"),
-		SelectionBG: lipgloss.Color("#3f4254"),
+		Secondary:   lipgloss.Color("#8b949e"),
+		Muted:       lipgloss.Color("#6e7681"),
+		Hint:        lipgloss.Color("#6e7681"),
+		Active:      lipgloss.Color("#58a6ff"),
+		Accent:      lipgloss.Color("#79c0ff"),
+		Command:     lipgloss.Color("#39c5cf"),
+		Border:      lipgloss.Color("#30363d"),
+		Divider:     lipgloss.Color("#30363d"),
+		SelectionFG: lipgloss.Color("#ffffff"),
+		SelectionBG: lipgloss.Color("#1c2d44"),
+		Working:     lipgloss.Color("#58a6ff"),
+		Blocked:     lipgloss.Color("#d29922"),
+		Idle:        lipgloss.Color("#3fb950"),
+		Success:     lipgloss.Color("#3fb950"),
+		Error:       lipgloss.Color("#ff7b72"),
 	}
 }
 

@@ -18,10 +18,10 @@ func TestDefaultThemeKeepsNativeTextWithCuratedSelection(t *testing.T) {
 
 	require.Equal(t, lipgloss.NoColor{}, styles.row.GetForeground())
 	require.Equal(t, lipgloss.NoColor{}, styles.row.GetBackground())
-	require.Equal(t, lipgloss.Color("#b4befe"), styles.menuKey.GetForeground())
+	require.Equal(t, lipgloss.Color("#79c0ff"), styles.menuKey.GetForeground())
 	require.False(t, styles.meta.GetFaint())
 	require.False(t, styles.selectedRow.GetReverse())
-	require.Equal(t, lipgloss.Color("#3f4254"), styles.selectedRow.GetBackground())
+	require.Equal(t, lipgloss.Color("#1c2d44"), styles.selectedRow.GetBackground())
 	require.True(t, styles.selectedRow.GetBold())
 }
 

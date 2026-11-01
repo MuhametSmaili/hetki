@@ -13,9 +13,9 @@ import (
 )
 
 func TestCuratedRowHierarchy(t *testing.T) {
-	command := lipgloss.Color("#89dceb")
-	current := lipgloss.Color("#cba6f7")
-	selection := lipgloss.Color("#cdd6f4")
+	command := lipgloss.Color("#39c5cf")
+	current := lipgloss.Color("#58a6ff")
+	selection := lipgloss.Color("#ffffff")
 
 	for _, test := range []struct {
 		name        string
@@ -55,10 +55,10 @@ func TestCuratedRowHierarchy(t *testing.T) {
 				color color.Color
 			}{
 				{"project", test.wantName},
-				{"~/code", lipgloss.Color("#9399b2")},
-				{"·2", lipgloss.Color("#7f849c")},
+				{"~/code", lipgloss.Color("#8b949e")},
+				{"·2", lipgloss.Color("#6e7681")},
 				{"pi", test.wantCommand},
-				{"?", lipgloss.Color("#f9e2af")},
+				{"?", lipgloss.Color("#d29922")},
 			} {
 				cell := renderedTextCell(t, lines, width, segment.text)
 				require.Equal(t, segment.color, cell.Style.Fg, segment.text)
