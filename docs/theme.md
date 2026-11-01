@@ -1,7 +1,5 @@
 # Picker colors
 
-[README](../README.md) · [Configuration](configuration.md) · [Key bindings](key-bindings.md) · [Workspaces](workspaces.md) · [Status](status.md)
-
 Add a `theme` section to the [picker configuration](configuration.md#file-location), usually at `~/.config/hetki/config.yaml`.
 If `XDG_CONFIG_HOME` is an absolute path, use `$XDG_CONFIG_HOME/hetki/config.yaml` instead.
 

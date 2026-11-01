@@ -1,7 +1,5 @@
 # Picker configuration
 
-[README](../README.md) · [Key bindings](key-bindings.md) · [Theme](theme.md) · [Workspaces](workspaces.md) · [Status](status.md)
-
 Use the configuration file for your usual settings. Use flags to change them for one run.
 
 ## File location
@@ -60,7 +58,30 @@ hetki --stay-open
 - **Scope:** `tracked` includes items with any [current status](status.md). Your query filters within this scope.
 - **Preview:** width does not enable the preview. A narrow terminal can hide it.
 - **Height:** `100%` is fullscreen; other percentages and row counts use inline mode near your prompt.
-- **Stay open:** your picker state stays in memory until `Ctrl+C`. Hetki does not position its pane.
+
+### Inline picker
+
+Open the picker near your shell prompt:
+
+```bash
+hetki --height 40% --border none
+```
+
+Earlier shell output stays in the main terminal buffer.
+The terminal can scroll to make space.
+Use `--height 100%` for fullscreen mode, which is the default.
+
+### Stay-open mode
+
+Inside tmux, keep the picker open after you switch:
+
+```bash
+hetki --stay-open
+```
+
+Your filter, selection, view, and preview stay in memory.
+`Ctrl+O` also keeps the picker open. Press `Ctrl+C` to quit.
+Hetki does not position the picker pane or save these choices for the next run.
 
 ## Invalid configuration
 

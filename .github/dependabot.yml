@@ -1,6 +1,16 @@
 version: 2
 
 updates:
+  - package-ecosystem: "npm"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

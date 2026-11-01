@@ -1,9 +1,8 @@
 # Picker key bindings
 
-[README](../README.md) · [Configuration](configuration.md) · [Theme](theme.md) · [Workspaces](workspaces.md) · [Status](status.md)
-
-The picker opens in **filter mode**. Type to filter the list.
+By default, the picker opens in **filter mode**. Type to filter the list.
 Press Escape to enter **normal mode**. Press `/` to filter again.
+Use `hetki --mode normal` to start with navigation shortcuts.
 
 `Ctrl+C` always quits from any mode. You cannot change this key.
 

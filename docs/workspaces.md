@@ -1,34 +1,7 @@
 # Save and start workspaces
 
-[README](../README.md) · [Configuration](configuration.md) · [Key bindings](key-bindings.md) · [Theme](theme.md) · [Workspaces](workspaces.md) · [Status](status.md)
-
 A workspace is a YAML file that describes tmux sessions, windows, panes, and startup commands.
 It does not save running process state, terminal contents, or shell history.
-
-## Choose a workspace
-
-Use one name or one file path:
-
-```bash
-hetki save work
-hetki start work
-```
-
-Named files are in `~/.config/hetki/workspaces` on Linux and macOS.
-This directory does not change with `XDG_CONFIG_HOME`.
-`work` selects `work.yaml`, or an existing `work.yml` if `work.yaml` is absent.
-You can also supply the extension, such as `work.yml`.
-
-For a file elsewhere, use `--file` (`-f`):
-
-```bash
-hetki save --file ./work.yaml
-hetki start --file ./work.yaml
-```
-
-A name never selects a local file.
-Do not combine a name with `--file`.
-Files must have a `.yaml` or `.yml` extension.
 
 ## Save your current setup
 
@@ -38,6 +11,7 @@ From inside tmux, run:
 hetki save work
 ```
 
+For a new workspace, this creates `~/.config/hetki/workspaces/work.yaml`.
 Hetki saves the current session. If that session is already in the file, it replaces its saved structure.
 Other saved sessions remain in the file.
 
@@ -64,6 +38,69 @@ Otherwise, the save fails without replacing the file. Edit the workspace or save
 Hetki also refuses an invalid destination or destination symlink.
 Saved layouts use readable presets, not exact pane dimensions.
 
+## Start a workspace
+
+Preview the planned changes:
+
+```bash
+hetki start work --dry-run
+```
+
+Apply the changes:
+
+```bash
+hetki start work
+```
+
+By default, Hetki creates missing sessions and windows with their configured panes.
+It leaves existing windows unchanged. It does not rerun their startup commands.
+
+Hetki attaches to the first listed session, or switches to it from inside tmux.
+Use `--detach` (`-d`) to skip this step.
+`--dry-run` (`-n`) does not apply changes or attach.
+
+### Replace windows or remove sessions
+
+**Caution:** these options can terminate running processes.
+
+- `--force` replaces mismatched windows and deletes extra windows in listed sessions.
+- `--prune-sessions` deletes sessions absent from the workspace on the selected tmux server, including unrelated sessions.
+
+First preview with the same options that you intend to apply:
+
+```bash
+hetki start work --force --dry-run
+hetki start work --prune-sessions --dry-run
+```
+
+These options do not ask for confirmation. A dry run does not lock tmux state.
+If execution fails, earlier changes are not rolled back. Check tmux before retrying.
+
+## Choose a workspace
+
+Use one name or one file path:
+
+```bash
+hetki save work
+hetki start work
+```
+
+Named files are in `~/.config/hetki/workspaces` on Linux and macOS.
+This directory does not change with `XDG_CONFIG_HOME`.
+`work` selects `work.yaml`, or an existing `work.yml` if `work.yaml` is absent.
+You can also supply the extension, such as `work.yml`.
+
+For a file elsewhere, use `--file` (`-f`):
+
+```bash
+hetki save --file ./work.yaml
+hetki start --file ./work.yaml
+```
+
+A name never selects a local file.
+Do not combine a name with `--file`.
+Files must have a `.yaml` or `.yml` extension.
+
 ## Write a workspace
 
 Save this example as `work.yaml`:
@@ -86,6 +123,9 @@ The example creates one session with an editor window and a two-pane terminal wi
 Set `root` to an existing project directory and replace `nvim` with your editor.
 
 **Caution:** a workspace can run shell commands. Read commands before you start a workspace you did not write.
+
+Preview this file with `hetki start --file ./work.yaml --dry-run`.
+Remove `--dry-run` to apply the changes.
 
 ### Fields
 
@@ -124,41 +164,3 @@ Window `index` and pane `split` or `size` fields are not supported.
 Workspace YAML is strict. Unknown fields, duplicate keys, and multiple documents are invalid.
 Files can contain at most 1 MiB, 64 sessions, 64 windows per session, and 32 panes per window.
 Names are limited to 255 bytes. Paths and commands are limited to 4,096 bytes each.
-
-## Start a workspace
-
-Preview the planned changes:
-
-```bash
-hetki start --file ./work.yaml --dry-run
-```
-
-Apply the changes:
-
-```bash
-hetki start --file ./work.yaml
-```
-
-By default, Hetki creates missing sessions and windows with their configured panes.
-It leaves existing windows unchanged. It does not rerun their startup commands.
-
-Hetki attaches to the first listed session, or switches to it from inside tmux.
-Use `--detach` (`-d`) to skip this step.
-`--dry-run` (`-n`) does not apply changes or attach.
-
-### Replace windows or remove sessions
-
-**Caution:** these options can terminate running processes.
-
-- `--force` replaces mismatched windows and deletes extra windows in listed sessions.
-- `--prune-sessions` deletes sessions absent from the workspace on the selected tmux server, including unrelated sessions.
-
-First preview with the same options that you intend to apply:
-
-```bash
-hetki start work --force --dry-run
-hetki start work --prune-sessions --dry-run
-```
-
-These options do not ask for confirmation. A dry run does not lock tmux state.
-If execution fails, earlier changes are not rolled back. Check tmux before retrying.

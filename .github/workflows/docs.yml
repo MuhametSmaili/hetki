@@ -1,0 +1,56 @@
+name: Documentation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "LICENSE"
+      - ".github/workflows/docs.yml"
+      - ".github/dependabot.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "LICENSE"
+      - ".github/workflows/docs.yml"
+      - ".github/dependabot.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: docs/.node-version
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install documentation dependencies
+        run: npm ci
+
+      - name: Build documentation
+        run: npm run build
+
+      - name: Audit documentation dependencies
+        run: npm audit --audit-level=high

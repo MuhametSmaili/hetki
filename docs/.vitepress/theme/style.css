@@ -1,0 +1,61 @@
+:root {
+  --vp-c-brand-1: #5753a6;
+  --vp-c-brand-2: #6864b8;
+  --vp-c-brand-3: #5753a6;
+  --vp-c-brand-soft: rgba(87, 83, 166, 0.12);
+}
+
+.dark {
+  --vp-c-brand-1: #b4befe;
+  --vp-c-brand-2: #c5ceff;
+  --vp-c-brand-3: #b4befe;
+  --vp-c-brand-soft: rgba(180, 190, 254, 0.14);
+  --vp-button-brand-text: #24273a;
+  --vp-button-brand-hover-text: #24273a;
+  --vp-button-brand-active-text: #24273a;
+}
+
+.VPHero .main {
+  order: 1;
+}
+
+.VPHero .image {
+  order: 2;
+  margin: 32px 0 0;
+}
+
+.VPHero .image-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+
+@media (min-width: 960px) {
+  .VPHero .image {
+    margin: 0;
+    padding-left: 32px;
+  }
+}
+
+.VPHero .image-src {
+  position: static;
+  transform: none;
+  width: 100%;
+  max-width: 560px;
+  max-height: none;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+}
+
+.VPHero .image-bg {
+  display: none;
+}
+
+.VPHome .vp-doc {
+  max-width: 960px;
+  margin: 48px auto 0;
+  padding: 0 24px 48px;
+}

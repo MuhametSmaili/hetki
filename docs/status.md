@@ -1,7 +1,5 @@
 # Application status
 
-[README](../README.md) · [Configuration](configuration.md) · [Key bindings](key-bindings.md) · [Theme](theme.md) · [Workspaces](workspaces.md)
-
 The status service tracks application activity in tmux panes.
 The picker starts it automatically and uses the same service across picker runs.
 Closing the picker does not stop the service.
@@ -26,7 +24,7 @@ The app must support and enable these reports.
 A screen profile can instead match text in an app's interface. Profiles depend on the app version and language.
 
 No status does not mean that an app is idle. Ordinary terminal output alone is not activity evidence.
-After a restart, an app may need to report again before its status appears.
+After a restart, status can remain missing until the app sends another report.
 
 The **Tracked** scope includes items with any current status.
 
@@ -69,6 +67,22 @@ An open picker starts the service again when needed.
 
 </details>
 
+## Troubleshoot missing status
+
+1. Press `Tab` to select All items with the default bindings.
+2. Run `hetki service status` in the same tmux environment.
+3. Check the reported tmux socket and build.
+4. Check the reported log path for service errors.
+5. Check that the app sends OSC 7501 reports or has a matching screen profile.
+
+If the service is absent, run `hetki service start`.
+If you changed profiles or need to replace a running build, run `hetki service restart`.
+Then cause a new app status change and check the picker again.
+
+A restart does not guarantee that missing or stale status is fixed.
+When you report a problem, include the Hetki, tmux, and app versions.
+Add service status and relevant log lines, but remove private paths and terminal contents.
+
 ## Add a screen profile
 
 Use a screen profile for an app that does not report status through OSC 7501.
@@ -108,7 +122,7 @@ Rules can report `working`, `needs-input`, or `idle`:
 
 - Every `all` matcher must match.
 - At least one `any` matcher must match when present.
-- No `none` matcher may match.
+- Every `none` matcher must fail to match.
 - Matchers use literal `contains` text or a `regex` pattern.
 
 If no rule matches, or matching rules report conflicting states, the status is unknown.
@@ -119,7 +133,7 @@ Profiles are read when the service starts. Run `hetki service restart` after add
 A missing profile directory is valid.
 An invalid profile or duplicate profile ID or command rejects the entire profile set.
 
-The [Kiro CLI 2.28.0 profile](../integrations/pane-status/profiles/kiro-2.28.yaml) is one example for its default English interface and key bindings.
+The [Kiro CLI 2.28.0 profile](https://github.com/MuhametSmaili/hetki/blob/main/integrations/pane-status/profiles/kiro-2.28.yaml) is one example for its default English interface and key bindings.
 Current Kiro CLI versions support OSC 7501 and do not need this profile.
 
 Hetki has no built-in logic for Kiro, AI tools, or other specific apps.
@@ -135,19 +149,3 @@ Profile files must be regular `.yaml` or `.yml` files, not symlinks.
 Each file can be at most 32 KiB. At most 64 profiles and 256 directory entries are accepted.
 
 </details>
-
-## Troubleshoot missing status
-
-1. Press `Tab` to select All items with the default bindings.
-2. Run `hetki service status` in the same tmux environment.
-3. Check the reported tmux socket and build.
-4. Check the reported log path for service errors.
-5. Check that the app sends OSC 7501 reports or has a matching screen profile.
-
-If the service is absent, run `hetki service start`.
-If you changed profiles or need to replace a running build, run `hetki service restart`.
-Then cause a new app status change and check the picker again.
-
-A restart does not guarantee that missing or stale status is fixed.
-When you report a problem, include the Hetki, tmux, and app versions.
-Add service status and relevant log lines, but remove private paths and terminal contents.
