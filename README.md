@@ -29,6 +29,8 @@ See [getting started](docs/getting-started.md) for views, pane previews, and you
 
 ## Documentation
 
+Read the [documentation](https://hetki.smaili.dev).
+
 - [Workspaces](docs/workspaces.md): save and start tmux setups.
 - [Application status](docs/status.md): activity indicators, profiles, and troubleshooting.
 - [Configuration](docs/configuration.md): picker defaults, flags, and layout.

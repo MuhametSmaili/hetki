@@ -5,10 +5,12 @@
   "scripts": {
     "dev": "vitepress dev --host 127.0.0.1",
     "build": "vitepress build",
-    "preview": "vitepress preview"
+    "preview": "vitepress preview",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
-    "vitepress": "2.0.0-alpha.21"
+    "vitepress": "2.0.0-alpha.21",
+    "wrangler": "4.156.0"
   },
   "engines": {
     "node": ">=24"
