@@ -91,9 +91,7 @@ func (q LoadStateQuery) Args() []string {
 		args[len(args)-1] += "|#{pane_pid}|#{pane_dead}|#{q:default-shell}"
 	}
 	if q.IncludeClients {
-		clientFormat := "client|#{session_id}|#{pane_id}|#{q:client_last_session}" +
-			"|#{&&:#{client_control_mode},#{m:" + observe.ClientNamePrefix + "*,#{client_name}}}"
-		args = append(args, ";", "list-clients", "-F", clientFormat)
+		args = append(args, ";", "list-clients", "-F", clientStateFormat)
 	}
 	return args
 }
@@ -335,17 +333,31 @@ func getCurrentSessionID() string {
 	return "$" + parts[2]
 }
 
+const clientStateFormat = "client|#{session_id}|#{pane_id}|#{q:client_last_session}" +
+	"|#{&&:#{client_control_mode},#{m:" + observe.ClientNamePrefix + "*,#{client_name}}}" +
+	"|#{q:client_name}|#{client_pid}|#{client_created}"
+
+type clientIdentity struct {
+	name    string
+	pid     int
+	created int
+}
+
 type clientState struct {
 	sessionID   string
 	paneID      string
 	lastSession string
 	observer    bool
+	identity    clientIdentity
 }
 
 func parseClientLine(line string) (clientState, error) {
-	fields, err := format.Fields(line, 5)
+	fields, err := format.Fields(line, 8)
 	if err != nil {
 		return clientState{}, err
+	}
+	if fields[0] != "client" || fields[5] == "" {
+		return clientState{}, errors.New("invalid tmux client identity")
 	}
 	if err := format.ValidateObjectID("client session", fields[1], '$'); err != nil {
 		return clientState{}, err
@@ -357,7 +369,18 @@ func parseClientLine(line string) (clientState, error) {
 	if err != nil {
 		return clientState{}, err
 	}
-	return clientState{sessionID: fields[1], paneID: fields[2], lastSession: fields[3], observer: observer}, nil
+	pid, err := parseIndex("client PID", fields[6])
+	if err != nil || pid == 0 {
+		return clientState{}, fmt.Errorf("invalid client PID %q", fields[6])
+	}
+	created, err := parseIndex("client creation", fields[7])
+	if err != nil || created == 0 {
+		return clientState{}, fmt.Errorf("invalid client creation %q", fields[7])
+	}
+	return clientState{
+		sessionID: fields[1], paneID: fields[2], lastSession: fields[3], observer: observer,
+		identity: clientIdentity{name: fields[5], pid: pid, created: created},
+	}, nil
 }
 
 func invokingClient(clients []clientState) clientState {
@@ -367,7 +390,7 @@ func invokingClient(clients []clientState) clientState {
 	pane, session := os.Getenv("TMUX_PANE"), getCurrentSessionID()
 	// Popup jobs have TMUX's session ID but usually no TMUX_PANE.
 	if (pane != "" && format.ValidateObjectID("invoking pane", pane, '%') != nil) ||
-		(pane == "" && format.ValidateObjectID("invoking session", session, '$') != nil) {
+		format.ValidateObjectID("invoking session", session, '$') != nil {
 		return clientState{}
 	}
 	var found clientState

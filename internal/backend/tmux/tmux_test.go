@@ -441,18 +441,24 @@ func TestCanceledContextPreventsSwitchDispatch(t *testing.T) {
 }
 
 func TestSessionSwitchAndAttachPreserveDispatchErrors(t *testing.T) {
-	t.Setenv("TMUX", "isolated")
+	t.Setenv("TMUX", ",,1")
+	t.Setenv("TMUX_PANE", "%1")
 	failure := errors.New("session no longer exists")
 	var targets []string
-	b := &TmuxBackend{client: &MockClient{ExecuteFunc: func(_ context.Context, action Action) error {
-		targets = append(targets, strings.Join(action.Args(), " "))
-		return failure
-	}}}
+	b := &TmuxBackend{client: &MockClient{
+		RunLimitedFunc: func(context.Context, int, ...string) (string, error) {
+			return "client|$1|%1||0|owner|100|1\n", nil
+		},
+		ExecuteFunc: func(_ context.Context, action Action) error {
+			targets = append(targets, strings.Join(action.Args(), " "))
+			return failure
+		},
+	}}
 
 	switchErr := b.Switch(context.Background(), backend.Target{SessionID: "$1"})
 	attachErr := b.Attach(context.Background(), "start-name")
 
 	require.ErrorIs(t, switchErr, failure)
 	require.ErrorIs(t, attachErr, failure)
-	assert.Equal(t, []string{"switch-client -t $1", "switch-client -t start-name"}, targets)
+	assert.Equal(t, []string{"switch-client -c owner -t $1", "switch-client -c owner -t start-name"}, targets)
 }

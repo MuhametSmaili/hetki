@@ -15,7 +15,7 @@ func TestLastSessionMarkerUsesOneStateBatch(t *testing.T) {
 	output := "0\n0\n" +
 		"$1|current|@1|main|0|layout|0|1|%1|0|1|/current|sh||100|0|/bin/sh\n" +
 		"$2|last\\|name|@2|editor|0|layout|0|1|%2|0|1|/last|sh||101|0|/bin/sh\n" +
-		"client|$1|%1|last\\|name|0\nclient|$2|%2|current|0\nclient|$1|%1||1\n"
+		"client|$1|%1|last\\|name|0|owner|100|1\nclient|$2|%2|current|0|other|200|1\nclient|$1|%1||1|observer|300|1\n"
 	b := &TmuxBackend{client: &MockClient{RunFunc: func(_ context.Context, args ...string) (string, error) {
 		calls++
 		require.Contains(t, args, "list-panes")
@@ -65,8 +65,9 @@ func TestInvokingClientDoesNotGuessAcrossContexts(t *testing.T) {
 
 func TestClientStateParsingRejectsMalformedRecords(t *testing.T) {
 	for _, row := range []string{
-		"client|name|%1|last|0", "client|$1|pane|last|0", "client|$01|%1|last|0",
-		"client|$1|%1|last", "client|$1|%1|last|maybe", "client|$1|%1|last\\", "client|$1|%1|last\nextra|0",
+		"client|name|%1|last|0|owner|100|1", "client|$1|pane|last|0|owner|100|1", "client|$01|%1|last|0|owner|100|1",
+		"client|$1|%1|last", "client|$1|%1|last|maybe|owner|100|1", "client|$1|%1|last|0|owner|100|1\\", "client|$1|%1|last\nextra|0|owner|100|1",
+		"client|$1|%1|last|0||100|1", "client|$1|%1|last|0|owner|0|1", "client|$1|%1|last|0|owner|100|0",
 	} {
 		_, err := (LoadStateQuery{IncludeClients: true}).Parse("0\n0\n" + row + "\n")
 		require.Error(t, err, row)

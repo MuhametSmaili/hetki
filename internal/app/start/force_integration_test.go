@@ -4,8 +4,6 @@ package start
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -14,7 +12,6 @@ import (
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	backendtmux "github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/manifest"
-	"github.com/MuhametSmaili/hetki/internal/testenv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +39,7 @@ func TestForceReplacementPreservesSessionOnIsolatedTmux(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := newIsolatedStartBackend(t)
+			b, _ := newIsolatedStartBackend(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 
@@ -102,7 +99,7 @@ func TestForceReplacementFailurePreservesOldWindows(t *testing.T) {
 		{name: "follow-up fails", failCommand: "split-window", windowCount: 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := newIsolatedStartBackend(t)
+			b, _ := newIsolatedStartBackend(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 
@@ -152,52 +149,4 @@ func forceReplacementWorkspace(directory string, names []string) *manifest.Works
 		}
 	}
 	return &manifest.Workspace{Sessions: []manifest.Session{{Name: "dev", Windows: windows}}}
-}
-
-func newIsolatedStartBackend(t *testing.T) *backendtmux.TmuxBackend {
-	t.Helper()
-	realTmux, err := exec.LookPath("tmux")
-	if err != nil {
-		t.Skip("tmux is required for integration tests")
-	}
-
-	socketDir := testenv.SocketDir(t)
-	socket := filepath.Join(socketDir, "tmux.sock")
-	config := filepath.Join(socketDir, "tmux.conf")
-	configText := `set -g default-shell /bin/sh
-set -g default-command "exec /bin/sh"
-set -g base-index 1
-set -g pane-base-index 1
-set -g automatic-rename off
-`
-	require.NoError(t, os.WriteFile(config, []byte(configText), 0600))
-
-	wrapperDir := t.TempDir()
-	wrapper := fmt.Sprintf(`#!/bin/sh
-case "$1" in attach-session|switch-client) exit 0;; esac
-if [ "$1" = "$HETKI_TEST_FAIL_COMMAND" ] && { [ -z "$HETKI_TEST_FAIL_TARGET" ] || [ "$3" = "$HETKI_TEST_FAIL_TARGET" ]; }; then
-  printf 'injected failure: %%s\n' "$*" >&2
-  exit 73
-fi
-exec %q -S %q -f %q "$@"
-`, realTmux, socket, config)
-	require.NoError(t, os.WriteFile(filepath.Join(wrapperDir, "tmux"), []byte(wrapper), 0700))
-	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("TMUX", "")
-	t.Setenv("TMUX_PANE", "")
-	t.Setenv("HETKI_TEST_FAIL_COMMAND", "")
-	t.Setenv("HETKI_TEST_FAIL_TARGET", "")
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		output, err := exec.CommandContext(ctx, realTmux, "-S", socket, "kill-server").CombinedOutput()
-		if err != nil {
-			t.Errorf("clean up isolated tmux server: %v: %s", err, output)
-		}
-	})
-
-	b, err := backendtmux.NewBackend()
-	require.NoError(t, err)
-	return b
 }

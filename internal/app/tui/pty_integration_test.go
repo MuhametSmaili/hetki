@@ -5,6 +5,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,10 +54,12 @@ func TestTerminalRestoredBeforeNavigation(t *testing.T) {
 		size := exec.Command("stty", "cols", "100", "rows", "24")
 		size.Stdin = os.Stdin
 		require.NoError(t, size.Run())
+		before := ptyTerminalState(t)
 		b, err := backendtmux.NewBackend()
 		require.NoError(t, err)
 		driver := ptyDriver{navigate: func(ctx context.Context, target list.ItemID) error {
 			require.Equal(t, sessionItemID("dev"), target)
+			require.Equal(t, before, ptyTerminalState(t), "terminal must be restored before navigation")
 			if err := b.Switch(ctx, backend.Target{SessionID: "$1"}); err != nil {
 				return err
 			}
@@ -74,7 +77,7 @@ func TestTerminalRestoredBeforeNavigation(t *testing.T) {
 				return result, err
 			},
 		}
-		require.NoError(t, service.Run(context.Background()))
+		require.NoError(t, service.Run(t.Context()))
 		return
 	}
 
@@ -93,33 +96,34 @@ func TestTerminalRestoredBeforeNavigation(t *testing.T) {
 		args = []string{"-q", "-e", "-c", command, "/dev/null"}
 	}
 	fakeBin := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "tmux"), []byte("#!/bin/sh\nprintf 'NAVIGATION\\n'\n"), 0755))
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	command := "#!/bin/sh\n" +
+		"[ \"$*\" = 'attach-session -t $1' ] || { printf 'unexpected tmux command: %s\\n' \"$*\" >&2; exit 1; }\n" +
+		"printf 'NAVIGATION\\n'\n"
+	require.NoError(t, os.WriteFile(filepath.Join(fakeBin, "tmux"), []byte(command), 0755))
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, script, args...)
-	cmd.Env = append(os.Environ(), ptyHelperEnv+"=1", "TERM=xterm-256color", "PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	input, inputWriter, err := os.Pipe()
+	cmd.WaitDelay = time.Second
+	// This fixture covers terminal handoff, not inside-tmux client attribution.
+	cmd.Env = append(os.Environ(), ptyHelperEnv+"=1", "TERM=xterm-256color", "TMUX=", "TMUX_PANE=", "PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	input, err := cmd.StdinPipe()
 	require.NoError(t, err)
 	defer input.Close()
-	cmd.Stdin = input
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		_, _ = inputWriter.Write([]byte("\x1bp")) // Alt+P
-		time.Sleep(500 * time.Millisecond)
-		_, _ = inputWriter.Write([]byte("\r"))
-		_ = inputWriter.Close()
-	}()
-	var output bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-	require.NoError(t, cmd.Run(), output.String())
+	output := &ptyOutput{onWrite: ptyInput(input, []ptyStep{
+		{marker: "dev", keys: "\x1bp"},
+		{marker: "PREVIEW CONTENT", keys: "\r"},
+	})}
+	cmd.Stdout, cmd.Stderr = output, output
 
-	require.Contains(t, output.String(), "PREVIEW CONTENT")
-	bytesOut := output.Bytes()
+	err = cmd.Run()
+
+	require.NoError(t, errors.Join(err, output.err, ctx.Err()), "%s", output.buffer.String())
+	require.Contains(t, output.buffer.String(), "PREVIEW CONTENT")
+	bytesOut := output.buffer.Bytes()
 	restored := bytes.Index(bytesOut, []byte("\x1b[?1049l"))
 	navigation := bytes.Index(bytesOut, []byte("NAVIGATION"))
 	recorded := bytes.Index(bytesOut, []byte("RECORDED"))
-	require.NotEqual(t, -1, restored, "alternate screen was not restored: %q", output.String())
-	require.Greater(t, navigation, restored, "navigation ran before terminal restoration: %q", output.String())
-	require.Greater(t, recorded, navigation, "recording ran before navigation succeeded: %q", output.String())
+	require.NotEqual(t, -1, restored, "alternate screen was not restored: %q", output.buffer.String())
+	require.Greater(t, navigation, restored, "navigation ran before terminal restoration: %q", output.buffer.String())
+	require.Greater(t, recorded, navigation, "recording ran before navigation succeeded: %q", output.buffer.String())
 }

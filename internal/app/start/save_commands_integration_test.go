@@ -20,7 +20,7 @@ import (
 )
 
 func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
-	b := newIsolatedStartBackend(t)
+	b, _ := newIsolatedStartBackend(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	directory, err := filepath.EvalSymlinks(t.TempDir())
@@ -93,16 +93,8 @@ func TestSavedCommandsRestoreWithoutReplayingOnMatchingStarts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, restoredDev.ID, findBackendSession(t, after.Sessions, "dev").ID)
 	require.Equal(t, restoredDev.Windows[0].ID, findBackendSession(t, after.Sessions, "dev").Windows[0].ID)
-	// A shell barrier drains any replayed input before the marker assertions.
 	for i, marker := range markers {
-		paneID := restoredDev.Windows[0].Panes[i].ID
-		channel := fmt.Sprintf("saved-command-drained-%d", i)
-		output, err := exec.CommandContext(ctx, "tmux", "send-keys", "-t", paneID, "-l", "tmux wait-for -S "+channel,
-			";", "send-keys", "-t", paneID, "Enter").CombinedOutput()
-		require.NoError(t, err, "queue shell barrier: %s", output)
-		output, err = exec.CommandContext(ctx, "tmux", "wait-for", channel).CombinedOutput()
-		require.NoError(t, err, "drain shell input: %s", output)
-
+		drainShellInput(t, ctx, restoredDev.Windows[0].Panes[i].ID)
 		data, err := os.ReadFile(marker)
 		require.NoError(t, err)
 		require.Equal(t, "started\nstarted\n", string(data), "one original launch and one restore, no replay")

@@ -30,7 +30,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 		{name: "relative root and first-pane override", root: ".", panes: []string{"tests", "", ".."}, wantPaths: []string{"backend/tests", "backend", "."}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			b := newIsolatedStartBackend(t)
+			b, _ := newIsolatedStartBackend(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 
@@ -97,6 +97,7 @@ func TestRelativeDirectoriesStartIdempotentlyOnIsolatedTmux(t *testing.T) {
 			for i, pane := range dev.Windows[0].Panes {
 				assert.Equal(t, window.Panes[i].ID, pane.ID)
 			}
+			drainShellInput(t, ctx, dev.Windows[0].Panes[0].ID)
 			content, err := os.ReadFile(marker)
 			require.NoError(t, err)
 			assert.Equal(t, "started\n", string(content), "matching starts must not repeat authored startup commands")

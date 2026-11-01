@@ -125,11 +125,12 @@ func (a ZoomPane) Args() []string {
 }
 
 type SwitchClient struct {
+	Client string
 	Target string
 }
 
 func (a SwitchClient) Args() []string {
-	return []string{"switch-client", "-t", a.Target}
+	return []string{"switch-client", "-c", a.Client, "-t", a.Target}
 }
 
 type AttachSession struct {

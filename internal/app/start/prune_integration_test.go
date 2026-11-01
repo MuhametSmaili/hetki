@@ -252,7 +252,7 @@ func TestPruningNeverFallsBackToARecreatedSessionName(t *testing.T) {
 
 func nativePruningFixture(t *testing.T, ctx context.Context) (*backendtmux.TmuxBackend, Service, *manifest.Workspace) {
 	t.Helper()
-	b := newIsolatedStartBackend(t)
+	b, _ := newIsolatedStartBackend(t)
 	directory, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 	require.NoError(t, b.Apply(ctx, []backend.Action{

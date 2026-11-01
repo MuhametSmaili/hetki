@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
@@ -18,8 +19,13 @@ const (
 	stateOutputLimit = 16 << 20
 )
 
+// TmuxBackend belongs to one invocation. Navigation retains its first identified
+// client connection so later switches do not follow a stale invoking pane.
 type TmuxBackend struct {
 	client Client
+
+	navigationMu     sync.Mutex
+	navigationClient clientIdentity
 }
 
 func init() {
@@ -188,7 +194,7 @@ func (b *TmuxBackend) Switch(ctx context.Context, target backend.Target) error {
 	}
 
 	queryCtx, cancel := context.WithTimeout(ctx, queryTimeout)
-	state, err := RunQuery(queryCtx, b.client, LoadStateQuery{})
+	state, err := RunQuery(queryCtx, b.client, LoadStateQuery{IncludeClients: isInsideTmux()})
 	cancel()
 	if err != nil {
 		return err
@@ -198,14 +204,21 @@ func (b *TmuxBackend) Switch(ctx context.Context, target backend.Target) error {
 	if err != nil {
 		return err
 	}
-	return b.switchTo(ctx, resolved)
+	if isInsideTmux() {
+		return b.switchClient(ctx, resolved, state.clients)
+	}
+	return b.client.Execute(ctx, AttachSession{Target: resolved})
 }
 
 func (b *TmuxBackend) switchTo(ctx context.Context, target string) error {
-	if isInsideTmux() {
-		return b.client.Execute(ctx, SwitchClient{Target: target})
+	if !isInsideTmux() {
+		return b.client.Execute(ctx, AttachSession{Target: target})
 	}
-	return b.client.Execute(ctx, AttachSession{Target: target})
+	clients, err := b.queryClients(ctx)
+	if err != nil {
+		return fmt.Errorf("identify invoking tmux client: %w", err)
+	}
+	return b.switchClient(ctx, target, clients)
 }
 
 func isInsideTmux() bool {

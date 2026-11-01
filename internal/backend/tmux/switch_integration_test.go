@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/testenv"
@@ -17,8 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newNavigableTmuxBackend runs on a throwaway socket and logs attach/switch
-// navigation instead of touching a real terminal.
+// Outside-tmux attachment needs a terminal, so record only that dispatch.
+// Inside-tmux navigation is exercised with attached clients in the native tests.
 func newNavigableTmuxBackend(t *testing.T) (*TmuxBackend, string) {
 	t.Helper()
 	realTmux, err := exec.LookPath("tmux")
@@ -28,11 +29,16 @@ func newNavigableTmuxBackend(t *testing.T) (*TmuxBackend, string) {
 
 	socketDir := testenv.SocketDir(t)
 	socket := filepath.Join(socketDir, "tmux.sock")
-	t.Cleanup(func() { _ = exec.Command(realTmux, "-S", socket, "kill-server").Run() })
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		output, err := exec.CommandContext(ctx, realTmux, "-S", socket, "kill-server").CombinedOutput()
+		require.NoError(t, err, "%s", output)
+	})
 
 	navLog := filepath.Join(socketDir, "nav.log")
 	wrapperDir := t.TempDir()
-	wrapper := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in attach-session|switch-client) printf '%%s\\n' \"$*\" >> %q; exit 0;; esac\nexec %q -f /dev/null -S %q \"$@\"\n", navLog, realTmux, socket)
+	wrapper := fmt.Sprintf("#!/bin/sh\ncase \"$1\" in attach-session) printf '%%s\\n' \"$*\" >> %q; exit 0;; esac\nexec %q -f /dev/null -S %q \"$@\"\n", navLog, realTmux, socket)
 	require.NoError(t, os.WriteFile(filepath.Join(wrapperDir, "tmux"), []byte(wrapper), 0755))
 	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TMUX", "")
@@ -67,9 +73,6 @@ func TestSwitchTargetsStableIDsOnColonNamedSessions(t *testing.T) {
 	require.NoError(t, err)
 	require.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: windowID, PaneID: stalePane}), "stale pane ID must fail closed")
 
-	t.Setenv("TMUX", fmt.Sprintf("%s,1,%s", "isolated", strings.TrimPrefix(sessionID, "$")))
-	require.NoError(t, b.Switch(context.Background(), target))
-
 	require.Error(t, b.Switch(context.Background(), backend.Target{SessionID: sessionID, WindowID: "@999"}), "unknown window ID must fail closed")
 
 	logged, err := os.ReadFile(navLog)
@@ -78,7 +81,6 @@ func TestSwitchTargetsStableIDsOnColonNamedSessions(t *testing.T) {
 		fmt.Sprintf("attach-session -t %s", sessionID),
 		fmt.Sprintf("attach-session -t %s:%d", sessionID, windowIndex),
 		fmt.Sprintf("attach-session -t %s:%d.%d", sessionID, windowIndex, paneIndex),
-		fmt.Sprintf("switch-client -t %s:%d.%d", sessionID, windowIndex, paneIndex),
 	}, strings.Split(strings.TrimSpace(string(logged)), "\n"))
 }
 

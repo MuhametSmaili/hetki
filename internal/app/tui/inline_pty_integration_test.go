@@ -3,15 +3,15 @@
 package tui
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -42,10 +42,12 @@ func TestInlineTerminalLifecycle(t *testing.T) {
 
 			switch mode {
 			case "themed":
-				require.Contains(t, output, "48;2;16;32;48")
+				foreground := color.RGBA{R: 0xab, G: 0xcd, B: 0xef, A: 0xff}
+				background := color.RGBA{R: 0x10, G: 0x20, B: 0x30, A: 0xff}
+				requirePTYSelectionColors(t, output, foreground, background)
 			case "palette":
-				require.Contains(t, output, "48;2;57;55;74", "default selection uses the soft lavender surface")
-				require.Contains(t, output, "38;2;224;222;244", "selected session names use the selected text color")
+				palette := ui.DefaultPalette()
+				requirePTYSelectionColors(t, output, palette.SelectionFG, palette.SelectionBG)
 			case "monochrome":
 				requireMonochromeOutput(t, output)
 			}
@@ -74,6 +76,7 @@ func runInlinePTY(t *testing.T, mode string) string {
 		args = []string{"-q", "-e", "-c", fmt.Sprintf("%q -test.run=^TestInlineTerminalLifecycle$", testBinary), "/dev/null"}
 	}
 	cmd := exec.CommandContext(ctx, script, args...)
+	cmd.WaitDelay = time.Second
 	cmd.Env = append(os.Environ(), inlinePTYEnv+"="+mode, "TERM=xterm-256color")
 	if mode == "palette" || mode == "themed" || mode == "monochrome" {
 		noColor := ""
@@ -85,49 +88,36 @@ func runInlinePTY(t *testing.T, mode string) string {
 	input, err := cmd.StdinPipe()
 	require.NoError(t, err)
 	defer input.Close()
-	output := &inlinePTYOutput{onWrite: inlinePTYInput(input, mode)}
+	output := &ptyOutput{onWrite: inlinePTYInput(input, mode)}
 	cmd.Stdout, cmd.Stderr = output, output
 
 	err = cmd.Run()
 
-	require.NoError(t, err, "%s", output.buffer.String())
+	require.NoError(t, errors.Join(err, output.err, ctx.Err()), "%s", output.buffer.String())
 	return output.buffer.String()
 }
 
 func inlinePTYInput(input io.Writer, mode string) func([]byte) error {
-	type step struct{ marker, keys string }
-	steps := []step{{"dev", "\x1bp"}, {"PREVIEW CONTENT", "\r"}}
+	steps := []ptyStep{
+		{marker: "dev", keys: "\x1bp"},
+		{marker: "PREVIEW CONTENT", keys: "\r"},
+	}
 	switch mode {
 	case "cancel":
 		steps[1].keys = "\x03"
 	case "resize":
-		steps = []step{{"dev", "\x0b"}, {"RESIZE NOW", "\x12"}, {"RESIZED ACTION", "\r"}}
-	case "error":
-		steps = []step{{"dev", "\x0b"}, {"ACTION FAILED", "\x03"}}
-	}
-	stage := 0
-	return func(all []byte) error {
-		if stage == len(steps) || !bytes.Contains(all, []byte(steps[stage].marker)) {
-			return nil
+		steps = []ptyStep{
+			{marker: "dev", keys: "\x0b"},
+			{marker: "RESIZE NOW", keys: "\x12"},
+			{marker: "RESIZED ACTION", keys: "\r"},
 		}
-		keys := steps[stage].keys
-		stage++
-		_, err := input.Write([]byte(keys))
-		return err
+	case "error":
+		steps = []ptyStep{
+			{marker: "dev", keys: "\x0b"},
+			{marker: "ACTION FAILED", keys: "\x03"},
+		}
 	}
-}
-
-type inlinePTYOutput struct {
-	buffer  bytes.Buffer
-	onWrite func([]byte) error
-}
-
-func (o *inlinePTYOutput) Write(p []byte) (int, error) {
-	n, err := o.buffer.Write(p)
-	if err == nil {
-		err = o.onWrite(o.buffer.Bytes())
-	}
-	return n, err
+	return ptyInput(input, steps)
 }
 
 func runInlinePTYHelper(t *testing.T, mode string) {
@@ -135,7 +125,7 @@ func runInlinePTYHelper(t *testing.T, mode string) {
 	size := exec.Command("stty", "cols", "100", "rows", "24")
 	size.Stdin = os.Stdin
 	require.NoError(t, size.Run())
-	before := inlineTerminalState(t)
+	before := ptyTerminalState(t)
 	switch mode {
 	case "middle":
 		fmt.Print(strings.Repeat("\n", 11))
@@ -147,7 +137,7 @@ func runInlinePTYHelper(t *testing.T, mode string) {
 	defer cancel()
 	driver := ptyDriver{navigate: func(_ context.Context, target list.ItemID) error {
 		require.Equal(t, sessionItemID("dev"), target)
-		require.Equal(t, before, inlineTerminalState(t), "terminal must be restored before navigation")
+		require.Equal(t, before, ptyTerminalState(t), "terminal must be restored before navigation")
 		fmt.Println("NAVIGATION_RESTORED")
 		return nil
 	}}
@@ -202,7 +192,7 @@ func runInlinePTYHelper(t *testing.T, mode string) {
 	} else {
 		require.NoError(t, err)
 	}
-	require.Equal(t, before, inlineTerminalState(t))
+	require.Equal(t, before, ptyTerminalState(t))
 	fmt.Println("SHELL_AFTER")
 }
 
@@ -214,6 +204,42 @@ func themedInlineOptions(t *testing.T, ctx context.Context, options ui.Options) 
 	require.NoError(t, err)
 
 	return prepared.Options
+}
+
+func requirePTYSelectionColors(t *testing.T, output string, foreground, background color.Color) {
+	t.Helper()
+	wantForeground := color.RGBAModel.Convert(foreground)
+	wantBackground := color.RGBAModel.Convert(background)
+	var parser ansi.Parser
+	parser.SetParamsSize(32)
+	var pen uv.Style
+	var selectedText strings.Builder
+	var found bool
+	parser.SetHandler(ansi.Handler{
+		HandleCsi: func(cmd ansi.Cmd, params ansi.Params) {
+			if cmd == 'm' {
+				uv.ReadStyle(params, &pen)
+			}
+		},
+		Print: func(r rune) {
+			if found {
+				return
+			}
+			if pen.Fg == nil || pen.Bg == nil ||
+				color.RGBAModel.Convert(pen.Fg) != wantForeground ||
+				color.RGBAModel.Convert(pen.Bg) != wantBackground {
+				selectedText.Reset()
+				return
+			}
+			selectedText.WriteRune(r)
+			found = strings.Contains(selectedText.String(), "dev")
+		},
+	})
+	for _, b := range []byte(output) {
+		parser.Advance(b)
+	}
+
+	require.True(t, found, "selected session name must use foreground %v and background %v", wantForeground, wantBackground)
 }
 
 func requireMonochromeOutput(t *testing.T, output string) {
@@ -273,21 +299,4 @@ func (d inlinePTYDriver) Execute(ctx context.Context, request ui.ActionRequest) 
 		return ui.ActionResult{}, err
 	}
 	return ui.ActionResult{Menu: &ui.ItemMenu{Title: "RESIZED MENU", Entries: []ui.MenuEntry{{Action: ui.ActionOpen, Label: "RESIZED ACTION"}}}}, nil
-}
-
-func inlineTerminalState(t *testing.T) string {
-	t.Helper()
-	cmd := exec.Command("stty", "-a")
-	cmd.Stdin = os.Stdin
-	output, err := cmd.Output()
-	require.NoError(t, err)
-	// PENDIN is a transient kernel input-queue flag, not a terminal preference.
-	fields := slices.DeleteFunc(strings.Fields(string(output)), func(field string) bool {
-		flag := strings.TrimSuffix(field, ";")
-		return flag == "pendin" || flag == "-pendin"
-	})
-	// Window dimensions deliberately change in the resize case.
-	dimensions := regexp.MustCompile(`\b([0-9]+ (rows|columns)|(rows|columns) [0-9]+);?`)
-	state := dimensions.ReplaceAllString(strings.Join(fields, " "), "")
-	return strings.Join(strings.Fields(state), " ")
 }
