@@ -69,6 +69,8 @@ jobs:
           - os: ubuntu-latest
             tmux: 3.2a
           - os: ubuntu-latest
+            tmux: '3.4'
+          - os: ubuntu-latest
             tmux: '3.8'
           - os: macos-latest
             tmux: '3.8'
@@ -110,6 +112,9 @@ jobs:
           work="$RUNNER_TEMP/hetki-tmux"
           mkdir -p "$work"
           while read -r version checksum; do
+            if [[ "$version" == 3.4 && "$TMUX_VERSION" != 3.4 ]]; then
+              continue
+            fi
             archive="$work/tmux-$version.tar.gz"
             curl --fail --location --retry 3 --connect-timeout 15 --max-time 120 \
               --output "$archive" "https://github.com/tmux/tmux/releases/download/$version/tmux-$version.tar.gz"
@@ -123,6 +128,7 @@ jobs:
             test "$("$work/tmux-$version/tmux" -V)" = "tmux $version"
           done <<'SOURCES'
           3.2a 551553a4f82beaa8dadc9256800bcc284d7c000081e47aa6ecbb6ff36eacd05f
+          3.4 551ab8dea0bf505c0ad6b7bb35ef567cdde0ccb84357df142c254f35a23e19aa
           3.8 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e
           SOURCES
           echo "$work/tmux-$TMUX_VERSION" >> "$GITHUB_PATH"

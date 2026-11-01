@@ -21,11 +21,6 @@ import (
 // user's default server is never touched.
 func newIsolatedTmuxBackend(t *testing.T) *TmuxBackend {
 	t.Helper()
-	return newIsolatedTmuxBackendWithConfig(t, "/dev/null")
-}
-
-func newIsolatedTmuxBackendWithConfig(t *testing.T, config string) *TmuxBackend {
-	t.Helper()
 	realTmux, err := exec.LookPath("tmux")
 	if err != nil {
 		t.Skip("tmux is required for integration tests")
@@ -44,7 +39,7 @@ func newIsolatedTmuxBackendWithConfig(t *testing.T, config string) *TmuxBackend 
 	})
 
 	wrapperDir := t.TempDir()
-	wrapper := fmt.Sprintf("#!/bin/sh\nexec %q -f %q -S %q \"$@\"\n", realTmux, config, socket)
+	wrapper := fmt.Sprintf("#!/bin/sh\nexec %q -f /dev/null -S %q \"$@\"\n", realTmux, socket)
 	require.NoError(t, os.WriteFile(filepath.Join(wrapperDir, "tmux"), []byte(wrapper), 0755))
 	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("TMUX", "")

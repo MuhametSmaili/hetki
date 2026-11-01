@@ -4,8 +4,6 @@ package tmux
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,26 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func captureFixture(t *testing.T) (*TmuxBackend, func(...string) string) {
-	t.Helper()
-	config := filepath.Join(t.TempDir(), "tmux.conf")
-	// Older tmux otherwise sizes detached windows from its default 80x24 client.
-	require.NoError(t, os.WriteFile(config, []byte("set -g window-size manual\n"), 0600))
-	b := newIsolatedTmuxBackendWithConfig(t, config)
-	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
-	t.Cleanup(cancel)
-	return b, func(args ...string) string {
-		t.Helper()
-		output, err := b.client.Run(ctx, args...)
-		require.NoError(t, err)
-		return strings.TrimSuffix(output, "\n")
-	}
-}
-
 func TestCapturePaneStableTargetsAndNoMutationOnIsolatedServer(t *testing.T) {
 	b, run := captureFixture(t)
-	ids := strings.Split(run("new-session", "-d", "-s", "capture", "-x", "80", "-y", "24", "-P", "-F", "#{session_id}|#{window_id}|#{pane_id}", "sh", "-c", "printf 'LEFT  \\r\\n'; exec sleep 60"), "|")
-	require.Len(t, ids, 3)
+	ids := newCaptureSession(t, t.Context(), b, "capture", 80, 24, "sh", "-c", "printf 'LEFT  \\r\\n'; exec sleep 60")
 	session, window, left := ids[0], ids[1], ids[2]
 	right := run("split-window", "-d", "-h", "-t", window, "-P", "-F", "#{pane_id}", "sh", "-c", "printf '\\033[31mRIGHT  \\033[0m\\r\\n'; exec sleep 60")
 	other := strings.Split(run("new-window", "-d", "-t", session+":", "-P", "-F", "#{window_id}|#{pane_id}", "sh", "-c", "printf 'OTHER-WINDOW\\r\\n'; exec sleep 60"), "|")
@@ -132,8 +113,7 @@ func TestCapturePaneStableTargetsAndNoMutationOnIsolatedServer(t *testing.T) {
 
 func TestCapturePaneLinkedOccurrenceMustStillExistOnIsolatedServer(t *testing.T) {
 	b, run := captureFixture(t)
-	ids := strings.Split(run("new-session", "-d", "-s", "source", "-P", "-F", "#{session_id}|#{window_id}|#{pane_id}", "sh", "-c", "printf 'LINKED\\r\\n'; exec sleep 60"), "|")
-	require.Len(t, ids, 3)
+	ids := newCaptureSession(t, t.Context(), b, "source", 80, 24, "sh", "-c", "printf 'LINKED\\r\\n'; exec sleep 60")
 	otherSession := run("new-session", "-d", "-s", "linked", "-P", "-F", "#{session_id}", "sleep 60")
 	require.Eventually(t, func() bool {
 		return run("display-message", "-p", "-t", ids[2], "#{cursor_y}") == "1"
@@ -172,8 +152,7 @@ func TestCapturePaneLinkedOccurrenceMustStillExistOnIsolatedServer(t *testing.T)
 
 func TestCapturePaneCurrentAlternateScreenOnIsolatedServer(t *testing.T) {
 	b, run := captureFixture(t)
-	ids := strings.Split(run("new-session", "-d", "-s", "alternate", "-x", "40", "-y", "24", "-P", "-F", "#{session_id}|#{window_id}|#{pane_id}", "sh", "-c", "printf 'NORMAL-ONLY\\r\\n\\033[?1049h\\033[H\\033[2JALT-ONLY\\r\\n0123456789012345678901234567890123456789WRAPPED\\r\\n'; exec sleep 60"), "|")
-	require.Len(t, ids, 3)
+	ids := newCaptureSession(t, t.Context(), b, "alternate", 40, 24, "sh", "-c", "printf 'NORMAL-ONLY\\r\\n\\033[?1049h\\033[H\\033[2JALT-ONLY\\r\\n0123456789012345678901234567890123456789WRAPPED\\r\\n'; exec sleep 60")
 	require.Eventually(t, func() bool {
 		return run("display-message", "-p", "-t", ids[2], "#{alternate_on}|#{cursor_y}") == "1|3"
 	}, 3*time.Second, 10*time.Millisecond)
@@ -193,8 +172,7 @@ func TestCapturePaneCurrentAlternateScreenOnIsolatedServer(t *testing.T) {
 
 func TestCapturePaneVisibleCoordinatesOnIsolatedServer(t *testing.T) {
 	b, run := captureFixture(t)
-	ids := strings.Split(run("new-session", "-d", "-s", "tall", "-x", "40", "-y", "240", "-P", "-F", "#{session_id}|#{window_id}|#{pane_id}", "sh", "-c", "printf 'HISTORY-ONLY\\r\\n'; i=0; while [ \"$i\" -lt 260 ]; do printf 'row-%03d\\r\\n' \"$i\"; i=$((i+1)); done; printf 'BOTTOM-ONLY'; exec sleep 60"), "|")
-	require.Len(t, ids, 3)
+	ids := newCaptureSession(t, t.Context(), b, "tall", 40, 240, "sh", "-c", "printf 'HISTORY-ONLY\\r\\n'; i=0; while [ \"$i\" -lt 260 ]; do printf 'row-%03d\\r\\n' \"$i\"; i=$((i+1)); done; printf 'BOTTOM-ONLY'; exec sleep 60")
 	pane := ids[2]
 	require.Eventually(t, func() bool {
 		return run("display-message", "-p", "-t", pane, "#{cursor_y}|#{cursor_x}") == "239|11"

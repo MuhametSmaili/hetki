@@ -19,12 +19,7 @@ func nativeCaptureFixture(t *testing.T) (*TmuxBackend, observe.Server, string, s
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	// Pin only capture fixtures; observer resize tests must keep automatic sizing.
-	_, err := b.client.Run(ctx, "set-window-option", "-g", "window-size", "manual", ";",
-		"resize-window", "-t", pane, "-x", "100", "-y", "30")
-	require.NoError(t, err)
-	geometry, err := b.client.Run(ctx, "display-message", "-p", "-t", pane, "#{pane_width}|#{pane_height}")
-	require.NoError(t, err)
-	require.Equal(t, "100|30", strings.TrimSpace(geometry))
+	resizeCaptureWindow(t, ctx, b, pane, 100, 30)
 	return b, server, session, pane
 }
 
@@ -185,10 +180,8 @@ func TestNativeStatusCaptureKeepsPeerOfOversizedScreen(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	waitForNativeCommand(t, ctx, b, pane, "cat")
-	wide, err := b.client.Run(ctx, "new-session", "-d", "-s", "wide", "-x", "1000", "-y", "200", "-P", "-F", "#{pane_id}",
-		python, "-c", "import sys,time; sys.stdout.write(('─'*1000)*199 + '─'*997 + 'END'); sys.stdout.flush(); time.sleep(30)")
-	require.NoError(t, err)
-	wide = strings.TrimSpace(wide)
+	wide := newCaptureSession(t, ctx, b, "wide", 1000, 200,
+		python, "-c", "import sys,time; sys.stdout.write(('─'*1000)*199 + '─'*997 + 'END'); sys.stdout.flush(); time.sleep(30)")[2]
 	waitForNativeScreen(t, ctx, b, wide, "END")
 	sampler, err := b.StatusSampler(server)
 	require.NoError(t, err)
