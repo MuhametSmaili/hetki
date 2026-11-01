@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func startLoop(t *testing.T, loop inventoryLoop) (context.CancelFunc, <-chan error) {
+func startLoop(t *testing.T, loop inventoryLoop) context.CancelFunc {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
@@ -27,7 +27,7 @@ func startLoop(t *testing.T, loop inventoryLoop) (context.CancelFunc, <-chan err
 			t.Error("inventory loop did not stop")
 		}
 	})
-	return cancel, done
+	return cancel
 }
 
 func noRetry() time.Time { return time.Time{} }
@@ -60,7 +60,7 @@ func TestInventoryWatchCoalescesHintsWithoutPostponingRefresh(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		changes := make(chan struct{}, 1)
 		var calls atomic.Int64
-		_, _ = startLoop(t, inventoryLoop{
+		startLoop(t, inventoryLoop{
 			changes: changes, nextRetry: noRetry,
 			refresh: func(context.Context) (bool, error) {
 				calls.Add(1)
@@ -91,7 +91,7 @@ func TestInventoryWatchRetainsHintsDuringSingleFlightAcquisition(t *testing.T) {
 		changes := make(chan struct{}, 1)
 		release := make(chan struct{})
 		var calls atomic.Int64
-		_, _ = startLoop(t, inventoryLoop{
+		startLoop(t, inventoryLoop{
 			changes: changes, nextRetry: noRetry,
 			refresh: func(ctx context.Context) (bool, error) {
 				if calls.Add(1) == 1 {
@@ -125,7 +125,7 @@ func TestInventoryWatchFailureBackoffResistsHintsAndIsBounded(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		changes := make(chan struct{}, 1)
 		var log refreshLog
-		_, _ = startLoop(t, inventoryLoop{
+		startLoop(t, inventoryLoop{
 			changes: changes, nextRetry: noRetry,
 			refresh: func(context.Context) (bool, error) {
 				log.record()
@@ -159,7 +159,7 @@ func TestInventoryWatchUsesRetryDeadlineThenPeriodicRecovery(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var calls atomic.Int64
 		retryAt := time.Now().Add(300 * time.Millisecond)
-		_, _ = startLoop(t, inventoryLoop{
+		startLoop(t, inventoryLoop{
 			nextRetry: func() time.Time {
 				if calls.Load() < 2 {
 					return retryAt
@@ -198,7 +198,7 @@ func TestInventoryWatchPropagatesTerminalFailure(t *testing.T) {
 func TestInventoryWatchCancelsInFlightAcquisition(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		finished := make(chan struct{})
-		cancel, _ := startLoop(t, inventoryLoop{
+		cancel := startLoop(t, inventoryLoop{
 			nextRetry: noRetry,
 			refresh: func(ctx context.Context) (bool, error) {
 				defer close(finished)
@@ -226,7 +226,7 @@ func TestInventoryAcquisitionFailureRevokesInputAndPreservesCause(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			streams, record, connections := streamFixture(t)
 			require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1")))
-			connections["$1"].send(t, "%1", "before")
+			connections["$1"].send(t, "before")
 			acquire := func(_ context.Context, revision uint64) (observe.Inventory, error) {
 				require.Equal(t, uint64(2), revision)
 				return observe.Inventory{}, tc.failure
@@ -238,7 +238,7 @@ func TestInventoryAcquisitionFailureRevokesInputAndPreservesCause(t *testing.T) 
 				reported = err
 				return nil
 			})
-			connections["$1"].send(t, "%1", "unvalidated")
+			connections["$1"].send(t, "unvalidated")
 			outputs, _ := record.snapshot()
 
 			require.ErrorIs(t, reported, tc.failure)

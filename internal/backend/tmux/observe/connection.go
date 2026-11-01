@@ -158,7 +158,7 @@ func (c *Connection) watchWire() {
 	defer c.closeResources()
 
 	for {
-		_, err := readNativeMessage(c.wire, c.layout)
+		err := readNativeMessage(c.wire, c.layout)
 		if err != nil {
 			c.wireErr = err
 			return

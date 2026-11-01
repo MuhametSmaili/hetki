@@ -44,7 +44,9 @@ func TestScopeHeaderKeepsLabelsFixedAndEmphasizesActiveScope(t *testing.T) {
 				index := strings.Index(trackedText, label)
 				require.GreaterOrEqual(t, index, 0)
 				x := terminal.Width(trackedText[:index])
-				require.Equal(t, terminal.Width(allText[:strings.Index(allText, label)]), x)
+				allIndex := strings.Index(allText, label)
+				require.GreaterOrEqual(t, allIndex, 0)
+				require.Equal(t, terminal.Width(allText[:allIndex]), x)
 				cell := screen.CellAt(x, 0)
 				if label == "Tracked" {
 					require.NotZero(t, cell.Style.Underline)
@@ -64,9 +66,9 @@ func TestScopeHeaderFitsNarrowWidths(t *testing.T) {
 		for _, width := range []int{1, 10, 20, 24, 40, 80} {
 			layout := layoutMetrics{listWidth: width, previewWidth: previewWidth, headerHeight: 3}
 
-			lines := strings.Split(m.viewHeader(layout), "\n")
+			lines := strings.SplitSeq(m.viewHeader(layout), "\n")
 
-			for _, line := range lines {
+			for line := range lines {
 				require.LessOrEqual(t, terminal.Width(line), width)
 			}
 		}

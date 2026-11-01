@@ -2,6 +2,7 @@ package statusobserver
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -25,7 +26,7 @@ func TestNewSuccessAfterAgedOutcomeAcrossChunkBoundaries(t *testing.T) {
 		{"terminal reset", []byte("\x1bc")},
 	}
 	for _, tc := range cases {
-		input := append(tc.reset, protocolReport("state=done")...)
+		input := slices.Concat(tc.reset, protocolReport("state=done"))
 		for split := 0; split <= len(input); split++ {
 			t.Run(fmt.Sprintf("%s/split=%d", tc.name, split), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {

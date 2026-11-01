@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -38,7 +39,7 @@ func scopeFixture(t *testing.T, layout string) (model, time.Time) {
 	}
 	if layout == "tree" {
 		snapshot.Items[0].ID = list.ItemID{ID: "mixed"}
-		bindings[list.ItemID{ID: "mixed"}] = append(bindings[list.ItemID{ID: "working"}], bindings[list.ItemID{ID: "blocked"}]...)
+		bindings[list.ItemID{ID: "mixed"}] = slices.Concat(bindings[list.ItemID{ID: "working"}], bindings[list.ItemID{ID: "blocked"}])
 		delete(bindings, list.ItemID{ID: "working"})
 		delete(bindings, list.ItemID{ID: "blocked"})
 		snapshot.Items = append(snapshot.Items[:2], snapshot.Items[3:]...)

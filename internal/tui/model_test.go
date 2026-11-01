@@ -213,7 +213,7 @@ func TestContextMenuOverlaySanitizesAndFitsNarrowTerminals(t *testing.T) {
 		if strings.Contains(content, "owned") || strings.Contains(content, "\nnext") {
 			t.Fatalf("width %d rendered unsafe menu text: %q", width, content)
 		}
-		for _, line := range strings.Split(content, "\n") {
+		for line := range strings.SplitSeq(content, "\n") {
 			if actual := terminal.Width(line); actual > width {
 				t.Fatalf("width %d rendered menu line width %d: %q", width, actual, line)
 			}
@@ -287,7 +287,7 @@ func TestViewSanitizesExternalTextAndFitsWidth(t *testing.T) {
 		if strings.Contains(content, "owned") || strings.Contains(content, "\nnext") {
 			t.Fatalf("width %d rendered unsafe external text: %q", width, content)
 		}
-		for _, line := range strings.Split(content, "\n") {
+		for line := range strings.SplitSeq(content, "\n") {
 			if actual := terminal.Width(line); actual > width {
 				t.Fatalf("width %d rendered line width %d: %q", width, actual, line)
 			}

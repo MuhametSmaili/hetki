@@ -88,37 +88,37 @@ func writeNativeBytes(writer io.Writer, data []byte) error {
 	return nil
 }
 
-func readNativeMessage(reader io.Reader, layout headerLayout) (uint32, error) {
+func readNativeMessage(reader io.Reader, layout headerLayout) error {
 	var header [nativeHeaderSize]byte
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
-		return 0, err
+		return err
 	}
 
 	kind, size, err := layout.decode(header)
 	if err != nil {
-		return 0, err
+		return err
 	}
 
 	if kind == nativeReady && size == nativeHeaderSize {
-		return kind, nil
+		return nil
 	}
 
 	if kind != nativeFlags || size != nativeHeaderSize+8 {
-		return 0, fmt.Errorf("native tmux control ended with message %d", kind)
+		return fmt.Errorf("native tmux control ended with message %d", kind)
 	}
 
 	var body [8]byte
 	if _, err := io.ReadFull(reader, body[:]); err != nil {
-		return 0, err
+		return err
 	}
 
 	flags := binary.NativeEndian.Uint64(body[:])
 	required := uint64(clientControl | clientIgnoreSize)
 	if flags&required != required || flags&pausedFlags != 0 {
-		return 0, fmt.Errorf("native tmux control flags lost output continuity")
+		return fmt.Errorf("native tmux control flags lost output continuity")
 	}
 
-	return kind, nil
+	return nil
 }
 
 func identifyNative(wire *net.UnixConn, layout headerLayout, session string, input, output *os.File) error {

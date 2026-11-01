@@ -27,6 +27,7 @@ func fixtureRules() screen.Config {
 }
 
 func TestEvaluateRequiresUnambiguousPositiveEvidence(t *testing.T) {
+	t.Parallel()
 	evaluator, err := screen.Compile(fixtureRules())
 	require.NoError(t, err)
 	cases := []struct {

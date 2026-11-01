@@ -14,9 +14,9 @@ func TestPaneProcessesRequireMatchingTerminalAndForegroundGroup(t *testing.T) {
 		name   string
 		leader processInfo
 	}{
-		{"wrong group", processInfo{Process: Process{PID: 200, Birth: "b"}, group: 201, foreground: 200, terminal: 1}},
-		{"lost foreground", processInfo{Process: Process{PID: 200, Birth: "b"}, group: 200, foreground: 201, terminal: 1}},
-		{"wrong terminal", processInfo{Process: Process{PID: 200, Birth: "b"}, group: 200, foreground: 200, terminal: 2}},
+		{"wrong group", processInfo{PID: 200, Birth: "b", group: 201, foreground: 200, terminal: 1}},
+		{"lost foreground", processInfo{PID: 200, Birth: "b", group: 200, foreground: 201, terminal: 1}},
+		{"wrong terminal", processInfo{PID: 200, Birth: "b", group: 200, foreground: 200, terminal: 2}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

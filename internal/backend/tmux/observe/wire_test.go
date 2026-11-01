@@ -75,7 +75,7 @@ func testNativeWireMessages(t *testing.T, layout headerLayout) {
 		t.Run(tc.name, func(t *testing.T) {
 			reader := iotest.OneByteReader(bytes.NewReader(tc.frame))
 
-			_, err := readNativeMessage(reader, layout)
+			err := readNativeMessage(reader, layout)
 
 			if tc.valid {
 				require.NoError(t, err)

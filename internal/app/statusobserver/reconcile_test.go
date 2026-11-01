@@ -16,7 +16,7 @@ func TestRemovedSessionIsJoinedAndPaneIDReuseGetsNewScope(t *testing.T) {
 	streams, record, connections := streamFixture(t)
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1")))
 	old := connections["$1"]
-	old.send(t, "%1", "old")
+	old.send(t, "old")
 	before, _ := record.snapshot()
 	empty := fixtureTopology(2)
 	delete(empty.panes, "%1")
@@ -24,7 +24,7 @@ func TestRemovedSessionIsJoinedAndPaneIDReuseGetsNewScope(t *testing.T) {
 	err := streams.reconcile(t.Context(), empty)
 	await(t, old.joined)
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(3, "$1")))
-	connections["$1"].send(t, "%1", "replacement")
+	connections["$1"].send(t, "replacement")
 	after, _ := record.snapshot()
 
 	require.NoError(t, err)
@@ -44,12 +44,12 @@ func TestSubscriptionLimitRetainsExistingOwners(t *testing.T) {
 		sessions = append(sessions, fmt.Sprintf("$%03d", n+1))
 	}
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, sessions...)))
-	connections["$001"].send(t, "%1", "before")
+	connections["$001"].send(t, "before")
 	before, resetsBefore := record.snapshot()
 	sessions = append(sessions, "$000")
 
 	err := streams.reconcile(t.Context(), fixtureTopology(2, sessions...))
-	connections["$001"].send(t, "%1", "after")
+	connections["$001"].send(t, "after")
 	after, resetsAfter := record.snapshot()
 	closeErr := streams.Close()
 
@@ -67,14 +67,14 @@ func TestSubscriptionLimitRetainsExistingOwners(t *testing.T) {
 func TestReconcileRejectsOldOrForeignInventoryWithoutRevokingRoutes(t *testing.T) {
 	streams, record, connections := streamFixture(t)
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(2, "$1")))
-	connections["$1"].send(t, "%1", "before")
+	connections["$1"].send(t, "before")
 	before, resetsBefore := record.snapshot()
 	foreign := fixtureTopology(3, "$2")
 	foreign.server = "replacement"
 
 	staleErr := streams.reconcile(t.Context(), fixtureTopology(1, "$2"))
 	foreignErr := streams.reconcile(t.Context(), foreign)
-	connections["$1"].send(t, "%1", "after")
+	connections["$1"].send(t, "after")
 	after, resetsAfter := record.snapshot()
 
 	require.ErrorIs(t, staleErr, ErrStaleInventory)
@@ -105,11 +105,11 @@ func testPartialStartupRemainsUsableAndRetriesWithFreshInventory(t *testing.T) {
 	defer func() { require.NoError(t, streams.Close()) }()
 
 	initialErr := streams.reconcile(t.Context(), fixtureTopology(1, "$1", "$2"))
-	first.send(t, "%1", "still usable")
+	first.send(t, "still usable")
 	retry = true
 	time.Sleep(time.Until(streams.nextRetry()))
 	retryErr := streams.reconcile(t.Context(), fixtureTopology(2, "$1", "$2"))
-	second.send(t, "%1", "linked duplicate")
+	second.send(t, "linked duplicate")
 	outputs, _ := record.snapshot()
 
 	require.ErrorIs(t, initialErr, failed)

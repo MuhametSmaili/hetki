@@ -35,7 +35,7 @@ func TestHeaderKeepsLeadingWarningVisible(t *testing.T) {
 			content := terminal.Sanitize(m.View().Content)
 
 			require.Contains(t, content, "configuration warning")
-			for _, line := range strings.Split(m.View().Content, "\n") {
+			for line := range strings.SplitSeq(m.View().Content, "\n") {
 				require.LessOrEqual(t, terminal.Width(line), m.width)
 			}
 		})
@@ -85,7 +85,7 @@ func TestBrowseHeaderShowsHintOnlyWithoutQuery(t *testing.T) {
 
 			header := m.viewHeader(layout)
 
-			first := strings.Split(header, "\n")[0]
+			first, _, _ := strings.Cut(header, "\n")
 			plain := strings.TrimSpace(terminal.Sanitize(first))
 			require.True(t, strings.HasPrefix(plain, tc.wantPrefix))
 			require.NotContains(t, plain, "NORMAL")
@@ -115,7 +115,7 @@ func TestLeavingFilterModeKeepsNarrowQueryWithoutHint(t *testing.T) {
 			require.Equal(t, modeBrowse, m.mode)
 			require.Equal(t, "editor", m.items.Query())
 			require.Equal(t, 20, m.layout().listWidth)
-			first := strings.Split(m.viewHeader(m.layout()), "\n")[0]
+			first, _, _ := strings.Cut(m.viewHeader(m.layout()), "\n")
 			require.Equal(t, "> editor", strings.TrimSpace(terminal.Sanitize(first)))
 		})
 	}

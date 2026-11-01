@@ -62,6 +62,7 @@ func BenchmarkThousandSessions(b *testing.B) {
 }
 
 func benchmarkStateParsing(b *testing.B, wire string) {
+	b.Helper()
 	b.ReportAllocs()
 	for b.Loop() {
 		parsed, err := (backendtmux.LoadStateQuery{}).Parse(wire)
@@ -72,6 +73,7 @@ func benchmarkStateParsing(b *testing.B, wire string) {
 }
 
 func benchmarkHistoryLoad(b *testing.B, records []frecency.Record) {
+	b.Helper()
 	path := filepath.Join(b.TempDir(), "frecency.json")
 	data, err := json.Marshal(struct {
 		Version int               `json:"version"`
@@ -93,11 +95,13 @@ func benchmarkHistoryLoad(b *testing.B, records []frecency.Record) {
 }
 
 func benchmarkProjection(b *testing.B, state backend.StateResult, scores frecency.Scores, projection ui.ViewMode, windows int) {
+	b.Helper()
 	name, wantRows := "flat", 1_000*windows
 	if projection == ui.ViewTree {
 		name, wantRows = "tree", wantRows+1_000
 	}
 	project := func(b *testing.B) list.Snapshot {
+		b.Helper()
 		var snapshot list.Snapshot
 		var err error
 		if projection == ui.ViewFlat {
@@ -120,6 +124,7 @@ func benchmarkProjection(b *testing.B, state backend.StateResult, scores frecenc
 }
 
 func benchmarkProjectedList(b *testing.B, name string, snapshot list.Snapshot, wantRows int) {
+	b.Helper()
 	model, err := list.New(snapshot)
 	if err != nil {
 		b.Fatal(err)
@@ -140,6 +145,7 @@ func benchmarkProjectedList(b *testing.B, name string, snapshot list.Snapshot, w
 
 // A roundtrip measures both applying and clearing a query, not one keystroke.
 func benchmarkProjectedFiltering(b *testing.B, name string, model *list.Model) {
+	b.Helper()
 	for _, query := range []string{"project", "project-0999", "no-match"} {
 		b.Run(name+"_filter_roundtrip/"+query, func(b *testing.B) {
 			model.SetQuery("")

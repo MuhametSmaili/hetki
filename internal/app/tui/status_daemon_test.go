@@ -21,7 +21,7 @@ import (
 func TestCachedLocationsRebindLinkedRowsAndRespawns(t *testing.T) {
 	state := linkedPaneState()
 	server := observe.Server{PID: 123, Birth: "fixture", Started: 1}
-	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
+	b := &projectionStatusBackend{state: state, server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
 	_, err := adapter.Load(t.Context(), ui.ViewTree)
@@ -167,7 +167,7 @@ func TestDaemonReaderWaitHonorsCancellation(t *testing.T) {
 }
 
 func TestServerReplacementDuringLoadDisablesStatusBinding(t *testing.T) {
-	b := &replacedServerBackend{stubBackend: stubBackend{state: liveState()}}
+	b := &replacedServerBackend{state: liveState()}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
 	_, loadErr := adapter.Load(t.Context(), ui.ViewFlat)

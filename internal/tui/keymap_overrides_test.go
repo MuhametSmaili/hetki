@@ -156,7 +156,7 @@ func TestConfiguredMenuUsesIndependentShortcuts(t *testing.T) {
 	var got ActionRequest
 	m, err := newModelWithKeys(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 		got = request
-		return ActionResult{Menu: menuPtr(testItemMenu())}, nil
+		return ActionResult{Menu: new(testItemMenu())}, nil
 	}, keys)
 	require.NoError(t, err)
 	m = openTestMenu(t, browseModel(m))
@@ -198,7 +198,7 @@ func TestSameKeyDispatchesDifferentActionsInNormalAndMenu(t *testing.T) {
 			var got ActionRequest
 			m, err := newModelWithKeys(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 				got = request
-				return ActionResult{Menu: menuPtr(testItemMenu())}, nil
+				return ActionResult{Menu: new(testItemMenu())}, nil
 			}, keys)
 			require.NoError(t, err)
 			m = browseModel(m)

@@ -163,6 +163,7 @@ func (m *Model) SelectSurvivor(previous []ItemID, anchor ItemID) bool {
 	if position < 0 {
 		return false
 	}
+	//nolint:modernize // Keep selection changes explicit rather than hiding them in a predicate.
 	for _, id := range previous[position+1:] {
 		if m.Select(id) {
 			return true
@@ -222,9 +223,9 @@ func (m *Model) JumpMatch(forward bool) bool {
 		}
 	} else {
 		next = indices[len(indices)-1]
-		for i := len(indices) - 1; i >= 0; i-- {
-			if indices[i] < m.cursor {
-				next = indices[i]
+		for _, candidate := range slices.Backward(indices) {
+			if candidate < m.cursor {
+				next = candidate
 				break
 			}
 		}

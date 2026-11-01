@@ -64,10 +64,7 @@ func renderSearchBar(props searchBarProps) string {
 	if rightW == 0 {
 		return left
 	}
-	gap := props.Width - leftW - rightW
-	if gap < 1 {
-		gap = 1
-	}
+	gap := max(props.Width-leftW-rightW, 1)
 	return left + strings.Repeat(" ", gap) + right
 }
 

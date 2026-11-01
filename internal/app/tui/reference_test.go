@@ -70,7 +70,7 @@ func TestLiveAdapterUsesOpaqueReferenceForPaneActions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "screen", screen)
 
-	_, err = adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionRename, ItemID: id, Value: text("renamed")})
+	_, err = adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionRename, ItemID: id, Value: new("renamed")})
 	require.NoError(t, err)
 	_, err = adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionDelete, ItemID: id, Confirmed: true})
 

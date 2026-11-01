@@ -3,6 +3,8 @@
 // emulate a screen. Eight-bit C1 bytes are not recognized as control sequences.
 package terminalstream
 
+import "slices"
+
 // MaxSequenceBytes includes the OSC introducer and its BEL or ST terminator.
 const MaxSequenceBytes = 4096
 
@@ -223,7 +225,7 @@ func (d *Decoder) appendBody(c byte) {
 }
 
 func (d *Decoder) finishOSC(emit func(Frame)) {
-	body := d.body[:len(d.body):len(d.body)]
+	body := slices.Clip(d.body)
 	complete := d.length <= MaxSequenceBytes
 	d.discard()
 

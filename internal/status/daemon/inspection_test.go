@@ -217,7 +217,7 @@ func TestInspectReportsIncompatibleInstance(t *testing.T) {
 	c := fixtureClient(t, "inspect-incompatible")
 	listener, cleanup, err := listen(c.path)
 	require.NoError(t, err)
-	served := serveMismatch(listener, c.server, 4321, incompatibleEpoch)
+	served := serveMismatch(listener, c.server, 4321)
 	t.Cleanup(func() {
 		_ = listener.Close()
 		<-served

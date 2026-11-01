@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -99,9 +100,7 @@ func sameEvidence(a, b View) bool {
 // renew applies a renewal frame to the last full view.
 func (c *Client) renew(last View, row reply) (View, error) {
 	values := make(map[status.PaneRef]status.Value, last.Values.Len())
-	for pane, value := range last.Values.All() {
-		values[pane] = value
-	}
+	maps.Insert(values, last.Values.All())
 
 	for _, e := range row.Entries {
 		pane := status.PaneRef{Server: c.server, ID: e.ID, Generation: e.Generation}

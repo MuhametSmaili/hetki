@@ -71,7 +71,7 @@ func TestLoadFile(t *testing.T) {
 			switch kind {
 			case "regular", "symlink":
 				require.NoError(t, err)
-				require.Equal(t, ptr("tree"), got.UI.View)
+				require.Equal(t, new("tree"), got.UI.View)
 			case "missing":
 				require.NoError(t, err)
 				require.Equal(t, config.Config{}, got)

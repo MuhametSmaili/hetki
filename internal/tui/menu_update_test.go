@@ -34,7 +34,7 @@ func TestContextMenuCancelRestoresBrowseAndFilterState(t *testing.T) {
 			var got ActionRequest
 			m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 				got = request
-				return ActionResult{Menu: menuPtr(testItemMenu())}, nil
+				return ActionResult{Menu: new(testItemMenu())}, nil
 			})
 			m = browseModel(m)
 			m.items.SetQuery("server")
@@ -90,7 +90,7 @@ func TestMenuLettersAndArrowEnterUseTheDirectActionRequest(t *testing.T) {
 			m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 				requests <- request
 				if request.ActionID == ActionContextMenu {
-					return ActionResult{Menu: menuPtr(testItemMenu())}, nil
+					return ActionResult{Menu: new(testItemMenu())}, nil
 				}
 				return ActionResult{}, nil
 			})
@@ -137,7 +137,7 @@ func TestEveryMenuEntryDispatchesFromTheStableOrigin(t *testing.T) {
 			var got ActionRequest
 			m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 				if request.ActionID == ActionContextMenu {
-					return ActionResult{Menu: menuPtr(ItemMenu{Entries: entries})}, nil
+					return ActionResult{Menu: new(ItemMenu{Entries: entries})}, nil
 				}
 				got = request
 				return ActionResult{}, nil
@@ -169,7 +169,7 @@ func TestOldMenuRefreshAndToggleLettersDoNothing(t *testing.T) {
 			calls := 0
 			m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 				calls++
-				return ActionResult{Menu: menuPtr(ItemMenu{Entries: []MenuEntry{
+				return ActionResult{Menu: new(ItemMenu{Entries: []MenuEntry{
 					{Action: ActionRefresh, Label: "Refresh"},
 					{Action: ActionToggleProjection, Label: "Toggle projection"},
 				}})}, nil
@@ -214,7 +214,7 @@ func TestMenuUsesInjectedLocalBindingsForDisplayAndDispatch(t *testing.T) {
 			var got ActionRequest
 			m, err := newModelWithKeys(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 				if request.ActionID == ActionContextMenu {
-					return ActionResult{Menu: menuPtr(ItemMenu{Entries: entries})}, nil
+					return ActionResult{Menu: new(ItemMenu{Entries: entries})}, nil
 				}
 				got = request
 				return ActionResult{}, nil
@@ -237,7 +237,7 @@ func TestMenuInputAndConfirmationHandoffsRestoreFilterState(t *testing.T) {
 	m := newModel(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 		switch request.ActionID {
 		case ActionContextMenu:
-			return ActionResult{Menu: menuPtr(testItemMenu())}, nil
+			return ActionResult{Menu: new(testItemMenu())}, nil
 		case ActionRename:
 			if request.Value == nil {
 				return ActionResult{Input: &InputPrompt{Title: "RENAME", Prompt: "Name", InitialValue: "editor"}}, nil
@@ -321,7 +321,7 @@ func TestIndependentMenuShortcutsSubmitThroughCustomDialogControls(t *testing.T)
 			var got ActionRequest
 			m, err := newModelWithKeys(interactionSnapshot(), func(request ActionRequest) (ActionResult, error) {
 				if request.ActionID == ActionContextMenu {
-					return ActionResult{Menu: menuPtr(testItemMenu())}, nil
+					return ActionResult{Menu: new(testItemMenu())}, nil
 				}
 				got = request
 				return test.prompt, nil
@@ -419,7 +419,7 @@ func TestContextMenuRejectsEmptyAndInvalidEntries(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m := newModel(interactionSnapshot(), func(ActionRequest) (ActionResult, error) {
-				return ActionResult{Menu: menuPtr(test.menu)}, nil
+				return ActionResult{Menu: new(test.menu)}, nil
 			})
 			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
 			m, cmd := updateModel(t, m, controlKey('k'))
@@ -474,7 +474,7 @@ func TestContextMenuDoesNotFallBackToNormalBindings(t *testing.T) {
 			calls := 0
 			m, err := newModelWithKeys(interactionSnapshot(), func(ActionRequest) (ActionResult, error) {
 				calls++
-				return ActionResult{Menu: menuPtr(ItemMenu{Entries: test.entries})}, nil
+				return ActionResult{Menu: new(ItemMenu{Entries: test.entries})}, nil
 			}, keys)
 			require.NoError(t, err)
 			m = openTestMenu(t, selectNode(t, browseModel(m), list.ItemID{ID: "window-2"}))
@@ -497,5 +497,3 @@ func currentRowIDs(m model) []list.ItemID {
 	}
 	return ids
 }
-
-func menuPtr(value ItemMenu) *ItemMenu { return &value }

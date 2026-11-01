@@ -24,7 +24,7 @@ keymap:
 
 	require.NoError(t, err)
 	require.Equal(t, config.Config{
-		UI: config.UI{View: ptr("tree")},
+		UI: config.UI{View: new("tree")},
 		Keymap: map[string]map[string][]string{
 			"normal": {"move_down": {"j", "down", "ctrl+n"}, "toggle_preview": {"p"}},
 			"filter": {"toggle_preview": {"alt+v"}},

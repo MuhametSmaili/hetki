@@ -67,7 +67,7 @@ func assertInlineViewFits(t *testing.T, view tea.View, width, height int) {
 	t.Helper()
 	require.False(t, view.AltScreen)
 	require.LessOrEqual(t, lipgloss.Height(view.Content), height)
-	for _, line := range strings.Split(view.Content, "\n") {
+	for line := range strings.SplitSeq(view.Content, "\n") {
 		require.LessOrEqual(t, terminal.Width(line), width)
 	}
 }

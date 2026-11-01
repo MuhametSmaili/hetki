@@ -135,7 +135,7 @@ func TestInvalidRefreshPreservesProjectionInputAndStatusMetadata(t *testing.T) {
 	})
 	require.NoError(t, err)
 	view := daemon.View{Values: values, Locations: []daemon.Location{{Session: "$1", Window: "@1", Pane: "%1"}}}
-	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
+	b := &projectionStatusBackend{state: state, server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 	initial, err := adapter.Load(t.Context(), ui.ViewFlat)
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestCanceledSnapshotPreparationPreservesLastGoodState(t *testing.T) {
 	for _, operation := range []string{"load", "refresh", "toggle"} {
 		t.Run(operation, func(t *testing.T) {
 			statusFailure := errors.New("status unavailable")
-			b := &projectionStatusBackend{stubBackend: stubBackend{state: liveState()}, statusErr: statusFailure}
+			b := &projectionStatusBackend{state: liveState(), statusErr: statusFailure}
 			adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 			initial, err := adapter.Load(t.Context(), ui.ViewFlat)
 			require.NoError(t, err)

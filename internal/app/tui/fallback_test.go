@@ -28,7 +28,7 @@ func TestPickerUsesBoundedFallbackWhenStatusIsUnavailable(t *testing.T) {
 		{"status unavailable with empty inventory", backend.StateResult{}, statusFailure, 0, 1},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			b := &projectionStatusBackend{stubBackend: stubBackend{state: test.state}, server: server, statusErr: test.statusErr}
+			b := &projectionStatusBackend{state: test.state, server: server, statusErr: test.statusErr}
 			adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
 			snapshot, err := adapter.Load(t.Context(), ui.ViewFlat)
@@ -66,8 +66,8 @@ func TestPickerDoesNotRetryTerminalQueryFailures(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			b := &projectionStatusBackend{
-				stubBackend: stubBackend{state: liveState()},
-				statusErr:   fmt.Errorf("combined query: %w", errors.Join(test.err, diagnostic)),
+				state:     liveState(),
+				statusErr: fmt.Errorf("combined query: %w", errors.Join(test.err, diagnostic)),
 			}
 			adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
@@ -87,9 +87,9 @@ func TestPickerDoesNotRetryAfterCallerCancellation(t *testing.T) {
 	defer cancel()
 	statusFailure := errors.New("status identity unavailable")
 	b := &projectionStatusBackend{
-		stubBackend: stubBackend{state: liveState()},
-		statusErr:   statusFailure,
-		afterQuery:  cancel,
+		state:      liveState(),
+		statusErr:  statusFailure,
+		afterQuery: cancel,
 	}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
@@ -103,7 +103,7 @@ func TestPickerDoesNotRetryAfterCallerCancellation(t *testing.T) {
 
 func TestPickerDoesNotUseUnboundedFallbackWhenCapabilityIsMissing(t *testing.T) {
 	statusFailure := errors.New("status identity unavailable")
-	b := &projectionStatusBackend{stubBackend: stubBackend{state: liveState()}, statusErr: statusFailure}
+	b := &projectionStatusBackend{state: liveState(), statusErr: statusFailure}
 	// Expose the original capabilities, but not the bounded fallback method.
 	provider := struct {
 		Backend
@@ -122,8 +122,8 @@ func TestPickerRetainsBothQueryFailures(t *testing.T) {
 	statusFailure := errors.New("status identity unavailable")
 	fallbackFailure := errors.New("inventory unavailable")
 	b := &projectionStatusBackend{
-		stubBackend: stubBackend{stateErr: fallbackFailure},
-		statusErr:   fmt.Errorf("combined query: %w", statusFailure),
+		stateErr:  fallbackFailure,
+		statusErr: fmt.Errorf("combined query: %w", statusFailure),
 	}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 

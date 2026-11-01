@@ -82,8 +82,6 @@ func loadedAdapter(t *testing.T, stub *stubBackend) *LiveAdapter {
 	return adapter
 }
 
-func text(value string) *string { return &value }
-
 func TestLiveAdapterProjectsPresentationAndKeepsTargetsInOwnerIndex(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	adapter := testAdapter(stub)
@@ -372,7 +370,7 @@ func TestSessionActionsUseTheOwningStableSessionForEveryRowKind(t *testing.T) {
 				require.Equal(t, backend.RenameSessionAction{Current: "$1", New: "platform"}, actions[0])
 				stub.state.Sessions[0].Name = "platform"
 			}
-			rename.Value = text("platform")
+			rename.Value = new("platform")
 			result, err := adapter.Execute(context.Background(), rename)
 			require.NoError(t, err)
 			assert.Equal(t, test.id, result.SelectItemID)
@@ -419,7 +417,7 @@ func TestSessionActionsRejectOriginsReplacedDuringRefresh(t *testing.T) {
 				require.NoError(t, err)
 				if action == ui.ActionRenameSession {
 					require.NotNil(t, result.Input)
-					request.Value = text("platform")
+					request.Value = new("platform")
 				} else {
 					require.NotNil(t, result.Confirmation)
 					request.Confirmed = true
@@ -444,7 +442,7 @@ func TestWindowActionsRejectSessionRowsBeforePromptOrMutation(t *testing.T) {
 		request ui.ActionRequest
 	}{
 		{name: "rename prompt", request: ui.ActionRequest{ActionID: ui.ActionRename, ItemID: sessionItemID("$1")}},
-		{name: "rename mutation", request: ui.ActionRequest{ActionID: ui.ActionRename, ItemID: sessionItemID("$1"), Value: text("platform")}},
+		{name: "rename mutation", request: ui.ActionRequest{ActionID: ui.ActionRename, ItemID: sessionItemID("$1"), Value: new("platform")}},
 		{name: "delete confirmation", request: ui.ActionRequest{ActionID: ui.ActionDelete, ItemID: sessionItemID("$1")}},
 		{name: "delete mutation", request: ui.ActionRequest{ActionID: ui.ActionDelete, ItemID: sessionItemID("$1"), Confirmed: true}},
 	} {
@@ -564,7 +562,7 @@ func TestLiveAdapterCreateWindowPromptsThenRefreshesAndSelectsCreatedItem(t *tes
 	require.NoError(t, err)
 	require.Equal(t, "CREATE WINDOW", prompt.Input.Title)
 
-	request.Value = text("logs")
+	request.Value = new("logs")
 	result, err := adapter.Execute(context.Background(), request)
 	require.NoError(t, err)
 	require.NotNil(t, result.Snapshot)
@@ -585,7 +583,7 @@ func TestLiveAdapterRenameAndDeleteReResolveTheSameStableItem(t *testing.T) {
 		require.Equal(t, backend.RenameWindowAction{Session: "$1", Window: "@1", WindowID: "@1", New: "api"}, actions[0])
 		stub.state.Sessions[0].Windows[0].Name = "api"
 	}
-	rename.Value = text("api")
+	rename.Value = new("api")
 	result, err := adapter.Execute(context.Background(), rename)
 	require.NoError(t, err)
 	assert.Equal(t, windowItemID("$1", "@1"), result.SelectItemID)
@@ -618,7 +616,7 @@ func TestLiveAdapterCreateSessionInheritsWorkspace(t *testing.T) {
 	prompt, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateSession})
 	require.NoError(t, err)
 	assert.Equal(t, "CREATE SESSION", prompt.Input.Title)
-	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateSession, Value: text("sandbox")})
+	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateSession, Value: new("sandbox")})
 	require.NoError(t, err)
 	assert.Contains(t, result.Message, "workspace linked")
 	assert.Equal(t, sessionItemID("$2"), result.SelectItemID)
@@ -714,7 +712,7 @@ func TestFlatDestinationActionsUseTheOwningWindowAndSession(t *testing.T) {
 	require.NoError(t, err)
 	destinationID := destinationItemID("$1", "@1", "%1")
 
-	rename := ui.ActionRequest{ActionID: ui.ActionRename, ItemID: destinationID, Value: text("api")}
+	rename := ui.ActionRequest{ActionID: ui.ActionRename, ItemID: destinationID, Value: new("api")}
 	stub.applyHook = func(actions []backend.Action) {
 		require.Equal(t, backend.RenameWindowAction{Session: "$1", Window: "@1", WindowID: "@1", New: "api"}, actions[0])
 		stub.state.Sessions[0].Windows[0].Name = "api"
@@ -723,7 +721,7 @@ func TestFlatDestinationActionsUseTheOwningWindowAndSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, destinationID, result.SelectItemID)
 
-	create := ui.ActionRequest{ActionID: ui.ActionCreateWindow, ItemID: destinationID, Value: text("logs")}
+	create := ui.ActionRequest{ActionID: ui.ActionCreateWindow, ItemID: destinationID, Value: new("logs")}
 	stub.applyHook = func(actions []backend.Action) {
 		require.Equal(t, backend.CreateWindowAction{Session: "$1", Name: "logs"}, actions[0])
 		stub.state.Sessions[0].Windows = append(stub.state.Sessions[0].Windows, backend.Window{

@@ -29,7 +29,7 @@ func fixtureProcess(ctx context.Context, pid int) (processInfo, error) {
 	if pid == 42 {
 		birth = "server-birth"
 	}
-	return processInfo{Process: Process{PID: pid, Birth: birth}, group: pid, foreground: pid, terminal: 1}, ctx.Err()
+	return processInfo{PID: pid, Birth: birth, group: pid, foreground: pid, terminal: 1}, ctx.Err()
 }
 
 func TestInventorySharesNativeReadsAndLinkedPaneFacts(t *testing.T) {

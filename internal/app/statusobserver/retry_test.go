@@ -60,14 +60,14 @@ func TestRetryHistorySurvivesShortConnectionsButResetsAfterHealthyInterval(t *te
 func TestInvalidationDisablesInputUntilFreshInventory(t *testing.T) {
 	streams, record, connections := streamFixture(t)
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1")))
-	connections["$1"].send(t, "%1", "before")
+	connections["$1"].send(t, "before")
 	before, resetsBefore := record.snapshot()
 
 	streams.invalidate()
-	connections["$1"].send(t, "%1", "unvalidated")
+	connections["$1"].send(t, "unvalidated")
 	afterFailure, resetsAfter := record.snapshot()
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(2, "$1")))
-	connections["$1"].send(t, "%1", "fresh")
+	connections["$1"].send(t, "fresh")
 	after, _ := record.snapshot()
 
 	require.Len(t, afterFailure, 1)

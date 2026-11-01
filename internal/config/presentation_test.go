@@ -19,7 +19,7 @@ func TestDecodePresentationPreferences(t *testing.T) {
 			got, err := config.Decode(strings.NewReader("ui: {height: " + tt.literal + ", border: none}"))
 
 			require.NoError(t, err)
-			require.Equal(t, config.UI{Height: ptr(tt.want), Border: ptr("none")}, got.UI)
+			require.Equal(t, config.UI{Height: new(tt.want), Border: new("none")}, got.UI)
 		})
 	}
 }
@@ -30,7 +30,7 @@ func TestDecodeHeightPreservesOutOfRangeChoicesForApplicationFallback(t *testing
 
 		require.NoError(t, err)
 		require.NotNil(t, got.UI.Height)
-		require.Equal(t, ptr("tree"), got.UI.View)
+		require.Equal(t, new("tree"), got.UI.View)
 	}
 }
 

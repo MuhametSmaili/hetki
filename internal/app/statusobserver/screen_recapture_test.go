@@ -38,7 +38,7 @@ func TestScreenRecaptureRecoversWithoutAnotherOutputHint(t *testing.T) {
 			}
 			return results, err
 		}
-		_, _ = startLoop(t, inventoryLoop{
+		startLoop(t, inventoryLoop{
 			screens: screens, nextRetry: noRetry,
 			refresh: func(context.Context) (bool, error) { return false, nil },
 		})

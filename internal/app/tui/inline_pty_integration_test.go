@@ -131,6 +131,7 @@ func (o *inlinePTYOutput) Write(p []byte) (int, error) {
 }
 
 func runInlinePTYHelper(t *testing.T, mode string) {
+	t.Helper()
 	size := exec.Command("stty", "cols", "100", "rows", "24")
 	size.Stdin = os.Stdin
 	require.NoError(t, size.Run())

@@ -85,8 +85,8 @@ type SendKeys struct {
 func (a SendKeys) Args() []string {
 	keys := a.Keys
 	// tmux consumes one escape before a trailing semicolon.
-	if strings.HasSuffix(keys, ";") {
-		keys = strings.TrimSuffix(keys, ";") + `\;`
+	if before, ok := strings.CutSuffix(keys, ";"); ok {
+		keys = before + `\;`
 	}
 	return []string{"send-keys", "-l", "-t", a.Target, "--", keys, ";", "send-keys", "-t", a.Target, "Enter"}
 }

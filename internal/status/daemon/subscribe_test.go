@@ -57,10 +57,12 @@ func (s *changingSource) ReadView(context.Context) (View, error) {
 
 func (s *changingSource) Close() error { return nil }
 
-func (s *changingSource) set(view View, err error) {
+// set replaces the view and clears the previous read error.
+func (s *changingSource) set(view View) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.view, s.err = view, err
+	s.view = view
+	s.err = nil
 	close(s.changes)
 	s.changes = make(chan struct{})
 }
@@ -101,7 +103,7 @@ func TestSubscriptionSendsCurrentViewThenEachChange(t *testing.T) {
 	subscription := subscribe(t, c)
 
 	first, firstErr := subscription.Next()
-	source.set(testView(t, c.server, status.Working), nil)
+	source.set(testView(t, c.server, status.Working))
 	second, secondErr := subscription.Next()
 
 	require.NoError(t, firstErr)
@@ -118,7 +120,7 @@ func TestSubscriptionStaysOpenAfterUnavailableView(t *testing.T) {
 	subscription := subscribe(t, c)
 
 	_, firstErr := subscription.Next()
-	source.set(testView(t, c.server, status.Idle), nil)
+	source.set(testView(t, c.server, status.Idle))
 	recovered, recoveredErr := subscription.Next()
 
 	require.ErrorIs(t, firstErr, ErrUnavailable)
@@ -190,7 +192,7 @@ func TestLeaseRenewalSendsOnlyMovedDeadlines(t *testing.T) {
 
 	renewed := view
 	renewed.Lease = view.Lease.Add(time.Minute)
-	source.set(renewed, nil)
+	source.set(renewed)
 	require.NoError(t, readFrame(conn, maxReplyBytes, &renewal))
 
 	require.False(t, full.Renewal)
@@ -215,7 +217,7 @@ func TestRenewalCarriesMovedEvidenceDeadlines(t *testing.T) {
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: extended})
 	require.NoError(t, err)
 
-	source.set(View{Values: values, Locations: view.Locations, Lease: view.Lease}, nil)
+	source.set(View{Values: values, Locations: view.Locations, Lease: view.Lease})
 	require.NoError(t, readFrame(conn, maxReplyBytes, &renewal))
 
 	require.True(t, renewal.Renewal)
@@ -239,10 +241,10 @@ func TestOutcomeLifetimeChangeSendsFullFrameThenRenews(t *testing.T) {
 	view.Values, err = status.NewSnapshot(map[status.PaneRef]status.Value{pane: value})
 	require.NoError(t, err)
 
-	source.set(view, nil)
+	source.set(view)
 	require.NoError(t, readFrame(conn, maxReplyBytes, &ended))
 	view.Lease = view.Lease.Add(time.Minute)
-	source.set(view, nil)
+	source.set(view)
 	require.NoError(t, readFrame(conn, maxReplyBytes, &renewal))
 
 	require.False(t, full.Renewal)
@@ -271,7 +273,7 @@ func TestSubscriptionAppliesRenewalsToTheLastView(t *testing.T) {
 
 	renewed := view
 	renewed.Lease = view.Lease.Add(time.Hour)
-	source.set(renewed, nil)
+	source.set(renewed)
 	second, err := subscription.Next()
 
 	require.NoError(t, err)
@@ -293,7 +295,7 @@ func TestSubscriptionViewsOwnTheirLocations(t *testing.T) {
 	first.Locations[0].Window = "@caller"
 	renewed := view
 	renewed.Lease = view.Lease.Add(time.Minute)
-	source.set(renewed, nil)
+	source.set(renewed)
 	second, err := subscription.Next()
 
 	require.NoError(t, err)
@@ -301,7 +303,7 @@ func TestSubscriptionViewsOwnTheirLocations(t *testing.T) {
 
 	second.Locations[1].Session = "$caller"
 	renewed.Lease = renewed.Lease.Add(time.Minute)
-	source.set(renewed, nil)
+	source.set(renewed)
 	third, err := subscription.Next()
 
 	require.NoError(t, err)

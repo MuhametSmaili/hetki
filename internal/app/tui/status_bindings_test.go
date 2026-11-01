@@ -40,7 +40,7 @@ func statusDeliveryFixture(t *testing.T) (*LiveAdapter, daemon.View) {
 	t.Helper()
 	now := time.Now()
 	server := observe.Server{PID: 123, Birth: "fixture", Started: 1}
-	b := &projectionStatusBackend{stubBackend: stubBackend{state: liveState()}, server: server}
+	b := &projectionStatusBackend{state: liveState(), server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
 	pane := status.PaneRef{Server: server.Identity(), ID: "%1", Generation: "birth"}

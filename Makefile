@@ -16,13 +16,9 @@ install: build
 test:
 	go test -v ./...
 
-# Requires golangci-lint v2.15.0 on PATH, matching CI.
+# CI pins golangci-lint v2.15.0; run a matching or newer v2.x locally.
 check:
-	@unformatted="$$(gofmt -l .)" || exit $$?; \
-	if [ -n "$$unformatted" ]; then \
-		printf 'Go files need formatting:\n%s\n' "$$unformatted" >&2; \
-		exit 1; \
-	fi
+	golangci-lint fmt --diff
 	go test ./...
 	go vet ./...
 	golangci-lint run --timeout=5m --build-tags=integration

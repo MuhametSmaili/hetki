@@ -428,7 +428,7 @@ func checkPreviewLayout(t *testing.T, m model) {
 	}
 	content := m.View().Content
 	require.LessOrEqual(t, lipgloss.Height(content), max(3, m.height))
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		require.LessOrEqual(t, terminal.Width(line), m.width)
 	}
 }

@@ -34,7 +34,8 @@ func parseProcessStat(value string, pid int) (processInfo, error) {
 		return processInfo{}, fmt.Errorf("invalid native process terminal fields")
 	}
 	info := processInfo{
-		Process:    Process{PID: pid, Birth: strings.Clone(fields[19])},
+		PID:        pid,
+		Birth:      strings.Clone(fields[19]),
 		group:      int(group),
 		foreground: int(foreground),
 	}

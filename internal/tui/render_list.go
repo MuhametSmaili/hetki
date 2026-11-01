@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -127,8 +128,7 @@ func shortenPath(path string, maxWidth int) string {
 	components := strings.FieldsFunc(rest, func(r rune) bool { return r == '/' })
 	if len(components) > 1 {
 		tail := ""
-		for i := len(components) - 1; i >= 0; i-- {
-			candidateTail := components[i]
+		for _, candidateTail := range slices.Backward(components) {
 			if tail != "" {
 				candidateTail += "/" + tail
 			}

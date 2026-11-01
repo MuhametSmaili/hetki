@@ -371,7 +371,7 @@ func TestSharedWatchPrioritizesInventoryAndRunsOnlyOneAcquisition(t *testing.T) 
 			captures.Add(1)
 			return successfulScreens(ctx, targets)
 		}
-		_, _ = startLoop(t, inventoryLoop{
+		startLoop(t, inventoryLoop{
 			screens: screens, nextRetry: noRetry,
 			refresh: func(ctx context.Context) (bool, error) {
 				if inventories.Add(1) == 1 {

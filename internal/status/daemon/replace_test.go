@@ -47,7 +47,7 @@ func runIncompatibleFixture(server string) int {
 	}
 	defer cleanup()
 
-	served := serveMismatch(listener, server, os.Getpid(), incompatibleEpoch)
+	served := serveMismatch(listener, server, os.Getpid())
 	<-ctx.Done()
 	_ = listener.Close()
 	<-served
@@ -60,7 +60,7 @@ func runIncompatibleFixture(server string) int {
 
 // serveMismatch answers each connection as a daemon of the previous protocol
 // until the listener closes. The returned channel closes when it stops.
-func serveMismatch(listener *net.UnixListener, server string, pid int, epoch string) <-chan struct{} {
+func serveMismatch(listener *net.UnixListener, server string, pid int) <-chan struct{} {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -73,7 +73,7 @@ func serveMismatch(listener *net.UnixListener, server string, pid int, epoch str
 
 			_ = conn.SetDeadline(time.Now().Add(time.Second))
 			if _, err := readFrameData(conn, maxRequestBytes); err == nil {
-				row := reply{Version: protocolVersion - 1, Server: server, PID: pid, Epoch: epoch, Error: protocolMismatch}
+				row := reply{Version: protocolVersion - 1, Server: server, PID: pid, Epoch: incompatibleEpoch, Error: protocolMismatch}
 				_ = writeFrame(conn, maxReplyBytes, row)
 			}
 			_ = conn.Close()
@@ -191,7 +191,7 @@ func TestStopRefusesUnconfirmedIncompatibleDaemon(t *testing.T) {
 			}
 			listener, cleanup, err := listen(c.path)
 			require.NoError(t, err)
-			served := serveMismatch(listener, c.server, tc.reportedPID, incompatibleEpoch)
+			served := serveMismatch(listener, c.server, tc.reportedPID)
 			t.Cleanup(func() {
 				_ = listener.Close()
 				<-served
@@ -214,7 +214,7 @@ func TestTerminateRefusesInstanceThatChangedAfterObservation(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, lock.Close()) })
 	listener, cleanup, err := listen(c.path)
 	require.NoError(t, err)
-	served := serveMismatch(listener, c.server, os.Getpid(), incompatibleEpoch)
+	served := serveMismatch(listener, c.server, os.Getpid())
 	t.Cleanup(func() {
 		_ = listener.Close()
 		<-served

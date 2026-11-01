@@ -20,16 +20,16 @@ func TestDecodePresence(t *testing.T) {
 		{name: "comment", input: "# preferences\n"},
 		{name: "empty mapping", input: "{}"},
 		{name: "empty ui", input: "ui: {}"},
-		{name: "partial", input: "ui:\n  view: tree", view: ptr("tree")},
-		{name: "arbitrary strings", input: "ui: {view: secret-value, scope: other}", view: ptr("secret-value"), scope: ptr("other")},
-		{name: "empty string", input: "ui: {view: ''}", view: ptr("")},
-		{name: "explicit defaults", input: "ui: {view: flat, scope: all, preview: false}", view: ptr("flat"), scope: ptr("all"), preview: ptr(false)},
-		{name: "full", input: "ui: {view: tree, scope: tracked, preview: true}", view: ptr("tree"), scope: ptr("tracked"), preview: ptr(true)},
-		{name: "width only", input: "ui: {preview_width: 45}", width: ptr(45)},
-		{name: "explicit zero width", input: "ui: {preview_width: 0}", width: ptr(0)},
-		{name: "preview false only", input: "ui: {preview: false}", preview: ptr(false)},
-		{name: "YAML uppercase boolean", input: "ui: {preview: TRUE}", preview: ptr(true)},
-		{name: "YAML title case boolean", input: "ui: {preview: False}", preview: ptr(false)},
+		{name: "partial", input: "ui:\n  view: tree", view: new("tree")},
+		{name: "arbitrary strings", input: "ui: {view: secret-value, scope: other}", view: new("secret-value"), scope: new("other")},
+		{name: "empty string", input: "ui: {view: ''}", view: new("")},
+		{name: "explicit defaults", input: "ui: {view: flat, scope: all, preview: false}", view: new("flat"), scope: new("all"), preview: new(false)},
+		{name: "full", input: "ui: {view: tree, scope: tracked, preview: true}", view: new("tree"), scope: new("tracked"), preview: new(true)},
+		{name: "width only", input: "ui: {preview_width: 45}", width: new(45)},
+		{name: "explicit zero width", input: "ui: {preview_width: 0}", width: new(0)},
+		{name: "preview false only", input: "ui: {preview: false}", preview: new(false)},
+		{name: "YAML uppercase boolean", input: "ui: {preview: TRUE}", preview: new(true)},
+		{name: "YAML title case boolean", input: "ui: {preview: False}", preview: new(false)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := config.Decode(strings.NewReader(tt.input))
@@ -53,7 +53,7 @@ func TestDecodeIntegerWidth(t *testing.T) {
 			got, err := config.Decode(strings.NewReader("ui: {preview_width: " + tt.input + "}"))
 
 			require.NoError(t, err)
-			require.Equal(t, ptr(tt.want), got.UI.PreviewWidth)
+			require.Equal(t, new(tt.want), got.UI.PreviewWidth)
 		})
 	}
 }
@@ -72,9 +72,9 @@ func TestDecodeOverflowWidthRetainsOtherFields(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, got.UI.PreviewWidth)
 			require.True(t, *got.UI.PreviewWidth < 1 || *got.UI.PreviewWidth > 99)
-			require.Equal(t, ptr("tree"), got.UI.View)
-			require.Equal(t, ptr("tracked"), got.UI.Scope)
-			require.Equal(t, ptr(true), got.UI.Preview)
+			require.Equal(t, new("tree"), got.UI.View)
+			require.Equal(t, new("tracked"), got.UI.Scope)
+			require.Equal(t, new(true), got.UI.Preview)
 		})
 	}
 }
@@ -180,5 +180,3 @@ func TestDecodeByteLimit(t *testing.T) {
 		})
 	}
 }
-
-func ptr[T any](value T) *T { return &value }

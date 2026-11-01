@@ -21,8 +21,7 @@ func WithHint(err error, hint string) error {
 
 // ErrorHint returns the first structured hint in the error chain, if present.
 func ErrorHint(err error) string {
-	var hinted *hintedError
-	if errors.As(err, &hinted) {
+	if hinted, ok := errors.AsType[*hintedError](err); ok {
 		return hinted.hint
 	}
 	return ""

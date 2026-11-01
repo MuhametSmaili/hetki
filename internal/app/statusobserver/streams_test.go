@@ -92,9 +92,9 @@ func (c *fakeConnection) ReadOutput(ctx context.Context, emit func(observe.PaneO
 	}
 }
 
-func (c *fakeConnection) send(t *testing.T, pane, text string) {
+func (c *fakeConnection) send(t *testing.T, text string) {
 	t.Helper()
-	item := delivery{output: observe.PaneOutput{Pane: pane, Data: []byte(text)}, ack: make(chan struct{})}
+	item := delivery{output: observe.PaneOutput{Pane: "%1", Data: []byte(text)}, ack: make(chan struct{})}
 	select {
 	case c.input <- item:
 	case <-time.After(2 * time.Second):
@@ -139,13 +139,13 @@ func streamFixture(t *testing.T) (*Streams, *recorder, map[string]*fakeConnectio
 func TestLinkedPaneHasOneStableInputOwner(t *testing.T) {
 	streams, record, connections := streamFixture(t)
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$2")))
-	connections["$2"].send(t, "%1", "first")
+	connections["$2"].send(t, "first")
 	_, initialResets := record.snapshot()
 
 	err := streams.reconcile(t.Context(), fixtureTopology(2, "$1", "$2"))
-	connections["$1"].send(t, "%1", "duplicate")
-	connections["$2"].send(t, "%1", "same")
-	connections["$2"].send(t, "%1", "same")
+	connections["$1"].send(t, "duplicate")
+	connections["$2"].send(t, "same")
+	connections["$2"].send(t, "same")
 	outputs, resets := record.snapshot()
 
 	require.NoError(t, err)
@@ -162,14 +162,14 @@ func TestPaneHandoffRevokesOldOwnerBeforeAcceptingNewBytes(t *testing.T) {
 	initial := fixtureTopology(1, "$1", "$2")
 	initial.panes["%2"] = paneFacts{pane: observe.Pane{ID: "%2", Dead: true}, sessions: []string{"$1"}}
 	require.NoError(t, streams.reconcile(t.Context(), initial))
-	connections["$1"].send(t, "%1", "before")
+	connections["$1"].send(t, "before")
 	before, oldResets := record.snapshot()
 	next := fixtureTopology(2, "$2")
 	next.panes["%2"] = initial.panes["%2"]
 
 	err := streams.reconcile(t.Context(), next)
-	connections["$1"].send(t, "%1", "delayed old owner")
-	connections["$2"].send(t, "%1", "after")
+	connections["$1"].send(t, "delayed old owner")
+	connections["$2"].send(t, "after")
 	after, resets := record.snapshot()
 
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestConnectionLossResetsImmediatelyAndReconnectCannotReviveScope(t *testing
 func testConnectionLossResetsImmediatelyAndReconnectCannotReviveScope(t *testing.T) {
 	streams, record, connections := streamFixture(t)
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1")))
-	connections["$1"].send(t, "%1", "before")
+	connections["$1"].send(t, "before")
 	before, oldResets := record.snapshot()
 	failed := connections["$1"]
 
@@ -196,7 +196,7 @@ func testConnectionLossResetsImmediatelyAndReconnectCannotReviveScope(t *testing
 	_, lossResets := record.snapshot()
 	time.Sleep(time.Until(streams.nextRetry()))
 	err := streams.reconcile(t.Context(), fixtureTopology(2, "$1"))
-	connections["$1"].send(t, "%1", "fresh")
+	connections["$1"].send(t, "fresh")
 	after, _ := record.snapshot()
 
 	require.Len(t, lossResets, len(oldResets)+1)
@@ -240,7 +240,7 @@ func TestNativeScopeChangesResetButResizePreservesStream(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			streams, record, connections := streamFixture(t)
 			require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1")))
-			connections["$1"].send(t, "%1", "before")
+			connections["$1"].send(t, "before")
 			_, before := record.snapshot()
 			next := fixtureTopology(2, "$1")
 			facts := next.panes["%1"]
@@ -248,7 +248,7 @@ func TestNativeScopeChangesResetButResizePreservesStream(t *testing.T) {
 			next.panes["%1"] = facts
 
 			err := streams.reconcile(t.Context(), next)
-			connections["$1"].send(t, "%1", "after")
+			connections["$1"].send(t, "after")
 			outputs, resets := record.snapshot()
 
 			require.NoError(t, err)
@@ -292,7 +292,7 @@ func TestConsumerFailureInvalidatesTheConnection(t *testing.T) {
 	require.NoError(t, streams.reconcile(t.Context(), fixtureTopology(1, "$1")))
 	_, before := record.snapshot()
 
-	connections["$1"].send(t, "%1", "bad")
+	connections["$1"].send(t, "bad")
 	await(t, streams.Changes())
 	_, after := record.snapshot()
 	err := streams.Close()

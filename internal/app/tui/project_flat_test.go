@@ -338,15 +338,16 @@ func TestDestinationOrderHasDeterministicFallbacks(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			left, right := base, base
-			if test.left.SessionName != "" {
+			switch {
+			case test.left.SessionName != "":
 				left.SessionName, right.SessionName = test.left.SessionName, test.right.SessionName
-			} else if test.left.WindowIndex != 0 {
+			case test.left.WindowIndex != 0:
 				left.WindowIndex, right.WindowIndex = test.left.WindowIndex, test.right.WindowIndex
-			} else if test.left.RawPath != "" {
+			case test.left.RawPath != "":
 				left.RawPath, right.RawPath = test.left.RawPath, test.right.RawPath
-			} else if test.left.Target.SessionID != "" {
+			case test.left.Target.SessionID != "":
 				left.Target.SessionID, right.Target.SessionID = test.left.Target.SessionID, test.right.Target.SessionID
-			} else {
+			default:
 				left.Target.WindowID, right.Target.WindowID = test.left.Target.WindowID, test.right.Target.WindowID
 			}
 			assert.True(t, destinationLess(left, right, frecency.Scores{}))

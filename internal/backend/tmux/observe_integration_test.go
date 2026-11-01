@@ -58,6 +58,7 @@ func nativeStatusFixtureWithBinary(t *testing.T, bin string) (*TmuxBackend, obse
 // The two explicit binaries let this test exercise different protocol families
 // in one process without changing PATH or requiring mise in the test suite.
 func TestNativeStatusMixedServerVersions(t *testing.T) {
+	t.Parallel()
 	legacy := os.Getenv("HETKI_TEST_TMUX_LEGACY")
 	current := os.Getenv("HETKI_TEST_TMUX_CURRENT")
 	if legacy == "" || current == "" {

@@ -86,14 +86,14 @@ func renderedTextCell(t *testing.T, lines []string, width int, text string) *uv.
 
 	for _, line := range lines {
 		plain := terminal.Sanitize(line)
-		index := strings.Index(plain, text)
-		if index < 0 {
+		before, _, ok := strings.Cut(plain, text)
+		if !ok {
 			continue
 		}
 
 		screen := lipgloss.NewCanvas(width, 1)
 		uv.NewStyledString(line).Draw(screen, screen.Bounds())
-		return screen.CellAt(terminal.Width(plain[:index]), 0)
+		return screen.CellAt(terminal.Width(before), 0)
 	}
 
 	t.Fatalf("rendered lines do not contain %q", text)

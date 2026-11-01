@@ -58,8 +58,7 @@ func (c *Client) probe(ctx context.Context) (observation, error) {
 	if err == nil || errors.Is(err, ErrBusy) {
 		return observation{state: Running, info: info}, nil
 	}
-	var mismatch *ProtocolMismatchError
-	if errors.As(err, &mismatch) {
+	if mismatch, ok := errors.AsType[*ProtocolMismatchError](err); ok {
 		reported := Info{PID: mismatch.PID, Epoch: mismatch.Epoch}
 		return observation{state: Incompatible, info: reported, protocol: mismatch.Version}, nil
 	}

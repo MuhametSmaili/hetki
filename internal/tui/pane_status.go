@@ -175,8 +175,7 @@ func (m model) nextStatusFrame(now time.Time) time.Time {
 	// Hidden window details still affect search when their status expires.
 	due := p.windowChangeDue
 	for _, row := range m.items.VisibleRows() {
-		switch p.rowValue(row.Item.ID, now).State {
-		case status.Working:
+		if p.rowValue(row.Item.ID, now).State == status.Working {
 			due = earlierStatusTime(due, now.Truncate(statusSpinnerPeriod).Add(statusSpinnerPeriod))
 		}
 		if _, ok := p.windows[row.Item.ID]; ok {

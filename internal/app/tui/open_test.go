@@ -245,7 +245,7 @@ func TestPreparedServiceNoticeReachesUIAlongsideDriverAndStatus(t *testing.T) {
 	privateConfig(t, "ui: {view: wrong, scope: tracked, preview: true, preview_width: 18446744073709551616}")
 	service, err := prepareService(t.Context(), nil, Overrides{})
 	require.NoError(t, err)
-	driver := &initialNoticeDriver{openingStatusDriver: openingStatusDriver{err: fmt.Errorf("status fixture unavailable")}}
+	driver := &initialNoticeDriver{err: fmt.Errorf("status fixture unavailable")}
 	service.Driver = driver
 	service.RunUI = func(_ context.Context, snapshot list.Snapshot, options ui.Options, _ ui.Runtime) (ui.Result, error) {
 		require.Equal(t, ui.State{View: ui.ViewFlat, Scope: ui.ScopeTracked, Preview: true}, options.Initial)

@@ -24,7 +24,7 @@ func TestTreeBindsPaneDetailsToTheirOwnStatus(t *testing.T) {
 		{ID: "%1", Active: true, Path: "/shell", Command: "zsh"},
 	}
 	state.Sessions[0].DefaultShell = "/bin/zsh"
-	b := &projectionStatusBackend{stubBackend: stubBackend{state: state}, server: server}
+	b := &projectionStatusBackend{state: state, server: server}
 	adapter := newLiveAdapter(func() (Backend, error) { return b, nil }, nil, nil)
 
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{

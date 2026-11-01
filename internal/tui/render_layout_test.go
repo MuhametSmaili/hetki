@@ -133,7 +133,7 @@ func TestHeadersAndModalsSanitizeAndFit(t *testing.T) {
 			if strings.Contains(output, "owned") || strings.Contains(output, "\nnext") {
 				t.Fatalf("width %d rendered unsafe text: %q", width, output)
 			}
-			for _, line := range strings.Split(output, "\n") {
+			for line := range strings.SplitSeq(output, "\n") {
 				if actual := terminal.Width(line); actual > width {
 					t.Fatalf("width %d rendered line width %d: %q", width, actual, line)
 				}

@@ -88,6 +88,9 @@ jobs:
           version: v2.15.0
           args: --timeout=5m --build-tags=integration
 
+      - name: Verify formatting with pinned golangci-lint
+        run: golangci-lint fmt --diff
+
       - name: Validate workflows with pinned actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.9
 

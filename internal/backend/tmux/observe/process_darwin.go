@@ -43,7 +43,8 @@ func readProcess(ctx context.Context, pid int) (processInfo, error) {
 	}
 
 	info := processInfo{
-		Process:    Process{PID: pid, Birth: fmt.Sprintf("%d:%d", start.Sec, start.Usec)},
+		PID:        pid,
+		Birth:      fmt.Sprintf("%d:%d", start.Sec, start.Usec),
 		group:      int(proc.Eproc.Pgid),
 		foreground: int(proc.Eproc.Tpgid),
 	}

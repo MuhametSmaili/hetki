@@ -36,26 +36,26 @@ keymap: {normal: {toggle_preview: [p]}}
 
 	require.NoError(t, err)
 	require.Equal(t, &config.Theme{
-		Text:        ptr("#010101"),
-		Context:     ptr("#171717"),
-		Command:     ptr("#181818"),
-		Muted:       ptr("#020202"),
-		Hint:        ptr("#030303"),
-		Secondary:   ptr("#040404"),
-		Emphasis:    ptr("#050505"),
-		Active:      ptr("#060606"),
-		Accent:      ptr("#070707"),
-		Border:      ptr("#080808"),
-		Divider:     ptr("#090909"),
-		Working:     ptr("#101010"),
-		Blocked:     ptr("#111111"),
-		Idle:        ptr("#121212"),
-		Success:     ptr("#131313"),
-		Error:       ptr("#141414"),
-		SelectionFG: ptr("#151515"),
-		SelectionBG: ptr("#161616"),
+		Text:        new("#010101"),
+		Context:     new("#171717"),
+		Command:     new("#181818"),
+		Muted:       new("#020202"),
+		Hint:        new("#030303"),
+		Secondary:   new("#040404"),
+		Emphasis:    new("#050505"),
+		Active:      new("#060606"),
+		Accent:      new("#070707"),
+		Border:      new("#080808"),
+		Divider:     new("#090909"),
+		Working:     new("#101010"),
+		Blocked:     new("#111111"),
+		Idle:        new("#121212"),
+		Success:     new("#131313"),
+		Error:       new("#141414"),
+		SelectionFG: new("#151515"),
+		SelectionBG: new("#161616"),
 	}, got.Theme)
-	require.Equal(t, ptr("tree"), got.UI.View)
+	require.Equal(t, new("tree"), got.UI.View)
 	require.Equal(t, []string{"p"}, got.Keymap["normal"]["toggle_preview"])
 }
 
@@ -67,8 +67,8 @@ func TestDecodeThemeDistinguishesOmittedAndInvalidStrings(t *testing.T) {
 	}{
 		{"omitted", "{}", nil},
 		{"empty theme", "theme: {}", &config.Theme{}},
-		{"empty override", "theme: {accent: ''}", &config.Theme{Accent: ptr("")}},
-		{"invalid string remains a preference", "theme: {accent: blue}", &config.Theme{Accent: ptr("blue")}},
+		{"empty override", "theme: {accent: ''}", &config.Theme{Accent: new("")}},
+		{"invalid string remains a preference", "theme: {accent: blue}", &config.Theme{Accent: new("blue")}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := config.Decode(strings.NewReader(test.input))

@@ -13,7 +13,7 @@ linters:
     - errcheck
     - errorlint
 
-    # Bug classes with no current findings.
+    # Bug classes.
     - gocritic
     - asasalint
     - bidichk
@@ -26,11 +26,19 @@ linters:
     - unconvert
     - usestdlibvars
 
+    # Modern Go idioms.
+    - modernize
+
+    # API hygiene.
+    - unparam
+
     # Tests and loops.
     - fatcontext
     - intrange
     - makezero
     - testifylint
+    - thelper
+    - tparallel
     - usetesting
     - wastedassign
 
@@ -39,21 +47,32 @@ linters:
     gocognit:
       min-complexity: 15
     gocritic:
-      disable-all: true
+      # The stable default checks plus badLock.
       enabled-checks:
-        - argOrder
-        - badCall
-        - badCond
         - badLock
-        - caseOrder
-        - dupArg
-        - dupCase
-        - exitAfterDefer
+    govet:
+      enable:
+        - nilness
+        - unusedwrite
     nolintlint:
       require-explanation: true
       require-specific: true
+    thelper:
+      tb:
+        name: false
   exclusions:
     warn-unused: true
     presets:
       # Close, Flush, print and os.*env results.
       - std-error-handling
+    rules:
+      # These files use table-driven step closures that take *testing.T but are
+      # not helpers. Marking them with t.Helper() would hide the assertion line.
+      - path: '(internal/app/statusobserver/protocol_lifecycle_test|internal/app/tui/open_test|internal/state/sessions_test|internal/status/daemon/(executable|inspection|runtime)_test|internal/status/service/outcome_test|internal/tui/menu_update_test)\.go'
+        linters:
+          - thelper
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

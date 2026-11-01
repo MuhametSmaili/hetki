@@ -22,7 +22,7 @@ func delayedScreenRenewalSource(t *testing.T) (*Source, status.PaneRef) {
 		locations: []observe.Location{{Session: "$1", Window: "@1", Pane: panes[0].Ref.ID}},
 	}
 	revision := uint64(1)
-	_, _ = startLoop(t, inventoryLoop{
+	startLoop(t, inventoryLoop{
 		changes:   make(chan struct{}, 1),
 		nextRetry: noRetry,
 		screens:   screens,

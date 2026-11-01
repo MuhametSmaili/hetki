@@ -39,10 +39,7 @@ func (m *Model) reflowRows() {
 	}
 
 	lastPage := len(m.rows) - m.rowsThatFit(len(m.rows)-1, -1)
-	m.offset = min(max(0, m.offset), lastPage)
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	}
+	m.offset = min(m.cursor, min(max(0, m.offset), lastPage))
 	if m.cursor >= m.offset+m.rowsThatFit(m.offset, 1) {
 		m.offset = m.cursor - m.rowsThatFit(m.cursor, -1) + 1
 	}

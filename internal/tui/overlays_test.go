@@ -86,7 +86,7 @@ func TestEmptyInputFeedbackIsVisibleAndClearsWhenEditingOrCanceling(t *testing.T
 
 func TestOverlayResultsRequireAPendingRequest(t *testing.T) {
 	for _, result := range []ActionResult{
-		{Menu: menuPtr(testItemMenu())},
+		{Menu: new(testItemMenu())},
 		{Input: &InputPrompt{Title: "RENAME"}},
 		{Confirmation: &Confirmation{Title: "DELETE"}},
 	} {
