@@ -9,3 +9,12 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "ci"
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"

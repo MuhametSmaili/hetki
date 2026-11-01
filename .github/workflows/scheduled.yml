@@ -1,0 +1,72 @@
+name: Scheduled checks
+
+# Pull requests already run the fuzz seed corpus through the normal test suite.
+# These jobs explore beyond it on a schedule, and catch newly disclosed
+# vulnerabilities in dependencies that have not changed.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: ./internal/foreground
+            fuzz: FuzzParseDarwinArgvZero
+          - package: ./internal/terminal
+            fuzz: FuzzScreenLines
+          - package: ./internal/backend/tmux
+            fuzz: FuzzParsePaneLine
+          - package: ./internal/backend/tmux/observe
+            fuzz: FuzzControlOutput
+          - package: ./internal/status/daemon
+            fuzz: FuzzReadFrame
+          - package: ./internal/status/protocols/internal/osc7501
+            fuzz: FuzzObserverAtomicity
+          - package: ./internal/terminalstream
+            fuzz: FuzzDecoderChunkBoundaries
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up exact Go version
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Fuzz ${{ matrix.fuzz }}
+        env:
+          FUZZ_TARGET: ${{ matrix.fuzz }}
+        run: go test -run=^$ -fuzz="^${FUZZ_TARGET}$" -fuzztime=60s ${{ matrix.package }}
+
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up exact Go version
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Scan reachable vulnerabilities with pinned govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
