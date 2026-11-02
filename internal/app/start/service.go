@@ -72,7 +72,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 		return appshared.WithHint(fmt.Errorf("failed to detect backend: %w", err), "Install tmux and make sure it is available on PATH.")
 	}
 
-	p, err := buildPlan(ctx, b, workspace, opts)
+	p, observed, err := buildPlan(ctx, b, workspace, opts)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func (s Service) Run(ctx context.Context, opts Options) error {
 		return nil
 	}
 
-	warnIfMetadataStampFails(ctx, b, workspace, workspacePath)
+	warnIfMetadataStampFails(ctx, b, workspace, workspacePath, observed)
 
 	if opts.Detach {
 		return ctx.Err()
@@ -112,12 +112,12 @@ func (s Service) detectBackend() (Backend, error) {
 	return backend.Detect()
 }
 
-func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, opts Options) (*plan.Plan, error) {
+func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, opts Options) (*plan.Plan, []backend.Session, error) {
 	desired := converter.ManifestToState(workspace)
 
 	result, err := b.QueryState(ctx)
 	if err != nil {
-		return nil, appshared.WithHint(fmt.Errorf("failed to query backend state: %w", err), "Check access to the tmux server and retry.")
+		return nil, nil, appshared.WithHint(fmt.Errorf("failed to query backend state: %w", err), "Check access to the tmux server and retry.")
 	}
 	actual := converter.BackendResultToState(result)
 
@@ -127,19 +127,19 @@ func buildPlan(ctx context.Context, b Backend, workspace *manifest.Workspace, op
 	strategy := selectStrategy(opts)
 	p := strategy.Plan(planDiff)
 	if err := p.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid reconciliation plan: %w", err)
+		return nil, nil, fmt.Errorf("invalid reconciliation plan: %w", err)
 	}
 	if opts.Force {
 		if err := validateWindowRemoval(result.Sessions, p, b.ValidateObservedLayout); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	if opts.PruneSessions {
 		if err := validatePruning(result, p); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return p, nil
+	return p, result.Sessions, nil
 }
 
 func selectStrategy(opts Options) plan.Strategy {
@@ -174,15 +174,15 @@ func executePlan(ctx context.Context, b Backend, p *plan.Plan, workspacePath str
 	return nil
 }
 
-func warnIfMetadataStampFails(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) {
-	err := stampWorkspacePath(ctx, b, workspace, workspacePath)
+func warnIfMetadataStampFails(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string, observed []backend.Session) {
+	err := stampWorkspacePath(ctx, b, workspace, workspacePath, observed)
 	if err == nil || (ctx.Err() == context.Canceled && backend.IsCancellationOnly(err)) {
 		return
 	}
 	logger.Warningf("workspace metadata not set: %v", err)
 }
 
-func stampWorkspacePath(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string) error {
+func stampWorkspacePath(ctx context.Context, b Backend, workspace *manifest.Workspace, workspacePath string, observed []backend.Session) error {
 	path := strings.TrimSpace(workspacePath)
 	if path == "" {
 		return nil
@@ -191,9 +191,14 @@ func stampWorkspacePath(ctx context.Context, b Backend, workspace *manifest.Work
 		path = absPath
 	}
 
+	workspacePaths := make(map[string]string, len(observed))
+	for _, session := range observed {
+		workspacePaths[session.Name] = session.WorkspacePath
+	}
+
 	actions := make([]backend.Action, 0, len(workspace.Sessions))
 	for _, session := range workspace.Sessions {
-		if strings.TrimSpace(session.Name) == "" {
+		if strings.TrimSpace(session.Name) == "" || workspacePaths[session.Name] == path {
 			continue
 		}
 		actions = append(actions, backend.SetSessionOptionAction{

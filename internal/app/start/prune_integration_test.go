@@ -55,7 +55,7 @@ func TestPruneSessionsOnIsolatedTmux(t *testing.T) {
 				wantWindows = []string{"editor", "tools"}
 			}
 			require.ElementsMatch(t, wantWindows, backendWindowNames(retained.Windows))
-			second, err := buildPlan(ctx, b, workspace, opts)
+			second, _, err := buildPlan(ctx, b, workspace, opts)
 			require.NoError(t, err)
 			require.True(t, second.IsEmpty(), "repeated start must not recreate windows: %v", second.Actions)
 		})

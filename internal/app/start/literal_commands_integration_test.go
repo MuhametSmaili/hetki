@@ -83,7 +83,7 @@ func TestStartupCommandsPreserveEscapesAndRunOnce(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, windowCommand, workspace.Sessions[0].Windows[0].Panes[0].Command)
 				assert.Equal(t, paneCommand, workspace.Sessions[0].Windows[0].Panes[1].Command)
-				second, err := buildPlan(ctx, b, workspace, Options{Force: force})
+				second, _, err := buildPlan(ctx, b, workspace, Options{Force: force})
 				require.NoError(t, err)
 				require.True(t, second.IsEmpty(), "matching second start must not repeat commands (force=%v): %v", force, second.Actions)
 

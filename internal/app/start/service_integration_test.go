@@ -5,6 +5,7 @@ package start
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -92,6 +93,34 @@ func TestCreationFollowupsUseReturnedIDsOnNonEmptyBaseOneSession(t *testing.T) {
 	if assert.Len(t, server.Panes, 2) {
 		assert.True(t, server.Panes[1].Zoom, "zoom must target the returned pane ID after layout changes")
 	}
+}
+
+func TestRepeatedStartSkipsUnchangedMetadataOnIsolatedTmux(t *testing.T) {
+	b, _ := newIsolatedStartBackend(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	path := filepath.Join(directory, "work.yaml")
+	workspace := &manifest.Workspace{Sessions: []manifest.Session{{
+		Name: "dev", Windows: []manifest.Window{{Name: "editor", Path: directory}},
+	}}}
+	service := NewService(func() (Backend, error) { return b, nil }, backendtmux.ValidateAuthoredLayout)
+	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
+		return workspace, path, nil
+	}
+	require.NoError(t, service.Run(ctx, Options{Path: new(path), Detach: true}))
+	live, err := b.QueryState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, path, findBackendSession(t, live.Sessions, "dev").WorkspacePath)
+	t.Setenv("HETKI_TEST_FAIL_COMMAND", "set-option")
+
+	output := captureLoggerOutput(t, func() {
+		err = service.Run(ctx, Options{Path: new(path), Detach: true})
+	})
+
+	require.NoError(t, err)
+	assert.NotContains(t, output, "workspace metadata not set", "unchanged metadata must not attempt the failing mutation")
 }
 
 func findBackendSession(t *testing.T, sessions []backend.Session, name string) backend.Session {

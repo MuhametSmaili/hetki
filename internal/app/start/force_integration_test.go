@@ -82,7 +82,7 @@ func TestForceReplacementPreservesSessionOnIsolatedTmux(t *testing.T) {
 				assert.Equal(t, directory, window.Panes[1].Path)
 				assert.True(t, window.Panes[1].Zoom, "follow-ups must target the replacement, not the old same-named window")
 			}
-			second, err := buildPlan(ctx, b, workspace, Options{Force: true})
+			second, _, err := buildPlan(ctx, b, workspace, Options{Force: true})
 			require.NoError(t, err)
 			assert.True(t, second.IsEmpty(), "second force start must plan no actions, got %v", second.Actions)
 		})

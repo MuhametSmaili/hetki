@@ -331,6 +331,81 @@ func TestServiceRunStampsWorkspacePathWhenPlanIsEmpty(t *testing.T) {
 	}
 }
 
+func TestServiceRunSkipsUnchangedWorkspaceMetadata(t *testing.T) {
+	directory := t.TempDir()
+	t.Chdir(directory)
+	directory, err := os.Getwd()
+	require.NoError(t, err)
+
+	path := filepath.Join(directory, "work.yaml")
+	workspace := &manifest.Workspace{Sessions: []manifest.Session{{
+		Name: "dev", Windows: []manifest.Window{{Name: "editor", Path: directory}},
+	}}}
+
+	for _, tc := range []struct {
+		name          string
+		workspacePath string
+		detach        bool
+		wantAttach    int
+	}{
+		{name: "attached", workspacePath: path, wantAttach: 1},
+		{name: "detached", workspacePath: path, detach: true},
+		{name: "relative path", workspacePath: "work.yaml", detach: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &stubBackend{queryResult: backend.StateResult{Sessions: []backend.Session{{
+				Name: "dev", WorkspacePath: path,
+				Windows: []backend.Window{{Name: "editor", Path: directory}},
+			}}}}
+			service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
+			service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
+				return workspace, tc.workspacePath, nil
+			}
+
+			err := service.Run(t.Context(), Options{Path: new(path), Detach: tc.detach})
+
+			require.NoError(t, err)
+			assert.Equal(t, 1, stub.queryCalls)
+			assert.Zero(t, stub.applyCalls, "unchanged metadata must not launch mutation commands")
+			assert.Equal(t, tc.wantAttach, stub.attachCalls)
+		})
+	}
+}
+
+func TestServiceRunStampsOnlyNewOrChangedWorkspaceMetadata(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "work.yaml")
+	workspace := &manifest.Workspace{Sessions: []manifest.Session{
+		{Name: "unchanged", Windows: []manifest.Window{{Name: "editor", Path: directory}}},
+		{Name: "missing", Windows: []manifest.Window{{Name: "editor", Path: directory}}},
+		{Name: "different", Windows: []manifest.Window{{Name: "editor", Path: directory}}},
+		{Name: "new", Windows: []manifest.Window{{Name: "editor", Path: directory}}},
+	}}
+	stub := &stubBackend{queryResult: backend.StateResult{Sessions: []backend.Session{
+		{Name: "unchanged", WorkspacePath: path, Windows: []backend.Window{{Name: "editor", Path: directory}}},
+		{Name: "missing", Windows: []backend.Window{{Name: "editor", Path: directory}}},
+		{Name: "different", WorkspacePath: filepath.Join(directory, "other.yaml"), Windows: []backend.Window{{Name: "editor", Path: directory}}},
+		{Name: "unrelated", WorkspacePath: path, Windows: []backend.Window{{Name: "editor", Path: directory}}},
+	}}}
+	service := NewService(func() (Backend, error) { return stub, nil }, acceptLayout)
+	service.LoadWorkspace = func(string) (*manifest.Workspace, string, error) {
+		return workspace, path, nil
+	}
+
+	err := service.Run(t.Context(), Options{Path: new(path), Detach: true})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, stub.queryCalls, "metadata comparison must reuse the planning snapshot")
+	assert.Equal(t, [][]backend.Action{
+		{backend.CreateSessionAction{Name: "new", WindowName: "editor", Path: directory}},
+		{
+			backend.SetSessionOptionAction{Session: "missing", Key: backend.WorkspacePathOption, Value: path},
+			backend.SetSessionOptionAction{Session: "different", Key: backend.WorkspacePathOption, Value: path},
+			backend.SetSessionOptionAction{Session: "new", Key: backend.WorkspacePathOption, Value: path},
+		},
+	}, stub.allActions)
+}
+
 func canonicalPath(path string) (string, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
