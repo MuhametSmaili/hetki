@@ -1,61 +1,291 @@
 :root {
-  --vp-c-brand-1: #5753a6;
-  --vp-c-brand-2: #6864b8;
-  --vp-c-brand-3: #5753a6;
-  --vp-c-brand-soft: rgba(87, 83, 166, 0.12);
+  --vp-font-family-base:
+    "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --vp-font-family-mono:
+    "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Only weights and styles we load may render; never a faked bold or italic. */
+  font-synthesis: none;
+
+  --vp-c-bg: oklch(1 0 0);
+  --vp-c-bg-alt: oklch(0.976 0.001 286.376);
+  --vp-c-bg-soft: oklch(0.961 0.001 286.375);
+  --vp-c-bg-elv: oklch(1 0 0);
+  --vp-c-divider: oklch(0 0 0 / 0.08);
+  --vp-c-gutter: oklch(0 0 0 / 0.06);
+  --vp-c-text-1: oklch(0.179 0.004 285.981);
+  --vp-c-text-2: oklch(0.179 0.004 285.981 / 0.66);
+  /* 0.58 is the lowest opacity that keeps notes and footer text at 4.5:1 on white. */
+  --vp-c-text-3: oklch(0.179 0.004 285.981 / 0.58);
+
+  --vp-c-brand-1: oklch(0.54 0.191 257.481);
+  --vp-c-brand-2: oklch(0.451 0.164 258.179);
+  --vp-c-brand-3: oklch(0.54 0.191 257.481);
+  --vp-c-brand-soft: oklch(0.54 0.191 257.481 / 0.12);
 }
 
 .dark {
-  --vp-c-brand-1: #b4befe;
-  --vp-c-brand-2: #c5ceff;
-  --vp-c-brand-3: #b4befe;
-  --vp-c-brand-soft: rgba(180, 190, 254, 0.14);
-  --vp-button-brand-text: #24273a;
-  --vp-button-brand-hover-text: #24273a;
-  --vp-button-brand-active-text: #24273a;
+  --vp-c-bg: oklch(0.15 0.002 286.141);
+  --vp-c-bg-alt: oklch(0.169 0.004 285.951);
+  --vp-c-bg-soft: oklch(0.201 0.004 286.04);
+  --vp-c-bg-elv: oklch(0.192 0.004 286.018);
+  /* Solid, not translucent white: alpha hairlines glow on a near-black page. */
+  --vp-c-divider: oklch(0.24 0.004 286.112);
+  /* VitePress draws the nav, footer, and code-group dividers in gutter; pure black
+     is darker than the page and reads as a seam, so match the other hairlines. */
+  --vp-c-gutter: oklch(0.24 0.004 286.112);
+  --vp-c-border: oklch(0.286 0.005 286.053);
+  --vp-c-text-1: oklch(0.947 0.003 286.349);
+  --vp-c-text-2: oklch(0.947 0.003 286.349 / 0.62);
+  /* 0.5 is the lowest opacity that keeps notes and footer text at 4.5:1 here. */
+  --vp-c-text-3: oklch(0.947 0.003 286.349 / 0.5);
+
+  --vp-c-brand-1: oklch(0.786 0.115 246.66);
+  --vp-c-brand-2: oklch(0.856 0.077 244.093);
+  --vp-c-brand-3: oklch(0.715 0.152 253.306);
+  --vp-c-brand-soft: oklch(0.715 0.152 253.306 / 0.14);
+  --vp-button-brand-text: oklch(0.15 0.002 286.141);
+  --vp-button-brand-hover-text: oklch(0.15 0.002 286.141);
+  --vp-button-brand-active-text: oklch(0.15 0.002 286.141);
 }
 
-.VPHero .main {
-  order: 1;
+/* Terminal panels follow the native palette, with lighter muted browser text.
+   They stay dark in both themes. */
+:root {
+  --hk-term-bg: #16181c;
+  --hk-term-bar: #1d2025;
+  --hk-term-border: #30363d;
+  --hk-term-text: #e6edf3;
+  --hk-term-secondary: #8b949e;
+  --hk-term-muted: #8b949e;
+  --hk-term-command: #39c5cf;
+  --hk-term-active: #58a6ff;
+  --hk-term-selection: #1c2d44;
+  --hk-ok: #3fb950;
+  --hk-warn: #d29922;
+  --hk-err: #ff7b72;
+
+  /* Not Hetki's: the shell prompt, code in the editor panes, and tmux's status line. */
+  --hk-term-prompt: #79c0ff;
+  --hk-syntax-fn: #d2a8ff;
+  --hk-syntax-const: #79c0ff;
+  --hk-tmux-bg: #17271d;
+  --hk-tmux-fg: #7ee787;
 }
 
-.VPHero .image {
-  order: 2;
-  margin: 32px 0 0;
+.hk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.VPHero .image-container {
+.hk-picker-list {
+  container-type: inline-size;
+  container-name: picker;
+}
+
+.hk-panel {
+  overflow: hidden;
+  border: 1px solid var(--hk-term-border);
+  border-radius: 14px;
+  background: var(--hk-term-bg);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 8px 24px rgba(15, 23, 42, 0.08),
+    0 24px 64px rgba(15, 23, 42, 0.08);
+  color: var(--hk-term-text);
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hk-panel button {
+  transition-property: color, background-color, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: ease-out;
+}
+
+.hk-panel button:active {
+  transform: scale(0.96);
+}
+
+.hk-panel button:focus-visible {
+  outline: 1px solid var(--hk-term-text);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.dark .hk-panel {
+  border-color: oklch(0.262 0.006 286.01);
+  box-shadow: none;
+}
+
+.hk-bar {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  transform: none;
+  justify-content: space-between;
+  gap: 2ch;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hk-term-border);
+  background: var(--hk-term-bar);
+  color: var(--hk-term-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-@media (min-width: 960px) {
-  .VPHero .image {
-    margin: 0;
-    padding-left: 32px;
+.vp-doc h2 {
+  text-wrap: balance;
+}
+
+/*
+ * One grid for the home page. Content sits inside a 1280px frame with
+ * --hk-page outside it and --hk-pad inside it, so the nav, hero copy,
+ * sections, and footer share the same left and right edges.
+ */
+:root {
+  --hk-max: 1280px;
+  --hk-page: 12px;
+  --hk-pad: 20px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --hk-page: 24px;
+    --hk-pad: 48px;
   }
 }
 
-.VPHero .image-src {
-  position: static;
-  transform: none;
-  width: 100%;
-  max-width: 560px;
-  max-height: none;
-  border-radius: 10px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+@media (min-width: 1100px) {
+  :root {
+    --hk-pad: 72px;
+  }
 }
 
-.VPHero .image-bg {
-  display: none;
+.VPNavBar:not(.has-sidebar) .wrapper {
+  padding-inline: var(--hk-page);
 }
 
-.VPHome .vp-doc {
-  max-width: 960px;
-  margin: 48px auto 0;
-  padding: 0 24px 48px;
+.VPNavBar:not(.has-sidebar) .container {
+  max-width: var(--hk-max);
+  padding-inline: var(--hk-pad);
+}
+
+/* Optically align the GitHub glyph, not its 36px hit box, with the content edge. */
+.VPNavBar:not(.has-sidebar) .VPNavBarSocialLinks {
+  margin-inline-end: -8px;
+}
+
+.VPNavBarTitle .title {
+  font-family: var(--vp-font-family-mono);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.VPContent.is-home .VPHome {
+  margin-bottom: 0;
+}
+
+/*
+ * The gradient frame used by the hero and the closing call to action.
+ * Daylight sky in light mode, night sky in dark mode; terminals stay dark.
+ */
+.hk-frame {
+  --frame-text: #08182b;
+  --frame-muted: rgba(8, 24, 43, 0.7);
+  /* 0.62 keeps the faint link at 4.5:1 on the pale sky. */
+  --frame-faint: rgba(8, 24, 43, 0.62);
+  --frame-cursor: #0969da;
+  --hk-window-shadow:
+    0 2px 6px rgba(8, 24, 43, 0.12), 0 24px 60px rgba(8, 24, 43, 0.28);
+
+  --install-bg: rgba(255, 255, 255, 0.6);
+  --install-border: rgba(8, 24, 43, 0.12);
+  --install-text: #08182b;
+  --install-muted: rgba(8, 24, 43, 0.4);
+  --install-accent: #0969da;
+  --install-hover: rgba(8, 24, 43, 0.05);
+
+  position: relative;
+  max-width: var(--hk-max);
+  margin: 0 auto;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 20px;
+  background:
+    radial-gradient(
+      ellipse 70% 45% at 50% 100%,
+      rgba(57, 197, 207, 0.32) 0%,
+      rgba(57, 197, 207, 0) 70%
+    ),
+    linear-gradient(180deg, #a3d2ec 0%, #cfe8f6 55%, #e9f5fb 100%);
+}
+
+.dark .hk-frame {
+  --frame-text: #ffffff;
+  --frame-muted: rgba(255, 255, 255, 0.68);
+  --frame-faint: rgba(255, 255, 255, 0.5);
+  --frame-cursor: #7ee7ef;
+  --hk-window-shadow: 0 30px 80px rgba(1, 10, 24, 0.5);
+
+  --install-bg: rgba(0, 0, 0, 0.32);
+  --install-border: rgba(255, 255, 255, 0.12);
+  --install-text: #ffffff;
+  --install-muted: rgba(255, 255, 255, 0.4);
+  --install-accent: #7ee7ef;
+  --install-hover: rgba(255, 255, 255, 0.06);
+
+  background:
+    radial-gradient(
+      ellipse 70% 45% at 50% 100%,
+      rgba(57, 197, 207, 0.45) 0%,
+      rgba(57, 197, 207, 0) 70%
+    ),
+    linear-gradient(180deg, #010b18 0%, #04203d 60%, #08365c 100%);
+}
+
+/*
+ * The closing card sits on the plain page, so it uses an even, brighter blue
+ * lit from the top center, above its centered text, instead of the hero's night sky.
+ */
+.hk-frame.hk-cta {
+  background:
+    radial-gradient(
+      ellipse 60% 80% at 50% -10%,
+      rgba(255, 255, 255, 0.6) 0%,
+      rgba(255, 255, 255, 0) 60%
+    ),
+    linear-gradient(180deg, #b8dbf2 0%, #a3cfee 100%);
+}
+
+.dark .hk-frame.hk-cta {
+  background:
+    radial-gradient(
+      ellipse 60% 80% at 50% -10%,
+      rgba(121, 192, 255, 0.28) 0%,
+      rgba(121, 192, 255, 0) 60%
+    ),
+    linear-gradient(180deg, #10365f 0%, #0d2b4f 100%);
+}
+
+/* Fine grain keeps the gradient from banding. */
+.hk-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.18;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+.dark .hk-frame::after {
+  opacity: 0.14;
+  mix-blend-mode: overlay;
 }
