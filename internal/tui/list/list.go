@@ -85,6 +85,9 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 	candidate.snapshot = snapshot
 	candidate.details = nil
 	candidate.expanded = cloneExpanded(m.expanded, IDs(snapshot.Items))
+	markAllExpanded(snapshot.Items, candidate.expanded)
+	restoreBranchExpansion(m.snapshot.Items, m.expanded, candidate.expanded)
+
 	candidate.active = activePath(snapshot.Items, snapshot.ActiveItemID)
 	markActivePathExpanded(snapshot.Items, snapshot.ActiveItemID, candidate.expanded)
 	candidate.applyFilter()
@@ -390,6 +393,18 @@ func markAllExpanded(items []Item, expanded map[ItemID]bool) {
 			expanded[item.ID] = true
 			markAllExpanded(item.Children, expanded)
 		}
+	}
+}
+
+func restoreBranchExpansion(items []Item, previous, expanded map[ItemID]bool) {
+	for _, item := range items {
+		if len(item.Children) == 0 {
+			continue
+		}
+		if _, exists := expanded[item.ID]; exists {
+			expanded[item.ID] = previous[item.ID]
+		}
+		restoreBranchExpansion(item.Children, previous, expanded)
 	}
 }
 

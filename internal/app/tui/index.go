@@ -29,6 +29,7 @@ type liveItem struct {
 	PaneActive   bool
 	PaneIndex    int
 	OpenPaneID   string
+	PaneRows     bool
 	Last         bool
 }
 

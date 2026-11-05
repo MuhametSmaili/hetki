@@ -70,3 +70,20 @@ func TestTreeRefreshPreservesCollapsedBranches(t *testing.T) {
 		})
 	}
 }
+
+func TestTreeRefreshExpandsNewPaneBranchesWithoutExpandingCollapsedSessions(t *testing.T) {
+	split := paneTreeSnapshot()
+	single := paneTreeSnapshot()
+	single.Items[0].Children[0].Children = nil
+	m := newModel(single, nil)
+	m.view = ViewTree
+	require.True(t, m.items.CollapseAll())
+
+	m, _ = updateModel(t, m, actionResultMsg{result: ActionResult{Snapshot: &split}})
+
+	require.NoError(t, m.err)
+	require.False(t, m.items.Expansion()[list.ItemID{ID: "dev"}])
+	require.True(t, m.items.Expansion()[list.ItemID{Parent: "dev", ID: "editor"}])
+	require.True(t, m.items.ToggleSelected(true))
+	require.Len(t, m.items.Rows(), 4)
+}

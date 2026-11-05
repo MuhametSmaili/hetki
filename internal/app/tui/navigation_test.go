@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTreeOpenUsesRequestedPaneAndValidatesMembership(t *testing.T) {
+func TestTreePaneOpenValidatesMembership(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		removed bool
@@ -36,7 +36,7 @@ func TestTreeOpenUsesRequestedPaneAndValidatesMembership(t *testing.T) {
 			}
 
 			opened, err := adapter.Execute(t.Context(), ui.ActionRequest{
-				ActionID: ui.ActionOpen, ItemID: windowItemID("$1", "@1"), PaneID: "%2",
+				ActionID: ui.ActionOpen, ItemID: destinationItemID("$1", "@1", "%2"),
 			})
 
 			if tc.removed {
@@ -56,7 +56,7 @@ func TestTreeOpenUsesRequestedPaneAndValidatesMembership(t *testing.T) {
 	}
 }
 
-func TestTreeOpenKeepsTheDisplayedPaneWithoutStatus(t *testing.T) {
+func TestTreePaneOpenKeepsItsTargetAfterActivePaneChanges(t *testing.T) {
 	store := frecency.NewStore(filepath.Join(t.TempDir(), "frecency.json"))
 	stub := &stubBackend{state: liveState()}
 	stub.state.Sessions[0].Windows[0].Panes = append(stub.state.Sessions[0].Windows[0].Panes,
@@ -65,7 +65,7 @@ func TestTreeOpenKeepsTheDisplayedPaneWithoutStatus(t *testing.T) {
 
 	snapshot, err := adapter.Load(t.Context(), ui.ViewTree)
 	require.NoError(t, err)
-	row := snapshot.Items[0].Children[0]
+	row := snapshot.Items[0].Children[0].Children[0]
 	require.Equal(t, "/work/editor", row.Secondary)
 	stub.state.Sessions[0].Windows[0].Panes[0].Active = false
 	stub.state.Sessions[0].Windows[0].Panes[1].Active = true
@@ -83,4 +83,26 @@ func TestTreeOpenKeepsTheDisplayedPaneWithoutStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 	require.Equal(t, "/work/editor", records[0].Path)
+}
+
+func TestSplitWindowOpenUsesTheCurrentActivePane(t *testing.T) {
+	store := frecency.NewStore(filepath.Join(t.TempDir(), "frecency.json"))
+	stub := &stubBackend{state: linkedPaneState()}
+	adapter := loadedAdapter(t, stub)
+	adapter.frecency = store
+	window := &stub.state.Sessions[0].Windows[0]
+	window.Panes[0].Active, window.Panes[1].Active = false, true
+
+	opened, err := adapter.Execute(t.Context(), ui.ActionRequest{
+		ActionID: ui.ActionOpen, ItemID: windowItemID("$1", "@1"), PaneID: "%1",
+	})
+	require.NoError(t, err)
+	err = adapter.Navigate(t.Context(), opened.Navigation)
+
+	require.NoError(t, err)
+	require.Equal(t, []backend.Target{{SessionID: "$1", WindowID: "@1"}}, stub.switchCalls)
+	records, err := store.Load()
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.Equal(t, "/work", records[0].Path)
 }

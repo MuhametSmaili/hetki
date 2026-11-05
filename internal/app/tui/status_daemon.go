@@ -231,7 +231,7 @@ func (a *LiveAdapter) bindStatusViewLocked(view daemon.View) (ui.StatusBindings,
 		window := windowItemID(location.Session, location.Window)
 		pane := destinationItemID(location.Session, location.Window, location.Pane)
 
-		if item, ok := a.index[window]; ok && item.Kind == liveWindow {
+		if item, ok := a.index[window]; ok && item.Kind == liveWindow && !item.PaneRows {
 			bindings[window] = append(bindings[window], ref)
 			if occurrences == nil {
 				occurrences = make(map[list.ItemID]status.PaneRef, len(view.Locations))
@@ -262,6 +262,9 @@ func (a *LiveAdapter) bindStatusUpdate(view daemon.View, update *ui.StatusUpdate
 	home, _ := os.UserHomeDir()
 	for _, session := range a.input.state.Sessions {
 		for _, window := range session.Windows {
+			if len(window.Panes) > 1 {
+				continue
+			}
 			id := windowItemID(session.ID, window.ID)
 			panes := make([]ui.WindowPane, 0, len(window.Panes))
 

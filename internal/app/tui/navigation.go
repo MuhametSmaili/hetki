@@ -19,7 +19,7 @@ type preparedNavigation struct {
 
 func (item liveItem) openTarget(paneID string) backend.Target {
 	target := item.Target
-	if item.Kind != liveWindow {
+	if item.Kind != liveWindow || item.PaneRows {
 		return target
 	}
 

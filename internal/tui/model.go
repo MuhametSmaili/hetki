@@ -152,13 +152,6 @@ func (m model) reflow() model {
 	return m
 }
 
-func stackedRowHeight(row list.Row) int {
-	if row.Item.Context != "" || row.Depth > 0 {
-		return 2
-	}
-	return 1
-}
-
 const headerHeight = 2
 
 type layoutMetrics struct {

@@ -234,6 +234,11 @@ func preferredProjectionItem(
 	snapshot list.Snapshot,
 	index itemIndex,
 ) list.ItemID {
+	if selected.Kind == liveDestination {
+		if _, exists := index[selected.ID]; exists {
+			return selected.ID
+		}
+	}
 	if projection == ui.ViewTree {
 		return preferredTreeItem(selected, snapshot, index)
 	}

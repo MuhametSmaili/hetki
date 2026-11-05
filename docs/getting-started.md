@@ -38,6 +38,10 @@ Choose a flat list or a tree of sessions, windows, and panes.
 The flat list uses **frecency**: directories you use often or recently rank higher.
 Press `Ctrl+T` to switch views.
 
+In tree view, windows with two or more panes show the panes underneath.
+Select a pane to focus it, or select its window to open the active pane.
+Single-pane windows keep their compact window entry.
+
 | Key | Action |
 | --- | --- |
 | `Enter` | Open the selection. |

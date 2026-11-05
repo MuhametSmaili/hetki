@@ -4,11 +4,30 @@ import (
 	"strings"
 
 	"github.com/MuhametSmaili/hetki/internal/terminal"
+	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
 
 // Narrow rows put identity and command/status above the path.
 // A one-line viewport falls back to columns rather than overflowing.
 const narrowListWidth = 56
+
+func stackedRowHeight(row list.Row) int {
+	props := rowProps{
+		Context:   row.Item.Context,
+		Secondary: row.Item.Secondary,
+		Trailing:  row.Item.Trailing,
+		Depth:     row.Depth,
+		Branch:    row.Branch,
+	}
+	return props.stackedHeight()
+}
+
+func (row rowProps) stackedHeight() int {
+	if row.Context == "" && (row.Depth == 0 || row.Branch && row.Secondary == "" && row.Trailing == "") {
+		return 1
+	}
+	return 2
+}
 
 func usesStackedRows(props listProps) bool {
 	if props.Width >= narrowListWidth || props.Height == 1 {
@@ -33,7 +52,7 @@ func renderStackedList(props listProps) []string {
 
 	lines := make([]string, 0, 2*len(props.Rows))
 	for _, row := range props.Rows {
-		if row.Context == "" && row.Depth == 0 {
+		if row.stackedHeight() == 1 {
 			line := truncateWidth(renderRowLine(row, props.Compact), props.Width)
 			line = props.Theme.renderPrimaryLabel(row, line)
 			lines = append(lines, styleRowLine(row, line, props.Width, props.Theme))

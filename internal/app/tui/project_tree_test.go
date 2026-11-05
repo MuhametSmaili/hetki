@@ -20,7 +20,7 @@ func TestTreeBindsPaneDetailsToTheirOwnStatus(t *testing.T) {
 	inactive := status.PaneRef{Server: server.Identity(), ID: "%2", Generation: "birth"}
 	state := liveState()
 	state.Sessions[0].Windows[0].Panes = []backend.Pane{
-		{ID: "%2", Path: "/agent", Program: "opencode", Command: "node"},
+		{ID: "%2", Index: 1, Path: "/agent", Program: "opencode", Command: "node"},
 		{ID: "%1", Active: true, Path: "/shell", Command: "zsh"},
 	}
 	state.Sessions[0].DefaultShell = "/bin/zsh"
@@ -36,41 +36,50 @@ func TestTreeBindsPaneDetailsToTheirOwnStatus(t *testing.T) {
 	snapshot, err := adapter.Load(t.Context(), ui.ViewTree)
 
 	require.NoError(t, err)
-	require.Empty(t, snapshot.Items[0].Children[0].Trailing)
-	require.Equal(t, "/shell", snapshot.Items[0].Children[0].Secondary)
+	window := snapshot.Items[0].Children[0]
+	require.Empty(t, window.Trailing)
+	require.Empty(t, window.Secondary)
+	require.Len(t, window.Children, 2)
+	agent, shell := window.Children[0], window.Children[1]
+	require.Equal(t, "1", agent.Primary)
+	require.Equal(t, "opencode", agent.Trailing)
+	require.Equal(t, "/agent", agent.Secondary)
+	require.Equal(t, "0", shell.Primary)
+	require.Empty(t, shell.Trailing)
+	require.Equal(t, "/shell", shell.Secondary)
+	require.Equal(t, shell.ID, snapshot.ActiveItemID)
 	var update ui.StatusUpdate
 	adapter.bindStatusUpdate(daemon.View{Values: values, Locations: []daemon.Location{
 		{Session: "$1", Window: "@1", Pane: "%1"}, {Session: "$1", Window: "@1", Pane: "%2"},
 	}}, &update)
-	id := windowItemID("$1", "@1")
-	panes := update.Windows[id]
-	require.Len(t, panes, 2)
-	require.Equal(t, inactive, panes[0].Ref)
-	require.Equal(t, "%2", panes[0].PaneID)
-	require.Equal(t, "opencode", panes[0].Details.Trailing)
-	require.Equal(t, "/agent", panes[0].Details.Secondary)
-	require.Equal(t, active, panes[1].Ref)
-	require.Equal(t, "%1", panes[1].PaneID)
-	require.True(t, panes[1].Active)
-	require.Empty(t, panes[1].Details.Trailing)
+	require.Empty(t, update.Windows)
+	require.NotContains(t, update.Bindings, window.ID)
+	require.Equal(t, status.Blocked, update.Bindings.StateAt(agent.ID, values, now))
+	require.Equal(t, status.Idle, update.Bindings.StateAt(shell.ID, values, now))
 
 	model, err := list.New(snapshot)
 	require.NoError(t, err)
-	model.SetDetails(map[list.ItemID]list.Details{id: panes[0].Details})
 	model.SetQuery("opencode")
-	require.Len(t, model.Rows(), 2)
-	require.Equal(t, id, model.Rows()[1].Item.ID)
+	require.Len(t, model.Rows(), 3)
+	require.Equal(t, window.ID, model.Rows()[1].Item.ID)
+	require.Equal(t, agent.ID, model.Rows()[2].Item.ID)
 
 	model.SetQuery("/shell")
-	require.Empty(t, model.Rows(), "search must use the displayed pane's path")
-	item, err := adapter.resolveItem(id)
+	require.Len(t, model.Rows(), 3)
+	require.Equal(t, shell.ID, model.Rows()[2].Item.ID)
+	item, err := adapter.resolveItem(agent.ID)
 	require.NoError(t, err)
-	require.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1"}, item.Target)
+	require.Equal(t, backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%2"}, item.Target)
+	model.SetFilter("", map[list.ItemID]struct{}{agent.ID: {}})
+	require.Len(t, model.Rows(), 3, "tracked panes retain ancestors, not untracked siblings")
+	require.Equal(t, agent.ID, model.Rows()[2].Item.ID)
 
 	adapter.bindStatusUpdate(daemon.View{}, &update)
 
-	require.Empty(t, update.Windows[id][1].Ref)
-	require.Equal(t, "%1", update.Windows[id][1].PaneID, "untracked panes still have an exact navigation target")
+	require.Empty(t, update.Bindings)
+	item, err = adapter.resolveItem(shell.ID)
+	require.NoError(t, err)
+	require.Equal(t, "%1", item.Target.PaneID, "untracked panes still have an exact navigation target")
 }
 
 func TestTreeDoesNotInventAnActivePaneProgram(t *testing.T) {
@@ -83,4 +92,34 @@ func TestTreeDoesNotInventAnActivePaneProgram(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Empty(t, snapshot.Items[0].Children[0].Trailing)
+}
+
+func TestTreeKeepsSinglePaneWindowsCompact(t *testing.T) {
+	state := liveState()
+	state.Sessions[0].Windows[0].Panes[0].Program = "nvim"
+
+	snapshot, index, err := projectTree(state, "")
+
+	require.NoError(t, err)
+	window := snapshot.Items[0].Children[0]
+	require.Empty(t, window.Children)
+	require.Equal(t, "/work/editor", window.Secondary)
+	require.Equal(t, "nvim", window.Trailing)
+	require.False(t, index[window.ID].PaneRows)
+	require.Equal(t, window.ID, snapshot.ActiveItemID)
+}
+
+func TestTreePaneSelectionSurvivesProjectionSwitches(t *testing.T) {
+	stub := &stubBackend{state: linkedPaneState()}
+	adapter := loadedAdapter(t, stub)
+	id := destinationItemID("$1", "@1", "%2")
+
+	for _, view := range []ui.ViewMode{ui.ViewFlat, ui.ViewTree} {
+		result, err := adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection, ItemID: id})
+
+		require.NoError(t, err)
+		require.Equal(t, view, result.View)
+		require.Equal(t, id, result.SelectItemID)
+	}
+	require.Equal(t, 1, stub.queryCalls)
 }

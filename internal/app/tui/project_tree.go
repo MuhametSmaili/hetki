@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
@@ -57,6 +58,10 @@ func appendTreeSession(
 		}
 		if activeSession && windowIsActive(window, active) {
 			snapshot.ActiveItemID = windowItemID(session.ID, window.ID)
+			paneID := destinationItemID(session.ID, window.ID, active.PaneID)
+			if _, exists := index[paneID]; exists {
+				snapshot.ActiveItemID = paneID
+			}
 		}
 	}
 	snapshot.Items = append(snapshot.Items, sessionItem)
@@ -79,7 +84,12 @@ func appendTreeWindow(
 	if window.Name != "" {
 		label += " " + window.Name
 	}
+
+	split := len(window.Panes) > 1
 	pane, _ := activePane(window.Panes)
+	if split {
+		pane = backend.Pane{}
+	}
 	details := treePaneDetails(session, label, pane, homeDir)
 
 	last := session.Last && window.Active
@@ -87,13 +97,19 @@ func appendTreeWindow(
 	if last {
 		primary += " ↶"
 	}
-	sessionItem.Children = append(sessionItem.Children, list.Item{
+	item := list.Item{
 		ID:           windowID,
 		Primary:      primary,
 		Secondary:    details.Secondary,
 		Trailing:     details.Trailing,
 		SearchFields: details.SearchFields,
-	})
+	}
+	if split {
+		if err := appendTreePanes(&item, index, session, window, homeDir); err != nil {
+			return err
+		}
+	}
+	sessionItem.Children = append(sessionItem.Children, item)
 	index[windowID] = liveItem{
 		ID:           windowID,
 		Kind:         liveWindow,
@@ -105,7 +121,23 @@ func appendTreeWindow(
 		WindowIndex:  window.Index,
 		WindowActive: window.Active,
 		OpenPaneID:   pane.ID,
+		PaneRows:     split,
 		Last:         last,
+	}
+	return nil
+}
+
+func appendTreePanes(item *list.Item, index itemIndex, session backend.Session, window backend.Window, homeDir string) error {
+	for _, pane := range window.Panes {
+		child, destination, err := projectPaneDestination(session, window, pane, homeDir)
+		if err != nil {
+			return err
+		}
+
+		child.Primary = strconv.Itoa(pane.Index)
+		child.SearchFields = append([]list.SearchField{{Tier: list.SearchPrimary, Text: child.Primary}}, child.SearchFields...)
+		item.Children = append(item.Children, child)
+		index[child.ID] = destination
 	}
 	return nil
 }

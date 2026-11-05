@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestWindowPreviewKeepsTheProjectedPaneAfterActivePaneChanges(t *testing.T) {
+func TestTreePanePreviewKeepsItsTargetAfterActivePaneChanges(t *testing.T) {
 	stub := &stubBackend{state: liveState()}
 	window := &stub.state.Sessions[0].Windows[0]
 	window.Panes = append(window.Panes, backend.Pane{ID: "%2", Path: "/other"})
@@ -23,7 +23,7 @@ func TestWindowPreviewKeepsTheProjectedPaneAfterActivePaneChanges(t *testing.T) 
 	adapter := loadedAdapter(t, stub)
 	window.Panes[0].Active, window.Panes[1].Active = false, true
 
-	screen, err := adapter.Preview(t.Context(), ui.PreviewRequest{ItemID: windowItemID("$1", "@1")})
+	screen, err := adapter.Preview(t.Context(), ui.PreviewRequest{ItemID: destinationItemID("$1", "@1", "%1")})
 
 	require.NoError(t, err)
 	require.Equal(t, "projected screen", screen)
@@ -39,7 +39,8 @@ func TestServicePreviewAndOpenResolveTheSameTarget(t *testing.T) {
 		id         list.ItemID
 		want       backend.Target
 	}{
-		{"displayed tree pane", ui.ViewTree, windowItemID("$1", "@1"), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%2"}},
+		{"split window uses active pane", ui.ViewTree, windowItemID("$1", "@1"), backend.Target{SessionID: "$1", WindowID: "@1"}},
+		{"tree pane ignores override", ui.ViewTree, destinationItemID("$1", "@1", "%1"), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
 		{"flat ignores override", ui.ViewFlat, destinationItemID("$1", "@1", "%1"), backend.Target{SessionID: "$1", WindowID: "@1", PaneID: "%1"}},
 		{"session ignores override", ui.ViewTree, sessionItemID("$1"), backend.Target{SessionID: "$1"}},
 	} {

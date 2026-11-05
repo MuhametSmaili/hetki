@@ -71,10 +71,20 @@ func appendFlatWindow(
 		return fmt.Errorf("window %q is missing its ID", window.Name)
 	}
 	for _, pane := range window.Panes {
-		item, destination, err := projectFlatDestination(session, window, pane, homeDir)
+		item, destination, err := projectPaneDestination(session, window, pane, homeDir)
 		if err != nil {
 			return err
 		}
+
+		item.Context = session.Name
+		if len(window.Panes) > 1 {
+			item.Annotation = "·" + strconv.Itoa(pane.Index)
+		}
+		destination.Last = session.Last && window.Active && pane.Active
+		if destination.Last {
+			item.Primary += " ↶"
+		}
+
 		snapshot.Items = append(snapshot.Items, item)
 		index[item.ID] = destination
 		if item.ID == destinationItemID(active.SessionID, active.WindowID, active.PaneID) {
@@ -84,7 +94,7 @@ func appendFlatWindow(
 	return nil
 }
 
-func projectFlatDestination(
+func projectPaneDestination(
 	session backend.Session,
 	window backend.Window,
 	pane backend.Pane,
@@ -115,7 +125,6 @@ func projectFlatDestination(
 
 	item := list.Item{
 		ID:           id,
-		Context:      session.Name,
 		Primary:      name,
 		Secondary:    displayPath(pane.Path, homeDir),
 		Trailing:     program,
@@ -134,14 +143,6 @@ func projectFlatDestination(
 		WindowActive: window.Active,
 		PaneActive:   pane.Active,
 		PaneIndex:    pane.Index,
-		Last:         session.Last && window.Active && pane.Active,
-	}
-	if len(window.Panes) > 1 {
-		item.Annotation = "·" + strconv.Itoa(pane.Index)
-	}
-
-	if destination.Last {
-		item.Primary += " ↶"
 	}
 	return item, destination, nil
 }

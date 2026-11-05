@@ -37,23 +37,23 @@ func TestCachedLocationsRebindLinkedRowsAndRespawns(t *testing.T) {
 	bindings := adapter.bindStatusView(view)
 
 	require.Equal(t, ui.StatusBindings{
-		windowItemID("$1", "@1"): {ref}, windowItemID("$2", "@1"): {ref},
+		destinationItemID("$1", "@1", "%1"): {ref}, destinationItemID("$2", "@1", "%1"): {ref},
 	}, bindings)
 	var update ui.StatusUpdate
 	adapter.bindStatusUpdate(view, &update)
-	require.Equal(t, ref, update.Windows[windowItemID("$1", "@1")][0].Ref)
-	require.Equal(t, ref, update.Windows[windowItemID("$2", "@1")][0].Ref)
+	require.Empty(t, update.Windows, "split window headings must not borrow pane presentation")
+	require.Equal(t, ref, update.Bindings[destinationItemID("$2", "@1", "%1")][0])
 	unlinked := view
 	unlinked.Locations = view.Locations[:1]
 
 	adapter.bindStatusUpdate(unlinked, &update)
 
-	require.Equal(t, ref, update.Windows[windowItemID("$1", "@1")][0].Ref)
-	require.Empty(t, update.Windows[windowItemID("$2", "@1")][0].Ref, "pane identity alone must not bind a removed window link")
+	require.Equal(t, ref, update.Bindings[destinationItemID("$1", "@1", "%1")][0])
+	require.NotContains(t, update.Bindings, destinationItemID("$2", "@1", "%1"), "pane identity alone must not bind a removed window link")
 
-	bindings[windowItemID("$1", "@1")][0] = status.PaneRef{}
-	delete(bindings, windowItemID("$2", "@1"))
-	require.Equal(t, ref, adapter.bindStatusView(view)[windowItemID("$1", "@1")][0])
+	bindings[destinationItemID("$1", "@1", "%1")][0] = status.PaneRef{}
+	delete(bindings, destinationItemID("$2", "@1", "%1"))
+	require.Equal(t, ref, adapter.bindStatusView(view)[destinationItemID("$1", "@1", "%1")][0])
 	require.Len(t, adapter.bindStatusView(view), 2, "bindings own their map and pane slices")
 
 	_, err = adapter.Execute(t.Context(), ui.ActionRequest{ActionID: ui.ActionToggleProjection})
