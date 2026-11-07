@@ -10,6 +10,12 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    groups:
+      docs-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -19,6 +25,12 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "ci"
+    groups:
+      github-actions-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "gomod"
     directory: "/"
@@ -28,3 +40,9 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
+    groups:
+      go-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
