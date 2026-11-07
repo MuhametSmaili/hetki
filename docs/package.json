@@ -12,7 +12,7 @@
   "devDependencies": {
     "@phosphor-icons/vue": "2.2.1",
     "vitepress": "2.0.0-alpha.21",
-    "wrangler": "4.156.2"
+    "wrangler": "4.157.0"
   },
   "engines": {
     "node": ">=24"
