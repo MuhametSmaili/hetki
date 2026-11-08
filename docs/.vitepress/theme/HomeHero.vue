@@ -21,7 +21,7 @@ import TerminalDemo from './TerminalDemo.vue'
               Get started
               <PhArrowRight :size="16" weight="bold" aria-hidden="true" />
             </a>
-            <a class="more" :href="withBase('/installation')">Homebrew, Go, mise</a>
+            <a class="more" :href="withBase('/installation')">Other installation methods</a>
           </div>
         </div>
       </div>
