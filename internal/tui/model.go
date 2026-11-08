@@ -81,6 +81,7 @@ const (
 )
 
 type model struct {
+	choice      *choiceState
 	items       list.Model
 	view        ViewMode
 	mode        uiMode
@@ -134,6 +135,11 @@ func newModelWithOptions(ctx context.Context, snapshot list.Snapshot, options Op
 		pickerHeight: options.Height,
 		border:       options.Border,
 		paneStatus:   paneStatusState{options: runtime.Status},
+	}
+	if options.Choice != nil {
+		m.choice = &choiceState{screen: *options.Choice, history: make(map[string]choicePosition)}
+		m.mode = modeFilter
+		m.view, m.scope.mode, m.preview.enabled = ViewFlat, ScopeAll, false
 	}
 	m.applyScope("", time.Now())
 	if options.StartMode == StartModeFilter && (len(m.items.Rows()) > 0 || m.scope.mode == ScopeTracked) {

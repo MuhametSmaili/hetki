@@ -154,6 +154,7 @@ func DefaultKeyMap() KeyMap {
 		},
 		KeyModeMenu: {
 			{Action: ActionOpen, Keys: []string{"o"}},
+			{Action: ActionUserActions, Keys: []string{"U"}},
 			{Action: ActionRename, Keys: []string{"r"}},
 			{Action: ActionRenameSession, Keys: []string{"R"}},
 			{Action: ActionCreateWindow, Keys: []string{"a"}},

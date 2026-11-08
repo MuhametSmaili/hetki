@@ -3,6 +3,7 @@
 By default, the picker opens in **filter mode**. Type to filter the list.
 Press Escape to enter **normal mode**. Press `/` to filter again.
 Use `hetki --mode normal` to start with navigation shortcuts.
+User-defined actions use the [choice-screen rules](#action-choice-screens) below.
 
 `Ctrl+C` always quits from any mode. You cannot change this key.
 
@@ -141,9 +142,18 @@ Open the actions menu with `Ctrl+K` by default.
 You can select an entry and confirm it, or use its shortcut.
 Available entries depend on the selected item.
 
+Press `U` to open **User actions…**. To change this shortcut:
+
+```yaml
+keymap:
+  menu:
+    user_actions: [u]
+```
+
 | Action              | Default keys          | Purpose                             |
 | ------------------- | --------------------- | ----------------------------------- |
 | `open`              | `o`                   | Open the selected item.             |
+| `user_actions`      | `U`                   | Open user-defined actions.          |
 | `rename_window`     | `r`                   | Rename the selected window.         |
 | `rename_session`    | `R`                   | Rename the selected session.        |
 | `create_window`     | `a`                   | Create a window.                    |
@@ -156,3 +166,22 @@ Available entries depend on the selected item.
 | `confirm`           | `enter`, `ctrl+y`     | Run the selected menu entry.        |
 | `move_up`           | `up`, `k`, `ctrl+p`   | Move up.                            |
 | `move_down`         | `down`, `j`, `ctrl+n` | Move down.                          |
+
+### Action choice screens
+
+These rules apply after you open **User actions…** or run `hetki action`.
+Choice screens always start in filter mode, even when your configuration uses `mode: normal`.
+They differ from the normal session/window picker:
+
+- `Escape` always goes Back. It does not leave filter mode and takes precedence over keymap overrides.
+- The configured `cancel` and `collapse` actions also go Back.
+- The configured `confirm` and `open` actions select a choice.
+- Movement, paging, filtering, text-editing, and quit bindings use the current mode's keymap.
+- `clear_filter` clears the query and stays in filter mode, so you can type another query immediately.
+- The configured `refresh` action reloads choices. Unbound `Ctrl+R` also reloads them.
+  If you bind `Ctrl+R` to another action in the current mode, that binding takes precedence.
+- Navigation commands such as rename, delete, preview, scope, and view switching are unavailable.
+- While a program runs, only `Ctrl+C` is available.
+
+Back and refresh never execute the final command again.
+On a completed-command diagnostic screen, Back closes the flow and refresh keeps the diagnostic.

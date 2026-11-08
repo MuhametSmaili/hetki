@@ -60,6 +60,7 @@ export default defineConfig({
         text: "Guides",
         items: [
           { text: "Workspaces", link: "/workspaces" },
+          { text: "User-defined actions", link: "/actions" },
           { text: "Application status", link: "/status" },
           { text: "Shell completion", link: "/shell-completion" },
         ],
@@ -68,6 +69,7 @@ export default defineConfig({
         text: "Reference",
         items: [
           { text: "Configuration", link: "/configuration" },
+          { text: "Action reference", link: "/action-reference" },
           { text: "Key bindings", link: "/key-bindings" },
           { text: "Theme", link: "/theme" },
         ],

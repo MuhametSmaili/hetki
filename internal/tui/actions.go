@@ -43,6 +43,7 @@ const (
 	ActionTogglePreview    ActionID = "toggle_preview"
 	ActionOpen             ActionID = "open"
 	ActionLastSession      ActionID = "last_session"
+	ActionUserActions      ActionID = "user_actions"
 )
 
 // declaredActions is the authoritative action set checked against actionHandlers.
@@ -80,6 +81,7 @@ var declaredActions = [...]ActionID{
 	ActionTogglePreview,
 	ActionOpen,
 	ActionLastSession,
+	ActionUserActions,
 }
 
 type actionHandler func(model, list.ItemID) (tea.Model, tea.Cmd)
@@ -121,10 +123,18 @@ func init() {
 		ActionTogglePreview:    handleTogglePreview,
 		ActionOpen:             handleOpen,
 		ActionLastSession:      handleLastSession,
+		ActionUserActions:      handleUserActions,
 	}
 }
 
 func (m model) dispatchAction(action ActionID, itemID list.ItemID) (tea.Model, tea.Cmd) {
+	if m.choice != nil {
+		return m.dispatchChoice(action, itemID)
+	}
+	return m.dispatchRegularAction(action, itemID)
+}
+
+func (m model) dispatchRegularAction(action ActionID, itemID list.ItemID) (tea.Model, tea.Cmd) {
 	handler, ok := actionHandlers[action]
 	if !ok {
 		m.err = fmt.Errorf("action %q is not implemented", action)
@@ -138,6 +148,7 @@ type ActionRequest struct {
 	ItemID    list.ItemID
 	Value     *string
 	Confirmed bool
+	Choice    ChoiceEvent
 
 	// PaneID overrides a window's Open target, never its mutation target.
 	PaneID string
@@ -167,6 +178,7 @@ type ItemMenu struct {
 }
 
 type ActionResult struct {
+	Choice *ChoiceScreen
 	// View is committed only with an accepted Snapshot; empty leaves it unchanged.
 	View         ViewMode
 	Message      string

@@ -37,6 +37,9 @@ func contextualMenu(item liveItem) (ui.ItemMenu, error) {
 	if item.Target.SessionID != "" {
 		entries = append(entries, ui.MenuEntry{Action: ui.ActionDeleteSession, Label: "Delete session"})
 	}
+	if item.Target.SessionID != "" {
+		entries = append(entries, ui.MenuEntry{Action: ui.ActionUserActions, Label: "User actions…"})
+	}
 	entries = append(entries,
 		ui.MenuEntry{Action: ui.ActionRefresh, Label: "Refresh"},
 		ui.MenuEntry{Action: ui.ActionToggleProjection, Label: "Toggle projection"},

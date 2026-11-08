@@ -56,6 +56,9 @@ func (m model) viewHeader(layout layoutMetrics) string {
 		return ""
 	}
 	width := layout.listWidth
+	if m.choice != nil {
+		return m.choiceHeader(layout)
+	}
 	scope := "All"
 	if m.scope.mode == ScopeTracked {
 		scope = "Tracked"
@@ -267,6 +270,9 @@ func responsiveFrameStyle(base lipgloss.Style, width, height int) lipgloss.Style
 }
 
 func emptyStateText(m model) string {
+	if m.choice != nil {
+		return m.choiceEmptyState()
+	}
 	if m.scope.mode == ScopeTracked {
 		return "no matching tracked items"
 	}

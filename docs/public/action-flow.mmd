@@ -1,0 +1,19 @@
+---
+config:
+  theme: neutral
+  fontFamily: Arial, sans-serif
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 320
+  themeVariables:
+    fontFamily: sans-serif
+    fontSize: 16px
+---
+%% Render from docs/: npm exec --package=@mermaid-js/mermaid-cli@12.2.0 -- mmdc -i public/action-flow.mmd -o public/action-flow.svg -b white
+flowchart TD
+    open["Subject: pane %39"] --> action["1. Choose action: Move pane"]
+    action --> session["2. Choose session<br/>Source: tmux.sessions<br/>Save: steps.session"]
+    session -->|"Filter by selected session"| window["3. Choose window<br/>Source: tmux.windows<br/>Save: steps.destination"]
+    window --> run["4. Run tmux join-pane<br/>Original pane + selected window"]
+    open -. "Original pane stays in context" .-> run
+    run --> done["5. Close the action picker"]

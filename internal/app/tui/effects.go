@@ -12,6 +12,7 @@ type uiEffects struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	driver   Driver
+	execute  func(context.Context, ui.ActionRequest) (ui.ActionResult, error)
 	status   *statusDelivery
 	stayOpen bool
 	mu       sync.Mutex
@@ -45,16 +46,23 @@ func (e *uiEffects) dispatch(request ui.ActionRequest) (ui.ActionResult, error) 
 		return ui.ActionResult{}, err
 	}
 	defer e.active.Done()
-	result, err := e.driver.Execute(e.ctx, request)
+	result, err := e.executeRequest(request)
 	if err == nil && e.stayOpen && !result.Navigation.IsZero() {
 		err = e.driver.Navigate(e.ctx, result.Navigation)
 		// Navigation is consumed here; returning it would make the UI quit.
 		result.Navigation = list.ItemID{}
 	}
-	if err == nil && result.Snapshot != nil && e.status != nil {
+	if err == nil && result.Snapshot != nil && e.status != nil && (result.Choice == nil || result.Choice.Closed) {
 		result.Status = e.status.projectionStatus()
 	}
 	return result, err
+}
+
+func (e *uiEffects) executeRequest(request ui.ActionRequest) (ui.ActionResult, error) {
+	if e.execute != nil {
+		return e.execute(e.ctx, request)
+	}
+	return e.driver.Execute(e.ctx, request)
 }
 
 func (e *uiEffects) preview(ctx context.Context, request ui.PreviewRequest) (string, error) {

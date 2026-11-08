@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/MuhametSmaili/hetki/internal/app/actions"
 	"github.com/MuhametSmaili/hetki/internal/backend"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/MuhametSmaili/hetki/internal/frecency"
@@ -23,6 +24,7 @@ type Backend interface {
 // LiveAdapter projects backend state and owns picker actions.
 // Callers must serialize Load, Execute and Navigate; preview and status reads may run concurrently.
 type LiveAdapter struct {
+	actionFlow        *actions.Flow // Serialized with Execute; independent of the live item index.
 	DetectBackend     func() (Backend, error)
 	mu                sync.RWMutex // Protects published projection state and the cached backend; never held during capture.
 	cached            Backend
@@ -48,6 +50,9 @@ func newLiveAdapter(detectBackend func() (Backend, error), store *frecency.Store
 func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui.ActionResult, error) {
 	if err := ctx.Err(); err != nil {
 		return ui.ActionResult{}, err
+	}
+	if request.Choice != "" {
+		return a.executeFlow(ctx, request)
 	}
 	if request.ActionID == ui.ActionToggleProjection {
 		return a.toggleProjection(ctx, request.ItemID)
@@ -88,6 +93,8 @@ func (a *LiveAdapter) executeItem(ctx context.Context, request ui.ActionRequest,
 			return ui.ActionResult{}, err
 		}
 		return ui.ActionResult{Menu: &menu}, nil
+	case ui.ActionUserActions:
+		return a.openActions(ctx, item)
 	case ui.ActionOpen:
 		item.Target = item.openTarget(request.PaneID)
 		return a.openItem(ctx, item)
