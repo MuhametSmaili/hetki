@@ -1,7 +1,13 @@
 # User-defined actions
 
-User-defined actions let you choose from one or more lists, then run a command
-with the selected values. You define the steps in YAML.
+Define an action in YAML by chaining selection steps, then running a command.
+Each step can use data from earlier choices. Use built-in tmux lists, fixed choices,
+or your own scripts to supply the items.
+
+Scripts receive the original context and earlier selections as JSON on stdin.
+They return choices as one JSON object per line on stdout. Hetki keeps the selected
+item for later steps and sends the context and selections to the final command on stdin too.
+See [stdin and stdout](#external-scripts-stdin-and-stdout) for an example.
 
 For example: **Move pane → choose session → choose window → move the pane.**
 
@@ -15,12 +21,27 @@ An action with only `run` executes as soon as you select the action.
 Open your actions in either place:
 
 - **Inside Hetki:** highlight a row, press `Ctrl+K`, then `U` for **User actions…**.
+  In normal mode, press `U` directly.
   The highlighted row is the subject. After the action finishes, you return to the normal list.
 - **From a terminal or tmux binding:** run `hetki action` with a pane, window, or session ID.
   This opens a standalone picker that closes when the action finishes.
 
 Both use the same recipes. The [action reference](./action-reference.md) lists all fields and limits.
-To change `U`, set `keymap.menu.user_actions` in your [key bindings](key-bindings.md#menu-mode).
+To change `U`, set `keymap.normal.user_actions` or `keymap.menu.user_actions`
+for the corresponding mode in your [key bindings](key-bindings.md).
+
+From a terminal inside tmux, open actions for the current pane with:
+
+```bash
+hetki action --pane-id "$TMUX_PANE"
+```
+
+You can also target a window or session. Replace these example IDs with your own:
+
+```bash
+hetki action --window '@8'
+hetki action --session '$3'
+```
 
 ## Try one action
 

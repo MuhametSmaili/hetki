@@ -2,6 +2,7 @@
 import { PhArrowRight } from '@phosphor-icons/vue'
 import { withBase } from 'vitepress'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import ActionDemo from './ActionDemo.vue'
 import ConfigDemo from './ConfigDemo.vue'
 import InstallCommand from './InstallCommand.vue'
 import StatusDemo from './StatusDemo.vue'
@@ -117,7 +118,49 @@ onBeforeUnmount(() => observer?.disconnect())
         <WorkspaceDemo class="demo" :step="step" data-reveal />
       </section>
 
-      <section class="feature split">
+      <section id="custom-actions" class="feature split" aria-labelledby="hk-actions-title">
+        <div class="text" data-reveal>
+          <p class="eyebrow">User-defined actions</p>
+          <h2 id="hk-actions-title">Add your own actions.</h2>
+          <p>
+            Pick a session, then one of its windows, then move your pane there.
+            Write the steps in <code>actions.yaml</code>: chain selections together,
+            pass their data to later steps, and finish by running a command.
+          </p>
+          <div class="action-launch">
+            <h3>Open from your terminal or a tmux binding</h3>
+            <dl>
+              <div><dt>Pane</dt><dd><code>hetki action --pane-id "$TMUX_PANE"</code></dd></div>
+              <div><dt>Window</dt><dd><code>hetki action --window '@8'</code></dd></div>
+              <div><dt>Session</dt><dd><code>hetki action --session '$3'</code></dd></div>
+            </dl>
+            <p class="note">Use your own window or session ID in place of the examples.</p>
+          </div>
+          <p class="action-entry">
+            The same recipes work inside Hetki. Press <kbd>U</kbd> in normal mode,
+            or <kbd>Ctrl+K</kbd> then <kbd>U</kbd> from either picker mode.
+            Both shortcuts are <a :href="withBase('/key-bindings#normal-mode')">configurable</a>.
+          </p>
+          <a class="more" :href="withBase('/actions')">Write an action <PhArrowRight :size="14" weight="bold" aria-hidden="true" /></a>
+        </div>
+        <div class="demo" data-reveal>
+          <ActionDemo />
+          <div class="action-scripts">
+            <h3>Use your own scripts for the choices</h3>
+            <p>Use tmux’s built-in lists, fixed items, or a script in any language that reads and writes JSON.</p>
+            <dl>
+              <div><dt>stdin <span aria-hidden="true">→</span></dt><dd>Hetki sends your script the original context and earlier selections as JSON.</dd></div>
+              <div><dt>stdout <span aria-hidden="true">←</span></dt><dd>Your script returns choices, one JSON object per line.</dd></div>
+            </dl>
+            <p>
+              Hetki saves the selected item for later steps. Your final command receives the context and selections on stdin too.
+              <a :href="withBase('/action-reference#program-input')">See the JSON format <PhArrowRight :size="12" aria-hidden="true" /></a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="feature split mirrored">
         <div class="text" data-reveal>
           <h2>Fits how you already&nbsp;work.</h2>
           <p>
@@ -188,6 +231,7 @@ onBeforeUnmount(() => observer?.disconnect())
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 40px;
+  scroll-margin-top: calc(var(--vp-nav-height) + 24px);
 }
 
 h2 {
@@ -215,6 +259,116 @@ h2 {
 .text .note {
   font-size: 15px;
   color: var(--vp-c-text-3);
+}
+
+.text .eyebrow {
+  margin-bottom: 14px;
+  color: var(--vp-c-brand-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.action-entry kbd {
+  padding: 2px 5px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.text code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.85em;
+}
+
+.action-launch {
+  margin-top: 24px;
+  padding-block: 16px;
+  border-block: 1px solid var(--vp-c-divider);
+}
+
+.action-launch h3, .action-scripts h3 {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--vp-c-text-1);
+}
+
+.action-launch dl, .action-scripts dl {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.action-launch dl > div, .action-scripts dl > div {
+  display: grid;
+  grid-template-columns: 7ch minmax(0, 1fr);
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.action-launch dt, .action-scripts dt {
+  color: var(--vp-c-text-3);
+}
+
+.action-launch dd, .action-scripts dd {
+  margin: 0;
+  color: var(--vp-c-text-2);
+}
+
+.action-launch code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.action-launch .note {
+  font-size: 12px;
+}
+
+.text .action-entry {
+  margin-top: 20px;
+  font-size: 15px;
+}
+
+.action-entry a, .action-scripts a {
+  color: var(--vp-c-text-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.action-scripts {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.action-scripts p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--vp-c-text-2);
+}
+
+.action-scripts dt {
+  font-family: var(--vp-font-family-mono);
+  color: var(--vp-c-brand-1);
+  white-space: nowrap;
+}
+
+.action-scripts dl > div {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.action-scripts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .more {

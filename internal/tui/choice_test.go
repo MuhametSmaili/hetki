@@ -42,14 +42,19 @@ func TestInitialChoiceAlwaysAcceptsFilterText(t *testing.T) {
 	}
 }
 
-func TestMenuShortcutOpensUserActions(t *testing.T) {
+func TestShortcutOpensUserActions(t *testing.T) {
 	for _, test := range []struct {
 		name      string
+		mode      KeyMode
 		key       string
 		overrides map[KeyMode][]Binding
 	}{
-		{name: "default", key: "U"},
-		{name: "configured", key: "z", overrides: map[KeyMode][]Binding{
+		{name: "normal default", mode: KeyModeNormal, key: "U"},
+		{name: "normal configured", mode: KeyModeNormal, key: "z", overrides: map[KeyMode][]Binding{
+			KeyModeNormal: {{Action: ActionUserActions, Keys: []string{"z"}}},
+		}},
+		{name: "menu default", mode: KeyModeMenu, key: "U"},
+		{name: "menu configured", mode: KeyModeMenu, key: "z", overrides: map[KeyMode][]Binding{
 			KeyModeMenu: {{Action: ActionUserActions, Keys: []string{"z"}}},
 		}},
 	} {
@@ -68,8 +73,11 @@ func TestMenuShortcutOpensUserActions(t *testing.T) {
 				return choiceResult("actions", "Join pane"), nil
 			}, keys)
 			require.NoError(t, err)
+			m = browseModel(m)
 			subject := selectedNodeID(m)
-			m = openTestMenu(t, m)
+			if test.mode == KeyModeMenu {
+				m = openTestMenu(t, m)
+			}
 
 			m, cmd := updateModel(t, m, printableKey(test.key))
 			require.NotNil(t, cmd)

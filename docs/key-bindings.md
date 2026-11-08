@@ -77,6 +77,7 @@ An action is available only in the modes that list it.
 | `previous_match`    | `N`                   | Select the previous match.          |
 | `clear_filter`      | `ctrl+l`              | Clear the filter.                   |
 | `context_menu`      | `ctrl+k`              | Open the actions menu.              |
+| `user_actions`      | `U`                   | Open user-defined actions.          |
 | `create_session`    | `A`                   | Create a session.                   |
 | `create_window`     | `a`                   | Create a window.                    |
 | `rename_window`     | `r`                   | Rename the selected window.         |
@@ -93,6 +94,16 @@ An action is available only in the modes that list it.
 | `toggle_preview`    | `alt+p`               | Show or hide the pane preview.      |
 | `open`              | `enter`, `ctrl+y`     | Open the selection.                 |
 | `last_session`      | `ctrl+o`              | Switch to the previous session.     |
+
+To change the direct user-actions shortcut, set `keymap.normal.user_actions`:
+
+```yaml
+keymap:
+  normal:
+    user_actions: [z]
+```
+
+The menu shortcut is configured separately with `keymap.menu.user_actions`.
 
 ### Filter mode
 

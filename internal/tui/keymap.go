@@ -108,6 +108,7 @@ func DefaultKeyMap() KeyMap {
 			{Action: ActionPrevMatch, Keys: []string{"N"}},
 			{Action: ActionClearFilter, Keys: []string{"ctrl+l"}},
 			{Action: ActionContextMenu, Keys: []string{"ctrl+k"}},
+			{Action: ActionUserActions, Keys: []string{"U"}},
 			{Action: ActionCreateSession, Keys: []string{"A"}},
 			{Action: ActionCreateWindow, Keys: []string{"a"}},
 			{Action: ActionRename, Keys: []string{"r"}},
