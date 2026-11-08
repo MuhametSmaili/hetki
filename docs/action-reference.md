@@ -6,6 +6,8 @@ Start with the [action guide](./actions.md) for a complete example.
 
 Store recipes in `~/.config/hetki/actions.yaml`, or `$XDG_CONFIG_HOME/hetki/actions.yaml`.
 The file must exist. Hetki reads it when you open the action menu.
+To load recipe edits, close and reopen the menu. Refresh reloads choices from the
+current recipe; it does not reread the file.
 
 | Field        | Purpose                                                                     |
 | ------------ | --------------------------------------------------------------------------- |
@@ -15,7 +17,7 @@ The file must exist. Hetki reads it when you open the action menu.
 | `scope`      | One or more of `pane`, `window`, `session`.                                 |
 | `steps`      | An ordered list of selections, followed by one command.                     |
 | `select`     | Name used to store this selection in `steps.NAME`.                          |
-| `title`      | Optional heading for a selection screen.                                    |
+| `title`      | Optional selection heading; defaults to the selection name.                 |
 | `source`     | Where this step gets its choices.                                           |
 | `run`        | Required once, as the last step. Contains `argv` and an optional `timeout`. |
 
@@ -30,6 +32,21 @@ If there are no selection steps, selecting the action runs the command immediate
 ## Sources
 
 Each `source` must contain one of `builtin`, `items`, or `exec`.
+
+### Item format
+
+Fixed lists and executable providers use the same item fields:
+
+| Item field | Required? | Purpose |
+| --- | --- | --- |
+| `id` | Yes | Nonempty, unique ID within this list. Maximum: 256 bytes. |
+| `label` | Yes | Nonblank primary text, used for filtering. |
+| `description` | No | Secondary display text; not searched. |
+| `value` | No | A JSON object with data for later steps; not displayed or searched. |
+
+Use `value` for custom fields. Other top-level item fields are rejected.
+Display text is sanitized for the terminal. Keep IDs stable across reloads so
+Hetki can restore the selected row when possible.
 
 ### Built-in lists
 
@@ -101,18 +118,35 @@ Use any language that can read and write JSON.
 It does not define the returned item values. Your program defines those values.
 
 ```yaml
-- select: project
-  source:
-    exec:
-      argv: [python3, /absolute/path/to/projects.py]
-      timeout: 5s
+version: 1
+actions:
+  open-project:
+    label: Open project in a new window…
+    scope: [session]
+    steps:
+      - select: project
+        title: Choose project directory
+        source:
+          exec:
+            argv: [python3, /absolute/path/to/projects.py]
+            timeout: 5s
+      - run:
+          argv:
+            - tmux
+            - -S
+            - "${context.server.socket}"
+            - new-window
+            - -t
+            - "${context.subject.session_id}:"
+            - -c
+            - "${steps.project.value.path}"
 ```
 
 Save this example provider as `projects.py`:
 
 ```python
-import json
 import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -130,6 +164,9 @@ for path in sorted(root.iterdir()):
 ```
 
 Set `root` to a directory that exists on your machine.
+Replace `/absolute/path/to/projects.py` in the recipe with the saved script's path.
+Open the menu for a session, for example `hetki action --session '$3'` with your
+session's exact ID. Selecting a project opens a new window in that directory.
 
 The provider receives the [JSON request](#program-input) on stdin.
 It must print **one complete JSON object per line**, not a JSON array:
@@ -139,15 +176,8 @@ It must print **one complete JSON object per line**, not a JSON array:
 {"id":"web","label":"Website","value":{"path":"/work/web"}}
 ```
 
-| Item field    | Required? | Purpose                                         |
-| ------------- | --------- | ----------------------------------------------- |
-| `id`          | Yes       | Unique ID within this list. Maximum: 256 bytes. |
-| `label`       | Yes       | Text shown in the picker.                       |
-| `description` | No        | Additional display text.                        |
-| `value`       | No        | A JSON object with data for later steps.        |
-
-Use `value` for custom fields. Other top-level item fields are rejected.
-Do not print a `source` object, a recipe, a JSON array, or log messages to stdout.
+Each record must follow the [item format](#item-format).
+Do not print blank lines, a `source` object, a recipe, a JSON array, or log messages to stdout.
 
 Hetki reads stdout while the program runs, but does not display items as they arrive.
 It waits for a successful exit, validates the complete list, then displays it.
@@ -163,23 +193,10 @@ Hetki validates two things at different times:
 If the program fails or any record is invalid, Hetki shows an error and no partial list.
 Hetki checks the item format. Your program validates the meaning of custom `value` fields.
 
-Typing filters the loaded list; it does not restart the provider.
-Ctrl+R runs the provider again.
-
-Use the selected project in the final command:
-
-```yaml
-- run:
-    argv:
-      - tmux
-      - -S
-      - "${context.server.socket}"
-      - new-window
-      - -t
-      - "${context.subject.session_id}:"
-      - -c
-      - "${steps.project.value.path}"
-```
+Typing filters the loaded labels; it does not restart the provider.
+Ctrl+R runs the provider again with the same context and earlier selections.
+Going Back to a selection step also runs its provider again, so providers should
+list choices and leave mutations to the final `run`.
 
 ### Pass parameters to your provider
 
@@ -224,7 +241,7 @@ You cannot register a new `builtin` name through YAML.
 The program also receives context and completed selections through JSON stdin.
 Use arguments for explicit parameters, or read the selected data directly from that JSON.
 
-### Program input
+## Program input
 
 Providers and final commands receive the same JSON format on stdin:
 
@@ -237,7 +254,8 @@ Providers and final commands receive the same JSON format on stdin:
       "kind": "pane",
       "session_id": "$3",
       "window_id": "@8",
-      "pane_id": "%39"
+      "pane_id": "%39",
+      "cwd": "/work/api"
     },
     "invocation": { "session_id": "$3", "pane_id": "%7" }
   },
@@ -255,7 +273,8 @@ Only completed selections appear in `steps`.
 Before the first selection, `steps` is `{}`.
 Selecting an item stores its whole object in memory under the name from `select`.
 The next program receives that object through JSON stdin; no extra save instruction is needed.
-When you go back, Hetki removes the selections after that point.
+When you go back to a selection step, its previous choice is removed from `steps`.
+Earlier selections remain; you must select the returned step again to continue.
 
 Read values in Python with:
 
@@ -267,6 +286,39 @@ project_path = request["steps"]["project"]["value"]["path"]
 `invocation` is absent outside tmux.
 The subject can differ from the invocation when you act on another pane.
 For a bare pane/window ID with multiple session links, `subject.session_id` is absent.
+
+### Working directory
+
+For pane subjects, `context.subject.cwd` contains the directory tmux reported
+when the flow opened. Hetki takes it from the existing inventory query and sends
+it to providers and final commands through JSON stdin:
+
+```python
+request = json.load(sys.stdin)
+cwd = request["context"]["subject"].get("cwd")
+if cwd is None:
+    sys.exit("The subject pane's directory is unavailable")
+```
+
+As in the provider examples above, import `json` and `sys` first.
+Use `cwd` in Git's argument list: `["git", "-C", cwd, "log", ...]`, or use a reference:
+
+```yaml
+argv: [git, -C, "${context.subject.cwd}", log, --oneline, -20]
+```
+
+The field is absent when tmux reports no directory and for window/session subjects.
+Hetki does not substitute its own directory. A reference to absent `cwd` fails like
+any other missing reference.
+
+This is a snapshot: Back, refresh, and later selections do not update it.
+The path may change or disappear, and it is not necessarily a Git repository root.
+For SSH panes, it does not describe the remote shell's directory.
+If your provider needs a fresh value, it can query tmux's `#{pane_current_path}`
+using `context.server.socket` and `context.subject.pane_id`.
+
+Programs still inherit Hetki's working directory and environment. Supplying `cwd`
+as context does not change the directory in which a provider or final command runs.
 
 ## References and commands
 
@@ -280,6 +332,7 @@ It does not replace references in titles, labels, or fixed item values.
 | `${context.subject.pane_id}`    | Original pane ID, if present.                      |
 | `${context.subject.window_id}`  | Original window ID, if present.                    |
 | `${context.subject.session_id}` | Original session ID, if present.                   |
+| `${context.subject.cwd}`        | Original pane's directory when the flow opened, if known. |
 | `${steps.NAME.id}`              | Selected item ID.                                  |
 | `${steps.NAME.label}`           | Selected item label.                               |
 | `${steps.NAME.value.FIELD}`     | Selected data; nested object fields are supported. |
@@ -305,7 +358,7 @@ run:
 ```
 
 The final `run` receives JSON on stdin, including all completed selections.
-Its stdout is captured; it does not need to contain JSON and does not create another list.
+Its stdout is captured, not displayed; it does not need to contain JSON and does not create another list.
 Hetki waits for the command to finish. Exit code `0` completes the command.
 With complete output and successful cleanup, the flow closes immediately.
 If output capture or cleanup fails after exit code `0`, Hetki shows a diagnostic

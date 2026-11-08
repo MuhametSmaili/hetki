@@ -20,6 +20,8 @@ type Subject struct {
 	SessionID string `json:"session_id,omitempty"`
 	WindowID  string `json:"window_id,omitempty"`
 	PaneID    string `json:"pane_id,omitempty"`
+	// CWD is captured at flow start; empty means unknown.
+	CWD string `json:"cwd,omitempty"`
 }
 
 func (s Subject) Validate() error {
@@ -42,7 +44,7 @@ func (s Subject) Validate() error {
 }
 
 func (s Subject) field(name string) any {
-	fields := map[string]string{"kind": s.Kind, "session_id": s.SessionID, "window_id": s.WindowID, "pane_id": s.PaneID}
+	fields := map[string]string{"kind": s.Kind, "session_id": s.SessionID, "window_id": s.WindowID, "pane_id": s.PaneID, "cwd": s.CWD}
 	if value := fields[name]; value != "" {
 		return value
 	}
@@ -73,7 +75,7 @@ type Request struct {
 }
 
 func resolveSubject(subject Subject, sessions []backend.Session) (Subject, error) {
-	var matches []backend.Target
+	var matches []Subject
 	for _, session := range sessions {
 		if subject.SessionID != "" && subject.SessionID != session.ID {
 			continue
@@ -87,25 +89,29 @@ func resolveSubject(subject Subject, sessions []backend.Session) (Subject, error
 		subject.SessionID = matches[0].SessionID
 	}
 	subject.WindowID = matches[0].WindowID
+	subject.CWD = matches[0].CWD
 	return subject, nil
 }
 
-func subjectMatches(subject Subject, session backend.Session) []backend.Target {
+func subjectMatches(subject Subject, session backend.Session) []Subject {
 	if subject.Kind == "session" {
-		return []backend.Target{{SessionID: session.ID}}
+		return []Subject{{Kind: "session", SessionID: session.ID}}
 	}
-	var matches []backend.Target
+	var matches []Subject
 	for _, window := range session.Windows {
 		if subject.WindowID != "" && subject.WindowID != window.ID {
 			continue
 		}
 		if subject.Kind == "window" {
-			matches = append(matches, backend.Target{SessionID: session.ID, WindowID: window.ID})
+			matches = append(matches, Subject{Kind: "window", SessionID: session.ID, WindowID: window.ID})
 			continue
 		}
 		for _, pane := range window.Panes {
 			if pane.ID == subject.PaneID {
-				matches = append(matches, backend.Target{SessionID: session.ID, WindowID: window.ID, PaneID: pane.ID})
+				matches = append(matches, Subject{
+					Kind: "pane", SessionID: session.ID, WindowID: window.ID, PaneID: pane.ID,
+					CWD: pane.Path,
+				})
 			}
 		}
 	}

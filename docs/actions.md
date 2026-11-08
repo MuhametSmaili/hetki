@@ -1,7 +1,7 @@
 # User-defined actions
 
-An action is a menu that ends with a command.
-You define the choices and the command in YAML.
+User-defined actions let you choose from one or more lists, then run a command
+with the selected values. You define the steps in YAML.
 
 For example: **Move pane → choose session → choose window → move the pane.**
 
@@ -12,12 +12,23 @@ Each recipe has two types of step:
 
 An action with only `run` executes as soon as you select the action.
 
+Open your actions in either place:
+
+- **Inside Hetki:** highlight a row, press `Ctrl+K`, then `U` for **User actions…**.
+  The highlighted row is the subject. After the action finishes, you return to the normal list.
+- **From a terminal or tmux binding:** run `hetki action` with a pane, window, or session ID.
+  This opens a standalone picker that closes when the action finishes.
+
+Both use the same recipes. The [action reference](./action-reference.md) lists all fields and limits.
+To change `U`, set `keymap.menu.user_actions` in your [key bindings](key-bindings.md#menu-mode).
+
 ## Try one action
 
 ### 1. Create the file
 
 Create `~/.config/hetki/actions.yaml`.
 If you set `XDG_CONFIG_HOME`, use `$XDG_CONFIG_HOME/hetki/actions.yaml` instead.
+This is a separate file from Hetki's UI configuration.
 
 Paste this complete example:
 
@@ -60,6 +71,7 @@ hetki action --pane-id "$TMUX_PANE"
 
 `$TMUX_PANE` contains the current pane ID, such as `%39`.
 To use another file, add `--file /path/to/actions.yaml`.
+For this example, have another tmux window available as the destination.
 
 ### 3. Move the pane
 
@@ -114,12 +126,15 @@ You do not need a pipe or a temporary file to pass the selection.
 | Field                   | Meaning                                          | Example                            |
 | ----------------------- | ------------------------------------------------ | ---------------------------------- |
 | `context.subject`       | The pane, window, or session you want to act on. | The original pane `%39`.           |
+| `context.subject.cwd`   | Pane directory when the flow opened, if known.   | `/work/api`                       |
 | `context.server.socket` | The address of its tmux server.                  | `/tmp/tmux-501/default`            |
 | `context.invocation`    | Where Hetki was started, when known.             | The pane that contains the picker. |
 | `steps.NAME`            | The item selected in the step named `NAME`.      | The destination window.            |
 
 The subject stays the same through the whole flow.
 Selecting a destination does not replace the original pane.
+For pane subjects, `cwd` is a snapshot from tmux. It is absent when unknown and
+for window/session subjects. It does not change when you refresh choices.
 
 Use `${context.subject.pane_id}` for the original pane.
 Use `${steps.destination.value.pane_target}` for the destination.
@@ -137,7 +152,7 @@ All three scopes are supported:
 
 | Scope | Command to open its actions | Subject fields you can use |
 | --- | --- | --- |
-| `pane` | `hetki action --pane-id '%39'` | `pane_id`, `window_id` |
+| `pane` | `hetki action --pane-id '%39'` | `pane_id`, `window_id`, optional `cwd` |
 | `window` | `hetki action --window '@8'` | `window_id` |
 | `session` | `hetki action --session '$3'` | `session_id` |
 
@@ -159,6 +174,11 @@ Use exactly one source type in each selection step:
 | `builtin` | Live tmux objects.               | Sessions, windows, panes.                 |
 | `items`   | A fixed list in YAML.            | Side by side or stacked.                  |
 | `exec`    | A list produced by your program. | Git branches, worktrees, project folders. |
+
+Each choice has an `id` and a `label`. It can also have a `description` for
+secondary display text and a `value` object for data used by later steps.
+**Typing searches labels only**, not descriptions or values.
+See the [item format](./action-reference.md#item-format) for the shared fields.
 
 ### Built-in sources
 
@@ -197,8 +217,8 @@ Hetki ── stdin: JSON request ──→ script
 Hetki ←─ stdout: JSON items ─── script
 ```
 
-**Stdin** is the script's input. **Stdout** is its output.
-For example, the script can create a choice like this:
+Hetki connects both streams automatically. Your script reads the request from
+stdin and writes one JSON item per line to stdout:
 
 ```python
 import json
@@ -212,18 +232,13 @@ print(json.dumps({
 }))
 ```
 
-The script writes this single line to stdout:
-
-```text
-{"id":"scratch","label":"New scratch branch","value":{"branch":"try/example","create":true}}
-```
-
 **The output contains items, not a `source` definition or another recipe.**
 Your script defines `branch` and `create` inside `value`. Hetki keeps those fields as data.
+Write diagnostics to stderr so they do not get parsed as choices.
 
 1. Hetki starts the script and sends the JSON request to its stdin.
 2. Hetki reads stdout and waits for the script to exit successfully.
-3. Hetki validates the items, then displays their labels as choices.
+3. Hetki validates the items, then displays their labels and optional descriptions.
 4. You select a choice. Hetki stores the whole item in `steps.branch`.
 5. Later providers and the final command receive that selection in their JSON stdin.
 
@@ -242,7 +257,8 @@ create_new = choice["create"]
 The YAML still defines what comes next: another `select`, or the final `run`.
 Hetki waits for `run` to finish. Its stdout is captured, not used as a new choice list.
 
-See the [provider format and validation rules](./action-reference.md#program-generated-lists-exec) for details.
+For a complete recipe and provider, see [program-generated lists](./action-reference.md#program-generated-lists-exec).
+For commands that need the selected pane's repository, see [working directory](./action-reference.md#working-directory).
 
 ## Open the menu from tmux
 
@@ -286,9 +302,11 @@ bind -N "Session switcher popup" o display-popup -B -E -w 80% -h 80% 'hetki --he
 
 ## Keys and completion
 
+These are the default keys:
+
 | Input | Result |
 | --- | --- |
-| Type | Filter the current list. |
+| Type | Filter the current list by label. |
 | Enter | Select an item. The final selection runs the command. |
 | Escape | Go back one screen. |
 | Ctrl+R | Reload the choices. |
@@ -296,11 +314,14 @@ bind -N "Session switcher popup" o display-popup -B -E -w 80% -h 80% 'hetki --he
 | Ctrl+C | Close the picker and cancel its running command. |
 
 Back restores the previous search and selection when possible.
+Returning to a selection step reloads its choices. Escape from the action menu closes the flow.
 Back and refresh do not run the final command again.
 While a program runs, only Ctrl+C is available.
 Escape always goes Back, even if you remap it for the normal picker.
 Other supported keys use the current mode's bindings.
 See [action choice screens](key-bindings.md#action-choice-screens) for the exceptions.
+
+### Empty lists and loading errors
 
 If the list is empty, the message explains why:
 
@@ -309,6 +330,12 @@ If the list is empty, the message explains why:
 - **Could not load choices:** the source failed. The diagnostic stays visible; retry loading or go Back.
 
 The recovery hints follow your key bindings. An empty list never submits a choice.
+If the action menu itself is empty, check that a recipe's `scope` matches the subject.
+
+Ctrl+R reloads the current choices, not `actions.yaml`.
+Close and reopen the action menu after editing recipes.
+
+### Command results
 
 Success closes the action picker. A command failure shows a **Run** item for retry.
 If the command exits with code `0` but output capture or cleanup fails,
@@ -316,9 +343,5 @@ Hetki shows **Close completed action** and a diagnostic. Enter or Escape closes 
 Back and refresh cannot retry that completed command.
 Failure or cancellation does not undo changes that the command already made.
 Retry can repeat those changes.
-
-You can also press `Ctrl+K`, then `U`, to open **User actions…** in Hetki.
-To change `U`, set `keymap.menu.user_actions` in your [configuration](key-bindings.md#menu-mode).
-After completion, Hetki returns to its normal list.
 
 For program input, command rules, and limits, see the [action reference](./action-reference.md).

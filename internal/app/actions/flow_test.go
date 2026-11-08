@@ -239,6 +239,7 @@ func TestProviderFailurePublishesNoPreviousChoices(t *testing.T) {
 
 func TestLinkedPaneDoesNotInventAnOwningSession(t *testing.T) {
 	inventory := flowInventory()
+	inventory.state.Sessions[0].Windows[0].Panes[0].Path = "/work/linked"
 	linked := inventory.state.Sessions[0]
 	linked.ID = "$2"
 	inventory.state.Sessions = append(inventory.state.Sessions, linked)
@@ -249,6 +250,7 @@ func TestLinkedPaneDoesNotInventAnOwningSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, f.request.Context.Subject.SessionID)
 	assert.Equal(t, "%1", f.request.Context.Subject.PaneID)
+	assert.Equal(t, "/work/linked", f.request.Context.Subject.CWD)
 	_, err = f.request.reference("context.subject.session_id")
 	require.Error(t, err)
 }
@@ -262,14 +264,23 @@ func TestExternalSourceReceivesPriorSelectionAndReturnsOpaqueValues(t *testing.T
 		Step{Select: "custom", Source: &SourceSpec{Exec: provider}},
 		Step{Run: captureCommand(finalInput)},
 	)
-	f, err := New(t.Context(), catalog, flowInventory(), Subject{Kind: "pane", PaneID: "%1"})
+	inventory := flowInventory()
+	inventory.state.Sessions[0].Windows[0].Panes[0].Path = "/work/two words; 日本"
+	f, err := New(t.Context(), catalog, inventory, Subject{Kind: "pane", PaneID: "%1"})
 	require.NoError(t, err)
 	_, err = f.Select(t.Context(), "move")
 	require.NoError(t, err)
+	inventory.state.Sessions[0].Windows[0].Panes[0].Path = "/work/changed"
 
 	screen, err := f.Select(t.Context(), "$1")
 	require.NoError(t, err)
 	require.Len(t, screen.Items, 1)
+	_, err = f.Back(t.Context())
+	require.NoError(t, err)
+	_, err = f.Select(t.Context(), "$1")
+	require.NoError(t, err)
+	_, err = f.Refresh(t.Context())
+	require.NoError(t, err)
 	_, err = f.Select(t.Context(), "opaque")
 	require.NoError(t, err)
 
@@ -278,9 +289,50 @@ func TestExternalSourceReceivesPriorSelectionAndReturnsOpaqueValues(t *testing.T
 	var request Request
 	require.NoError(t, json.Unmarshal(data, &request))
 	assert.Equal(t, "%1", request.Context.Subject.PaneID)
+	assert.Equal(t, "/work/two words; 日本", request.Context.Subject.CWD)
 	assert.Equal(t, "$1", request.Steps["session"].ID)
 	data, err = os.ReadFile(finalInput)
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(data, &request))
+	assert.Equal(t, "/work/two words; 日本", request.Context.Subject.CWD)
 	assert.Equal(t, "two words; literal", request.Steps["custom"].Value["path"])
+}
+
+func TestFlowSubjectDirectoryAvailability(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		subject Subject
+		path    string
+		want    string
+	}{
+		{name: "pane directory", subject: Subject{Kind: "pane", PaneID: "%1"}, path: "/work/two words; 日本", want: "/work/two words; 日本"},
+		{name: "unknown pane directory", subject: Subject{Kind: "pane", PaneID: "%1", CWD: "/stale"}},
+		{name: "window has no directory", subject: Subject{Kind: "window", WindowID: "@1", CWD: "/stale"}, path: "/work/editor"},
+		{name: "session has no directory", subject: Subject{Kind: "session", SessionID: "$1", CWD: "/stale"}, path: "/work/editor"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			inventory := flowInventory()
+			inventory.state.Sessions[0].Windows[0].Panes[0].Path = test.path
+			inventory.state.Active.Path = "/other-pane"
+			catalog := flowCatalog(Step{Run: &Command{Argv: []string{"true"}}})
+
+			f, err := New(t.Context(), catalog, inventory, test.subject)
+
+			require.NoError(t, err)
+			data, err := json.Marshal(f.request.Context.Subject)
+			require.NoError(t, err)
+			var subject map[string]any
+			require.NoError(t, json.Unmarshal(data, &subject))
+			args, err := resolveArgs([]string{"git", "-C", "${context.subject.cwd}", "status"}, f.request)
+			if test.want == "" {
+				assert.NotContains(t, subject, "cwd")
+				require.Error(t, err)
+				assert.Nil(t, args)
+			} else {
+				assert.Equal(t, test.want, subject["cwd"])
+				require.NoError(t, err)
+				assert.Equal(t, []string{"git", "-C", test.want, "status"}, args)
+			}
+		})
+	}
 }

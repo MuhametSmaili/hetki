@@ -4,6 +4,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -95,6 +96,41 @@ func TestActionFlowNativeJoinPane(t *testing.T) {
 	panes := strings.Fields(f.run(t, "list-panes", "-t", f.destination, "-F", "#{pane_id}"))
 	require.Len(t, panes, 2)
 	require.Contains(t, panes, f.source)
+}
+
+func TestActionFlowNativeSubjectDirectory(t *testing.T) {
+	f := newActionFixture(t)
+	directory := filepath.Join(t.TempDir(), "repo with spaces")
+	require.NoError(t, os.Mkdir(directory, 0700))
+	directory, err := filepath.EvalSymlinks(directory)
+	require.NoError(t, err)
+	pane := f.run(t, "new-window", "-d", "-t", "action-test:", "-c", directory, "-P", "-F", "#{pane_id}", "/bin/sh")
+	output := filepath.Join(t.TempDir(), "request.json")
+	argument := filepath.Join(t.TempDir(), "argument.txt")
+	catalog := actions.Catalog{Version: 1, Actions: map[string]actions.Recipe{
+		"capture": {Label: "Capture directory", Scope: []string{"pane"}, Steps: []actions.Step{
+			{Run: &actions.Command{Argv: []string{
+				"sh", "-c", `cat > "$1"; printf '%s' "$2" > "$3"`, "capture", output, "${context.subject.cwd}", argument,
+			}}},
+		}},
+	}}
+	inventory, err := tmux.NewBackend()
+	require.NoError(t, err)
+	flow, err := actions.New(t.Context(), catalog, inventory, actions.Subject{Kind: "pane", PaneID: pane})
+	require.NoError(t, err)
+
+	screen, err := flow.Select(t.Context(), "capture")
+
+	require.NoError(t, err)
+	require.True(t, screen.Done)
+	data, err := os.ReadFile(output)
+	require.NoError(t, err)
+	var request actions.Request
+	require.NoError(t, json.Unmarshal(data, &request))
+	require.Equal(t, directory, request.Context.Subject.CWD)
+	data, err = os.ReadFile(argument)
+	require.NoError(t, err)
+	require.Equal(t, directory, string(data))
 }
 
 func TestEmbeddedActionFlowRefreshesNavigation(t *testing.T) {
