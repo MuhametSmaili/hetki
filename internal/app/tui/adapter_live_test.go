@@ -490,7 +490,7 @@ func TestLiveAdapterMenuActionFailsWhenItsOriginItemIsStale(t *testing.T) {
 	require.NotNil(t, result.Menu)
 
 	delete(adapter.index, windowItemID("$1", "@1"))
-	_, err = adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateSession, ItemID: request.ItemID})
+	_, err = adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateWindow, ItemID: request.ItemID})
 	require.ErrorContains(t, err, "stale")
 	assert.Empty(t, stub.applyCalls)
 }
@@ -606,10 +606,11 @@ func TestLiveAdapterRenameAndDeleteReResolveTheSameStableItem(t *testing.T) {
 }
 
 func TestLiveAdapterCreateSessionInheritsWorkspace(t *testing.T) {
+	root := t.TempDir()
 	stub := &stubBackend{state: liveState()}
 	stub.applyHook = func(actions []backend.Action) {
 		require.Equal(t, []backend.Action{
-			backend.CreateSessionAction{Name: "sandbox"},
+			backend.CreateSessionAction{Name: "sandbox", Path: root},
 			backend.SetSessionOptionAction{Session: "sandbox", Key: backend.WorkspacePathOption, Value: "/work/.hetki.yaml"},
 		}, actions)
 		stub.state.Sessions = append(stub.state.Sessions, backend.Session{ID: "$2", Name: "sandbox"})
@@ -619,7 +620,9 @@ func TestLiveAdapterCreateSessionInheritsWorkspace(t *testing.T) {
 	prompt, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateSession})
 	require.NoError(t, err)
 	assert.Equal(t, "CREATE SESSION", prompt.Input.Title)
-	result, err := adapter.Execute(context.Background(), ui.ActionRequest{ActionID: ui.ActionCreateSession, Value: new("sandbox")})
+	result, err := adapter.Execute(context.Background(), ui.ActionRequest{
+		ActionID: ui.ActionCreateSession, Values: map[string]string{sessionNameField: "sandbox", sessionDirectoryField: root},
+	})
 	require.NoError(t, err)
 	assert.Contains(t, result.Message, "workspace linked")
 	assert.Equal(t, sessionItemID("$2"), result.SelectItemID)

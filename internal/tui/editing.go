@@ -21,6 +21,10 @@ func handleBackspace(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleDeleteWord(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
+	if m.activeDirectoryField() != nil {
+		return m.editValue(ActionDeleteWord, deleteLastPathComponent)
+	}
+
 	return m.editValue(ActionDeleteWord, deleteLastWord)
 }
 
@@ -34,7 +38,7 @@ func (m model) editValue(action ActionID, edit func(string) string) (tea.Model, 
 		m.setQuery(edit(m.items.Query()))
 		return m.reflow(), nil
 	case modeInput:
-		m.input.Value = edit(m.input.Value)
+		m.input.edit(edit)
 		m.err = nil
 		return m, nil
 	default:

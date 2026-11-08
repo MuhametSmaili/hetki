@@ -44,6 +44,11 @@ func handleToggleScope(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	if !m.isListMode() {
 		return m.actionUnavailable(ActionToggleScope)
 	}
+	m.toggleScope()
+	return m.reflow(), nil
+}
+
+func (m *model) toggleScope() {
 	current, next := 0, 1
 	if m.scope.mode == ScopeTracked {
 		current, next = 1, 0
@@ -61,5 +66,4 @@ func handleToggleScope(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 	if !m.items.Select(view.selected) {
 		m.items.Select(selected.Item.ID)
 	}
-	return m.reflow(), nil
 }

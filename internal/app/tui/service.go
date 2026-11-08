@@ -65,7 +65,12 @@ func (s Service) Run(ctx context.Context) error {
 	if statusErr != nil {
 		initial.Notice = strings.TrimSpace(initial.Notice + "\nstatus unavailable: " + statusErr.Error())
 	}
-	runtime := ui.Runtime{Dispatch: effects.dispatch, Preview: effects.preview, Status: effects.statusOptions()}
+	runtime := ui.Runtime{
+		Dispatch:    effects.dispatch,
+		Preview:     effects.preview,
+		Status:      effects.statusOptions(),
+		Directories: effects.directories,
+	}
 	result, err := s.RunUI(effectsCtx, initial, s.Options, runtime)
 	effects.stop()
 	if err != nil {

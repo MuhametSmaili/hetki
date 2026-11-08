@@ -16,6 +16,9 @@ type inputState struct {
 	Value        string
 	SubmitStatus string
 	ReturnMode   uiMode
+	Fields       []inputFieldState
+	Focus        int
+	SubmitLabel  string
 }
 
 type confirmState struct {
@@ -58,10 +61,16 @@ func (m *model) openOverlay(result ActionResult, pending *ActionRequest) {
 		}
 	case result.Input != nil:
 		prompt := result.Input
+		fields, err := newInputFields(prompt.Fields)
+		if err != nil {
+			m.err = err
+			return
+		}
 		m.mode = modeInput
 		m.input = inputState{
 			Title: prompt.Title, Prompt: prompt.Prompt, Request: *pending,
 			Value: prompt.InitialValue, SubmitStatus: prompt.SubmitStatus, ReturnMode: returnMode,
+			Fields: fields, SubmitLabel: prompt.SubmitLabel,
 		}
 	case result.Confirmation != nil:
 		confirmation := result.Confirmation
@@ -137,6 +146,9 @@ func handleConfirm(m model, _ list.ItemID) (tea.Model, tea.Cmd) {
 		m.mode = modeBrowse
 		return m.dispatchAction(ActionOpen, list.ItemID{})
 	case modeInput:
+		if len(m.input.Fields) > 0 {
+			return m.submitForm()
+		}
 		value := strings.TrimSpace(m.input.Value)
 		if value == "" {
 			m.err = errors.New(statusValueEmpty)

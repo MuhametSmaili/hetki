@@ -286,7 +286,7 @@ func TestDirectActionKeysEmitStableActionAndItemIDs(t *testing.T) {
 		{name: "open", key: specialKey(tea.KeyEnter), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionOpen, ItemID: list.ItemID{ID: "window-2"}}},
 		{name: "refresh", key: controlKey('r'), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionRefresh}},
 		{name: "toggle projection", key: controlKey('t'), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionToggleProjection, ItemID: list.ItemID{ID: "window-2"}}},
-		{name: "create session", key: printableKey("A"), selectedID: list.ItemID{ID: "session-1"}, want: ActionRequest{ActionID: ActionCreateSession}},
+		{name: "create session", key: printableKey("A"), selectedID: list.ItemID{ID: "session-1"}, want: ActionRequest{ActionID: ActionCreateSession, ItemID: list.ItemID{ID: "session-1"}}},
 		{name: "create window", key: printableKey("a"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionCreateWindow, ItemID: list.ItemID{ID: "window-2"}}},
 		{name: "rename window", key: printableKey("r"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionRename, ItemID: list.ItemID{ID: "window-2"}}},
 		{name: "rename session", key: printableKey("R"), selectedID: list.ItemID{ID: "window-2"}, want: ActionRequest{ActionID: ActionRenameSession, ItemID: list.ItemID{ID: "window-2"}}},
@@ -308,6 +308,21 @@ func TestDirectActionKeysEmitStableActionAndItemIDs(t *testing.T) {
 			require.Equal(t, test.want, got)
 		})
 	}
+}
+
+func TestCreateSessionWithoutSelectionStillDispatches(t *testing.T) {
+	var got ActionRequest
+	m := browseModel(newModel(list.Snapshot{}, func(request ActionRequest) (ActionResult, error) {
+		got = request
+		return ActionResult{}, nil
+	}))
+
+	m, cmd := updateModel(t, m, printableKey("A"))
+	require.NotNil(t, cmd)
+	cmd()
+
+	require.True(t, m.busy)
+	require.Equal(t, ActionRequest{ActionID: ActionCreateSession}, got)
 }
 
 func TestBoundDeleteSessionUsesOneActionFlowInEveryMode(t *testing.T) {
@@ -405,6 +420,48 @@ func TestProjectionTogglePreservesTheFilterAndUsesPreferredSelection(t *testing.
 	m, _ = updateModel(t, m, cmd())
 	require.Equal(t, "server", m.items.Query())
 	require.Equal(t, list.ItemID{ID: "destination-2"}, selectedNodeID(m))
+}
+
+func TestActionResultClearsQueryOnlyToRevealCreatedSession(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		action    ActionID
+		query     string
+		wantQuery string
+		wantID    string
+	}{
+		{name: "creation hidden by query", action: ActionCreateSession, query: "editor", wantID: "newdb"},
+		{name: "creation matches query", action: ActionCreateSession, query: "new", wantQuery: "new", wantID: "newdb"},
+		{name: "creation without query", action: ActionCreateSession, wantID: "newdb"},
+		{name: "refresh preserves query", action: ActionRefresh, query: "editor", wantQuery: "editor", wantID: "editor"},
+		{name: "window creation preserves query", action: ActionCreateWindow, query: "editor", wantQuery: "editor", wantID: "editor"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := list.Snapshot{Items: []list.Item{{
+				ID: list.ItemID{ID: "editor"}, Primary: "editor",
+				SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "editor"}},
+			}}}
+			after := before
+			after.Items = append(after.Items, list.Item{
+				ID: list.ItemID{ID: "newdb"}, Primary: "newdb",
+				SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "newdb"}},
+			})
+			m := browseModel(newModel(before, nil))
+			m.setQuery(test.query)
+			m.busy = true
+			m.pending = cloneRequest(ActionRequest{ActionID: test.action})
+
+			m, _ = updateModel(t, m, actionResultMsg{result: ActionResult{
+				Snapshot: &after, SelectItemID: list.ItemID{ID: "newdb"},
+			}})
+
+			require.NoError(t, m.err)
+			require.Equal(t, test.wantQuery, m.items.Query())
+			require.Equal(t, list.ItemID{ID: test.wantID}, selectedNodeID(m))
+			require.False(t, m.quitting)
+			require.True(t, m.navigation.IsZero())
+		})
+	}
 }
 
 func TestPromptAndConfirmationKeepTheOriginatingItemID(t *testing.T) {

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"maps"
 	"slices"
 	"time"
 
@@ -26,6 +27,10 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.err == nil && result.View != "" {
 		m.err = result.View.Validate()
+	}
+	if m.err == nil && m.mode == modeInput && len(m.input.Fields) > 0 && pending != nil && pending.Values != nil {
+		m.mode = primaryReturnMode(m.input.ReturnMode)
+		m.input = inputState{}
 	}
 	switch {
 	case m.err != nil:
@@ -69,7 +74,9 @@ func (m model) applyActionSnapshot(result ActionResult, pending *ActionRequest, 
 	}
 	m.paneStatus.bindingGeneration++
 	m.applyStatusPresentation(time.Now())
-	m.items.Select(preferred)
+	if !m.items.Select(preferred) {
+		m.revealCreatedSession(result.SelectItemID, pending)
+	}
 	if pending != nil && isDeleteAction(pending.ActionID) {
 		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
 	}
@@ -78,6 +85,23 @@ func (m model) applyActionSnapshot(result ActionResult, pending *ActionRequest, 
 
 func isDeleteAction(action ActionID) bool {
 	return action == ActionDelete || action == ActionDeleteSession
+}
+
+func (m *model) revealCreatedSession(id list.ItemID, pending *ActionRequest) {
+	if pending == nil || pending.ActionID != ActionCreateSession || id.IsZero() {
+		return
+	}
+
+	if m.scope.mode == ScopeTracked {
+		m.toggleScope()
+		if m.items.Select(id) {
+			return
+		}
+	}
+	if m.items.Query() != "" {
+		m.setQuery("")
+		m.items.Select(id)
+	}
 }
 
 func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows []list.ItemID) {
@@ -126,6 +150,12 @@ func handleContextMenu(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
 }
 
 func handleCreateSession(m model, itemID list.ItemID) (tea.Model, tea.Cmd) {
+	if itemID.IsZero() {
+		if selected, ok := m.selectedRow(); ok {
+			itemID = selected.Item.ID
+		}
+	}
+
 	return m.startAction(ActionCreateSession, itemID)
 }
 
@@ -233,5 +263,6 @@ func runAction(dispatch DispatchFunc, request ActionRequest) tea.Cmd {
 
 func cloneRequest(request ActionRequest) *ActionRequest {
 	cloned := request
+	cloned.Values = maps.Clone(request.Values)
 	return &cloned
 }

@@ -60,9 +60,10 @@ type Options struct {
 
 // Runtime contains effects owned, canceled and joined by the caller.
 type Runtime struct {
-	Dispatch DispatchFunc
-	Preview  PreviewFunc
-	Status   StatusOptions
+	Dispatch    DispatchFunc
+	Preview     PreviewFunc
+	Status      StatusOptions
+	Directories DirectorySuggestFunc
 }
 
 // Result contains the final choices and an optional navigation destination.

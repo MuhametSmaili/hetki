@@ -262,6 +262,54 @@ func TestScopesRememberTheirSelectionAndExpansion(t *testing.T) {
 	require.Equal(t, list.ItemID{ID: "idle"}, selectedNodeID(returned.(model)))
 }
 
+func TestCreatedSessionLeavesTrackedScopeAndPreservesItsView(t *testing.T) {
+	for _, test := range []struct {
+		name, query, session, wantQuery string
+	}{
+		{name: "no query", session: "newdb"},
+		{name: "matching query", query: "idle", session: "idle new", wantQuery: "idle"},
+		{name: "nonmatching query", query: "idle", session: "newdb"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m, now := scopeFixture(t, "tree")
+			m.mode = modeBrowse
+			m.scope.mode = ScopeTracked
+			m.applyScope(test.query, now)
+			previous := list.ItemID{ID: "idle"}
+			require.True(t, m.items.Select(previous))
+			expanded := m.items.Expansion()
+			update := StatusUpdate{Values: m.paneStatus.values, Bindings: m.paneStatus.options.Bindings}
+			after := m.items.Snapshot()
+			created := list.ItemID{ID: "created"}
+			after.Items = append(after.Items, list.Item{
+				ID: created, Primary: test.session,
+				SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: test.session}},
+			})
+			m.pending = cloneRequest(ActionRequest{ActionID: ActionCreateSession})
+			m.busy = true
+
+			m, _ = updateModel(t, m, actionResultMsg{result: ActionResult{
+				Snapshot: &after, SelectItemID: created, Status: &update,
+			}})
+
+			require.NoError(t, m.err)
+			require.Equal(t, ScopeAll, m.scope.mode)
+			require.Equal(t, created, selectedNodeID(m))
+			require.Equal(t, test.wantQuery, m.items.Query())
+			require.False(t, m.quitting)
+			require.True(t, m.navigation.IsZero())
+
+			m, _ = updateModel(t, m, specialKey(tea.KeyTab))
+
+			require.Equal(t, ScopeTracked, m.scope.mode)
+			require.Equal(t, previous, selectedNodeID(m))
+			for id, open := range expanded {
+				require.Equal(t, open, m.items.Expansion()[id])
+			}
+		})
+	}
+}
+
 func TestScopeKeysRespectModes(t *testing.T) {
 	for _, test := range []struct {
 		name string

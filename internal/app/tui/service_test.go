@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -125,6 +127,27 @@ func TestServiceRejectsInvalidOptionsBeforeLoadOrUI(t *testing.T) {
 			require.False(t, opened)
 		})
 	}
+}
+
+func TestDirectoryEffectIsAvailableDuringUIAndClosedAfterExit(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "api"), 0o700))
+	var read ui.DirectorySuggestFunc
+	service := Service{Driver: &switchDriver{}, Options: ui.DefaultOptions(),
+		RunUI: func(ctx context.Context, _ list.Snapshot, _ ui.Options, runtime ui.Runtime) (ui.Result, error) {
+			read = runtime.Directories
+			require.NotNil(t, read)
+			got, err := read(ctx, "a", root)
+			require.NoError(t, err)
+			require.Equal(t, []string{"api/"}, got.Paths)
+			return ui.Result{}, nil
+		},
+	}
+
+	require.NoError(t, service.Run(t.Context()))
+	_, err := read(t.Context(), "a", root)
+
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestServiceUsesConfiguredStartMode(t *testing.T) {

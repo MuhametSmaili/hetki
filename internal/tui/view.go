@@ -153,6 +153,9 @@ func (m model) viewOverlay(width, height int) string {
 			Entries: m.menu.Entries, Selected: m.menu.Cursor, Hint: menuControls(m.keys), Keys: m.keys, Theme: m.theme,
 		})
 	case modeInput:
+		if len(m.input.Fields) > 0 {
+			return m.viewForm(width, height)
+		}
 		prompt := m.input.Prompt
 		if m.err != nil {
 			prompt = m.err.Error()

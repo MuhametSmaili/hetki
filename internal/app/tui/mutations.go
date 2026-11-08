@@ -31,20 +31,22 @@ func owningSessionItem(item liveItem) (liveItem, error) {
 }
 
 func (a *LiveAdapter) createSession(ctx context.Context, request ui.ActionRequest) (ui.ActionResult, error) {
-	if request.Value == nil {
-		return ui.ActionResult{Input: &ui.InputPrompt{
-			Title: "CREATE SESSION", Prompt: "Session name", SubmitStatus: "creating session...",
-		}}, nil
+	if request.Values == nil {
+		return a.sessionPrompt(request.ItemID)
 	}
-	name := strings.TrimSpace(*request.Value)
-	if name == "" {
-		return ui.ActionResult{}, fmt.Errorf("session name is required")
+	return a.submitSession(ctx, request)
+}
+
+func (a *LiveAdapter) submitSession(ctx context.Context, request ui.ActionRequest) (ui.ActionResult, error) {
+	name, path, err := validateSessionInput(request)
+	if err != nil {
+		return ui.ActionResult{}, err
 	}
 	b, err := a.detectBackend()
 	if err != nil {
 		return ui.ActionResult{}, fmt.Errorf("failed to detect backend: %w", err)
 	}
-	actions := []backend.Action{backend.CreateSessionAction{Name: name}}
+	actions := []backend.Action{backend.CreateSessionAction{Name: name, Path: path}}
 	workspacePath, err := activeWorkspacePath(ctx, b)
 	if err != nil {
 		return ui.ActionResult{}, err

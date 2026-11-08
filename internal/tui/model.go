@@ -81,25 +81,27 @@ const (
 )
 
 type model struct {
-	choice      *choiceState
-	items       list.Model
-	view        ViewMode
-	mode        uiMode
-	status      string
-	err         error
-	busy        bool
-	input       inputState
-	confirm     confirmState
-	menu        menuState
-	pending     *ActionRequest
-	pendingRows []list.ItemID
-	navigation  list.ItemID
-	quitting    bool
-	preview     previewState
-	readPreview PreviewFunc
-	ctx         context.Context
-	paneStatus  paneStatusState
-	scope       scopeState
+	choice          *choiceState
+	items           list.Model
+	view            ViewMode
+	mode            uiMode
+	status          string
+	err             error
+	busy            bool
+	input           inputState
+	confirm         confirmState
+	menu            menuState
+	pending         *ActionRequest
+	pendingRows     []list.ItemID
+	navigation      list.ItemID
+	quitting        bool
+	preview         previewState
+	readPreview     PreviewFunc
+	directories     directoryState
+	readDirectories DirectorySuggestFunc
+	ctx             context.Context
+	paneStatus      paneStatusState
+	scope           scopeState
 
 	width        int
 	height       int
@@ -121,20 +123,21 @@ func newModelWithOptions(ctx context.Context, snapshot list.Snapshot, options Op
 		return model{}, err
 	}
 	m := model{
-		items:        items,
-		view:         options.Initial.View,
-		dispatch:     runtime.Dispatch,
-		keys:         options.Keys,
-		theme:        newTheme(options.Palette),
-		mode:         modeBrowse,
-		ctx:          ctx,
-		preview:      previewState{enabled: options.Initial.Preview, width: options.PreviewWidth},
-		scope:        scopeState{mode: options.Initial.Scope},
-		readPreview:  runtime.Preview,
-		inline:       !options.Height.Fullscreen(),
-		pickerHeight: options.Height,
-		border:       options.Border,
-		paneStatus:   paneStatusState{options: runtime.Status},
+		items:           items,
+		view:            options.Initial.View,
+		dispatch:        runtime.Dispatch,
+		keys:            options.Keys,
+		theme:           newTheme(options.Palette),
+		mode:            modeBrowse,
+		ctx:             ctx,
+		preview:         previewState{enabled: options.Initial.Preview, width: options.PreviewWidth},
+		scope:           scopeState{mode: options.Initial.Scope},
+		readPreview:     runtime.Preview,
+		readDirectories: runtime.Directories,
+		inline:          !options.Height.Fullscreen(),
+		pickerHeight:    options.Height,
+		border:          options.Border,
+		paneStatus:      paneStatusState{options: runtime.Status},
 	}
 	if options.Choice != nil {
 		m.choice = &choiceState{screen: *options.Choice, history: make(map[string]choicePosition)}

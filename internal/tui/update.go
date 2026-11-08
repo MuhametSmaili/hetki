@@ -18,7 +18,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(msg)
 	next, previewCmd := updated.(model).syncPreview() //nolint:forcetypeassert // update always returns the concrete model.
 	next, frameCmd := next.syncStatusFrame(time.Now())
-	return next, tea.Batch(cmd, previewCmd, frameCmd)
+	next, directoryCmd := next.syncDirectorySuggestions()
+	return next, tea.Batch(cmd, previewCmd, frameCmd, directoryCmd)
 }
 
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -38,6 +39,8 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case previewResultMsg:
 		return m.handlePreviewResult(msg)
+	case directoryResultMsg:
+		return m.handleDirectoryResult(msg)
 	case tea.WindowSizeMsg:
 		return m.updateWindowSize(msg)
 	case actionResultMsg:
@@ -65,7 +68,7 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 		m.setQuery(m.items.Query() + singleLinePaste(msg.Content))
 		return m.reflow(), nil
 	case modeInput:
-		m.input.Value += singleLinePaste(msg.Content)
+		m.appendInput(singleLinePaste(msg.Content))
 		m.err = nil
 	case modeBrowse, modeConfirm, modeMenu:
 		// Paste is ignored outside filter and input modes.
@@ -92,6 +95,11 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.choice != nil && msg.String() == "ctrl+r" {
 		return m.startChoice(ChoiceRefresh, list.ItemID{})
 	}
+	if m.mode == modeInput && len(m.input.Fields) > 0 {
+		if next, handled := m.formKey(msg); handled {
+			return next, nil
+		}
+	}
 	return m.updateUnboundKey(msg)
 }
 
@@ -104,7 +112,7 @@ func (m model) updateUnboundKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.reflow(), nil
 	case modeInput:
 		if msg.Text != "" {
-			m.input.Value += msg.Text
+			m.appendInput(msg.Text)
 			m.err = nil
 		}
 	case modeBrowse, modeConfirm, modeMenu:

@@ -57,6 +57,10 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 	if request.ActionID == ui.ActionToggleProjection {
 		return a.toggleProjection(ctx, request.ItemID)
 	}
+	if request.ActionID == ui.ActionCreateSession {
+		return a.createSession(ctx, request)
+	}
+
 	var item liveItem
 	if !request.ItemID.IsZero() {
 		var err error
@@ -71,8 +75,6 @@ func (a *LiveAdapter) Execute(ctx context.Context, request ui.ActionRequest) (ui
 	case ui.ActionRefresh:
 		snapshot, err := a.loadSnapshot(ctx)
 		return ui.ActionResult{Message: "refreshed", Snapshot: &snapshot}, err
-	case ui.ActionCreateSession:
-		return a.createSession(ctx, request)
 	default:
 		return a.executeItem(ctx, request, item)
 	}

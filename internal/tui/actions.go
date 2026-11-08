@@ -144,9 +144,11 @@ func (m model) dispatchRegularAction(action ActionID, itemID list.ItemID) (tea.M
 }
 
 type ActionRequest struct {
-	ActionID  ActionID
-	ItemID    list.ItemID
-	Value     *string
+	ActionID ActionID
+	ItemID   list.ItemID
+	Value    *string
+	// Values is nil before submission. An empty map still means submission.
+	Values    map[string]string
 	Confirmed bool
 	Choice    ChoiceEvent
 
@@ -159,6 +161,29 @@ type InputPrompt struct {
 	Prompt       string
 	InitialValue string
 	SubmitStatus string
+	// Fields replaces Prompt and InitialValue when it has entries.
+	Fields      []InputField
+	SubmitLabel string
+}
+
+// InputKind selects text input or directory input.
+type InputKind string
+
+const (
+	InputText      InputKind = "text"
+	InputDirectory InputKind = "directory"
+)
+
+// InputField describes a text or directory field.
+type InputField struct {
+	ID           string
+	Label        string
+	Kind         InputKind
+	InitialValue string
+	Placeholder  string
+	Required     bool
+	// BasePath is the fixed base directory for relative paths.
+	BasePath string
 }
 
 type Confirmation struct {

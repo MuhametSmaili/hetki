@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/MuhametSmaili/hetki/internal/directory"
 	ui "github.com/MuhametSmaili/hetki/internal/tui"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
 )
@@ -78,6 +79,21 @@ func (e *uiEffects) preview(ctx context.Context, request ui.PreviewRequest) (str
 	stop := context.AfterFunc(ctx, cancel)
 	defer stop()
 	return e.driver.Preview(readCtx, request)
+}
+
+func (e *uiEffects) directories(ctx context.Context, value, base string) (directory.Suggestions, error) {
+	if err := e.begin(); err != nil {
+		return directory.Suggestions{}, err
+	}
+	defer e.active.Done()
+
+	readCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	stop := context.AfterFunc(e.ctx, cancel)
+	defer stop()
+
+	return directory.Suggest(readCtx, value, base)
 }
 
 func (e *uiEffects) statusOptions() ui.StatusOptions {

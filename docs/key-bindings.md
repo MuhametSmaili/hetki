@@ -127,6 +127,21 @@ Use `prompt` as the YAML mode name.
 | `delete_word`     | `ctrl+w`              | Delete the preceding word.      |
 | `delete_to_start` | `ctrl+u`              | Delete text back to the start.  |
 
+#### New session
+
+Enter a session name and confirm or change the prefilled directory.
+The directory defaults to the selected item's working directory, or your home directory
+when no path is available. Sessions use their active window's active pane; windows use
+their active pane. Relative paths resolve from this initial directory.
+
+Tab edits Directory at the end of the path. Backspace deletes one character.
+Ctrl+W deletes the last path component, including trailing slashes
+(`/work/api/` → `/work/`). Ctrl+L or Ctrl+U clears the path.
+Up/Down or Ctrl+P/Ctrl+N chooses suggestions. Tab completes one.
+Shift+Tab returns to Name. Enter creates and selects the session without switching into it.
+If needed to show the new session, the picker switches to All and clears a nonmatching
+search. Switching back to Tracked restores its previous selection and expansion.
+
 ### Confirmation mode
 
 Use `confirm` as the YAML mode name.
