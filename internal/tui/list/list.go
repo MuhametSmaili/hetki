@@ -299,9 +299,20 @@ func (m Model) matchIndices() []int {
 }
 
 func flatten(items []Item, expanded map[ItemID]bool, includeAll bool) []Row {
-	rows := make([]Row, 0)
-	flattenAtDepth(items, nil, expanded, includeAll, &rows)
+	rows := make([]Row, 0, visibleItemCount(items, expanded, includeAll))
+	var ancestors [MaxDepth]bool
+	flattenAtDepth(items, ancestors[:0], expanded, includeAll, &rows)
 	return rows
+}
+
+func visibleItemCount(items []Item, expanded map[ItemID]bool, includeAll bool) int {
+	count := len(items)
+	for _, item := range items {
+		if len(item.Children) > 0 && (includeAll || expanded[item.ID]) {
+			count += visibleItemCount(item.Children, expanded, includeAll)
+		}
+	}
+	return count
 }
 
 func flattenAtDepth(items []Item, ancestors []bool, expanded map[ItemID]bool, includeAll bool, rows *[]Row) {
@@ -313,30 +324,36 @@ func flattenAtDepth(items []Item, ancestors []bool, expanded map[ItemID]bool, in
 			Expanded: isExpanded, Branch: len(item.Children) > 0,
 		})
 		if len(item.Children) > 0 && isExpanded {
-			flattenAtDepth(item.Children, append(append([]bool(nil), ancestors...), hasNext), expanded, includeAll, rows)
+			flattenAtDepth(item.Children, append(ancestors, hasNext), expanded, includeAll, rows)
 		}
 	}
 }
 
 type matchedItem struct {
-	item     Item
+	item     *Item
 	children []matchedItem
 	score    int
 	rank     int
 }
 
 func rankedMatches(items []Item, query string) []Row {
-	matched := matchItems(items, query)
-	rows := make([]Row, 0)
-	flattenMatches(matched, nil, &rows)
+	matched, count := matchItems(items, query)
+	rows := make([]Row, 0, count)
+	var ancestors [MaxDepth]bool
+	flattenMatches(matched, ancestors[:0], &rows)
 	return rows
 }
 
-func matchItems(items []Item, query string) []matchedItem {
+func matchItems(items []Item, query string) ([]matchedItem, int) {
+	if len(items) == 0 {
+		return nil, 0
+	}
 	matched := make([]matchedItem, 0, len(items))
-	for _, item := range items {
-		score := itemScore(item, query)
-		children := matchItems(item.Children, query)
+	count := 0
+	for i := range items {
+		item := &items[i]
+		score := itemScore(*item, query)
+		children, childCount := matchItems(item.Children, query)
 		if score == 0 && len(children) == 0 {
 			continue
 		}
@@ -345,21 +362,24 @@ func matchItems(items []Item, query string) []matchedItem {
 			rank = max(rank, child.rank)
 		}
 		matched = append(matched, matchedItem{item: item, children: children, score: score, rank: rank})
+		count += 1 + childCount
 	}
 	slices.SortStableFunc(matched, func(left, right matchedItem) int {
 		return right.rank - left.rank
 	})
-	return matched
+	return matched, count
 }
 
 func flattenMatches(items []matchedItem, ancestors []bool, rows *[]Row) {
 	for i, matched := range items {
 		hasNext := i < len(items)-1
 		*rows = append(*rows, Row{
-			Item: matched.item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
+			Item: *matched.item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
 			Expanded: true, Branch: len(matched.item.Children) > 0, Score: matched.score,
 		})
-		flattenMatches(matched.children, append(append([]bool(nil), ancestors...), hasNext), rows)
+		if len(matched.children) > 0 {
+			flattenMatches(matched.children, append(ancestors, hasNext), rows)
+		}
 	}
 }
 
