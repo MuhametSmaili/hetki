@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { demoPanes } from './demo-data.js'
 import { statusLabels, useStatusGlyph } from './status.js'
+import PickerHeader from './PickerHeader.vue'
 import PickerRow from './PickerRow.vue'
 
 const root = ref(null)
@@ -18,14 +19,15 @@ function toggle(status) {
 
 <template>
   <div ref="root" class="hk-panel status-demo">
-    <div class="bar">
-      <span class="muted" aria-hidden="true">&gt;</span>
-      <div class="scopes" role="group" aria-label="Status example scope">
-        <button type="button" :aria-pressed="!tracked" @click="tracked = false">All</button>
-        <button type="button" :aria-pressed="tracked" @click="tracked = true">Tracked</button>
-        <span class="muted" aria-live="polite">{{ visible.length }}</span>
-      </div>
-    </div>
+    <PickerHeader dim class="bar">
+      <template #meta>
+        <div class="scopes" role="group" aria-label="Status example scope">
+          <button type="button" :aria-pressed="!tracked" @click="tracked = false">All</button>
+          <button type="button" :aria-pressed="tracked" @click="tracked = true">Tracked</button>
+          <span class="muted" aria-live="polite">{{ visible.length }}</span>
+        </div>
+      </template>
+    </PickerHeader>
     <ul class="hk-picker-list">
       <li v-for="item in visible" :key="item.id" :class="{ lit: spotlight && item.status === spotlight }">
         <PickerRow :item="item" :glyph="glyph(item.status)" />
@@ -55,10 +57,7 @@ function toggle(status) {
   container-name: status;
 }
 
-.bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.status-demo .bar {
   padding: 4px 16px;
   border-bottom: 1px solid var(--hk-term-border);
 }

@@ -1,57 +1,30 @@
+<script setup>
+import ActionDemo from './.vitepress/theme/ActionDemo.vue'
+</script>
+
 # User-defined actions
 
-Define an action in YAML by chaining selection steps, then running a command.
-Each step can use data from earlier choices. Use built-in tmux lists, fixed choices,
-or your own scripts to supply the items.
+An action is a list of steps in a YAML file. Each step shows a list of choices or runs a command.
+Later steps can use the choices that you selected before.
 
-Scripts receive the original context and earlier selections as JSON on stdin.
-They return choices as one JSON object per line on stdout. Hetki keeps the selected
-item for later steps and sends the context and selections to the final command on stdin too.
-See [stdin and stdout](#external-scripts-stdin-and-stdout) for an example.
+An action has two types of step:
 
-For example: **Move pane → choose session → choose window → move the pane.**
+- `select`: shows a list of choices. You select one. An action can have zero or more `select` steps.
+- `run`: runs a command. **Each action must end with one `run` step.**
 
-Each recipe has two types of step:
-
-- `select`: get choices and wait for you to select one. You can have zero or more selection steps.
-- `run`: execute a command. **Exactly one `run` is required, and it must be the last step.**
-
-An action with only `run` executes as soon as you select the action.
-
-Open your actions in either place:
-
-- **Inside Hetki:** highlight a row, press `Ctrl+K`, then `U` for **User actions…**.
-  In normal mode, press `U` directly.
-  The highlighted row is the subject. After the action finishes, you return to the normal list.
-- **From a terminal or tmux binding:** run `hetki action` with a pane, window, or session ID.
-  This opens a standalone picker that closes when the action finishes.
-
-Both use the same recipes. The [action reference](./action-reference.md) lists all fields and limits.
-To change `U`, set `keymap.normal.user_actions` or `keymap.menu.user_actions`
-for the corresponding mode in your [key bindings](key-bindings.md).
-
-From a terminal inside tmux, open actions for the current pane with:
-
-```bash
-hetki action --pane-id "$TMUX_PANE"
-```
-
-You can also target a window or session. Replace these example IDs with your own:
-
-```bash
-hetki action --window '@8'
-hetki action --session '$3'
-```
+If an action has only a `run` step, Hetki runs the command when you select the action.
 
 ## Try one action
 
-### 1. Create the file
+This action moves a pane to a different window.
+
+### 1. Create the actions file
 
 Create `~/.config/hetki/actions.yaml`.
-If you set `XDG_CONFIG_HOME`, use `$XDG_CONFIG_HOME/hetki/actions.yaml` instead.
-This is a separate file from Hetki's UI configuration.
+If you set `XDG_CONFIG_HOME`, use `$XDG_CONFIG_HOME/hetki/actions.yaml`.
+This file is separate from the Hetki UI configuration.
 
-Paste this complete example:
+Paste this example:
 
 ```yaml
 version: 1
@@ -84,43 +57,97 @@ actions:
             - "${steps.destination.value.pane_target}"
 ```
 
-### 2. Open it from a tmux pane
+### 2. Open the action menu
+
+In a tmux pane, run:
 
 ```bash
 hetki action --pane-id "$TMUX_PANE"
 ```
 
-`$TMUX_PANE` contains the current pane ID, such as `%39`.
-To use another file, add `--file /path/to/actions.yaml`.
-For this example, have another tmux window available as the destination.
+`$TMUX_PANE` contains the ID of the current pane, for example `%39`.
+To use a different actions file, add `--file /path/to/actions.yaml`.
 
 ### 3. Move the pane
+
+Make sure that you have a second tmux window. Then:
 
 1. Select **Move pane to another window…**.
 2. Select a session.
 3. Select a different window.
 
-The last selection runs `tmux join-pane` immediately.
-The original pane moves into the selected window.
-It splits the destination's active pane.
-The `-d` argument keeps the destination window in the background.
+When you select the window, Hetki runs `tmux join-pane`.
+The pane moves into the selected window and splits its active pane.
+The `-d` argument keeps the selected window in the background.
 
-## How does the flow work?
+You can also try the action here. The demo uses sample sessions and runs no commands.
+To see a failed command, select **scratch**, then **scratch / 0 dev**.
 
-![The original pane stays in context. Choose an action, then a session, then a window. Each selection is saved under steps. The command uses the original pane and the selected window.](/action-flow.svg)
+<ActionDemo />
 
-Hetki reads the steps from top to bottom.
-`select` opens a list. `run` executes the final command.
+## Open actions from a tmux key
 
-The name after `select` tells Hetki where to store the selected item.
-Hetki keeps the whole item in memory while the flow is open. It does not save selections to disk.
+First, try the popup. In a tmux pane, run:
 
-| Step                  | Where Hetki stores the selection | What uses it next                                        |
-| --------------------- | -------------------------------- | -------------------------------------------------------- |
-| `select: session`     | `steps.session`                  | The next source reads `steps.session.value.session_id`.  |
-| `select: destination` | `steps.destination`              | The command reads `steps.destination.value.pane_target`. |
+```bash
+tmux display-popup -B -E -w 80% -h 80% "hetki action --pane-id $TMUX_PANE --height 100%"
+```
 
-For example, you select session `$3`. Hetki stores this item:
+The action menu opens in a popup for your current pane.
+
+- `-B` removes the popup border. `-E` closes the popup when Hetki stops.
+- `--height 100%` makes Hetki fill the popup.
+
+To open the popup with a key, add this line to `~/.tmux.conf`:
+
+```text
+bind -N "Pane actions popup" a run-shell -C 'display-popup -B -E -w 80% -h 80% hetki action --pane-id "#{pane_id}" --height 100%'
+```
+
+`a` is an example. You can use a different key.
+By default, tmux does not use `a`, `b`, `e`, `h`, `j`, `k`, `u`, `v`, or `y`.
+Other keys replace a tmux key binding.
+
+Load the changed file:
+
+```bash
+tmux source-file ~/.tmux.conf
+```
+
+Press your tmux prefix, then `a`.
+
+`run-shell -C` replaces `#{pane_id}` with the ID of your current pane.
+Without `-C`, tmux does not replace it in the popup command.
+
+For window or session actions, use one of these lines:
+
+```text
+bind -N "Window actions popup" a run-shell -C 'display-popup -B -E -w 80% -h 80% hetki action --window "#{window_id}" --height 100%'
+bind -N "Session actions popup" a run-shell -C "display-popup -B -E -w 80% -h 80% hetki action --session '#{session_id}' --height 100%"
+```
+
+All three lines use the same key. Use one line, or give each line a different key.
+Keep the single quotes around `#{session_id}`. They stop tmux from changing the `$` in the session ID.
+
+You can also open the action menu inside Hetki, for the selected row.
+Press `U` in normal mode, or press `Ctrl+K`, then `U`.
+When the action finishes, the normal list comes back.
+To change these keys, see [key bindings](key-bindings.md#normal-mode).
+
+## How steps share data
+
+![The pane stays in the context. You select an action, then a session, then a window. Hetki keeps each selection under steps. The command uses the pane from the context and the selected window.](/action-flow.svg)
+
+Hetki does the steps in order, from top to bottom.
+The name after `select` is the name of the step.
+Hetki keeps the selected choice under `steps.<name>`:
+
+| Step                  | Hetki keeps the choice in | Used by                                              |
+| --------------------- | ------------------------- | ---------------------------------------------------- |
+| `select: session`     | `steps.session`           | The next source: `steps.session.value.session_id`    |
+| `select: destination` | `steps.destination`       | The command: `steps.destination.value.pane_target`   |
+
+For example, you select the session `$3`. Hetki keeps this choice:
 
 ```json
 {
@@ -130,97 +157,97 @@ For example, you select session `$3`. Hetki stores this item:
 }
 ```
 
-The next step contains:
+The next step contains this line:
 
 ```yaml
 session: "${steps.session.value.session_id}"
 ```
 
-Hetki replaces that reference with `$3`.
-The next list shows only windows in session `$3`.
-You do not need a pipe or a temporary file to pass the selection.
+Hetki replaces the reference with `$3`. The next list shows only the windows in session `$3`.
 
-## What is context?
+### Context
 
-**Context describes what you started with. Selections describe what you chose later.**
+The context tells the action what to act on. It does not change while the action runs.
 
-| Field                   | Meaning                                          | Example                            |
-| ----------------------- | ------------------------------------------------ | ---------------------------------- |
-| `context.subject`       | The pane, window, or session you want to act on. | The original pane `%39`.           |
-| `context.subject.cwd`   | Pane directory when the flow opened, if known.   | `/work/api`                       |
-| `context.server.socket` | The address of its tmux server.                  | `/tmp/tmux-501/default`            |
-| `context.invocation`    | Where Hetki was started, when known.             | The pane that contains the picker. |
-| `steps.NAME`            | The item selected in the step named `NAME`.      | The destination window.            |
+| Field                   | Meaning                                                        | Example                       |
+| ----------------------- | -------------------------------------------------------------- | ----------------------------- |
+| `context.subject`       | The pane, window, or session that the action acts on.          | The pane `%39`                |
+| `context.subject.cwd`   | The directory of the pane when the action menu opened. Panes only, if tmux knows it. | `/work/api` |
+| `context.server.socket` | The socket of the tmux server.                                 | `/tmp/tmux-501/default`       |
+| `context.invocation`    | The pane that Hetki opened in, if known.                       | The pane that shows the picker |
 
-The subject stays the same through the whole flow.
-Selecting a destination does not replace the original pane.
-For pane subjects, `cwd` is a snapshot from tmux. It is absent when unknown and
-for window/session subjects. It does not change when you refresh choices.
+Your selections do not change the subject.
+In the example, `${context.subject.pane_id}` is the pane to move,
+and `${steps.destination.value.pane_target}` is the destination.
 
-Use `${context.subject.pane_id}` for the original pane.
-Use `${steps.destination.value.pane_target}` for the destination.
+## Where an action appears
 
-## Can an action have two scopes?
-
-Yes. List all the scopes that can use the action:
+The `scope` field sets which subjects can use an action.
+Use one or more of `pane`, `window`, and `session`:
 
 ```yaml
 scope: [pane, window]
 ```
 
-This means **pane OR window**. Each invocation still has one subject.
-All three scopes are supported:
+This action appears for panes and for windows. Each time, it acts on one subject.
 
-| Scope | Command to open its actions | Subject fields you can use |
-| --- | --- | --- |
-| `pane` | `hetki action --pane-id '%39'` | `pane_id`, `window_id`, optional `cwd` |
-| `window` | `hetki action --window '@8'` | `window_id` |
-| `session` | `hetki action --session '$3'` | `session_id` |
+| Scope     | Open the action menu           | Subject fields                              |
+| --------- | ------------------------------ | ------------------------------------------- |
+| `pane`    | `hetki action --pane-id '%39'` | `pane_id`, `window_id`, `session_id`, `cwd` |
+| `window`  | `hetki action --window '@8'`   | `window_id`, `session_id`                   |
+| `session` | `hetki action --session '$3'`  | `session_id`                                |
 
-Pane and window subjects also have `session_id` when the session is unambiguous.
-Linked windows can belong to more than one session.
+Some fields can be missing. See [program input](./action-reference.md#program-input).
+For an action with `scope: [pane, window]`, use `context.subject.window_id`.
+A window subject has no `pane_id`.
 
-**Scope controls which actions appear. It does not filter a source's choices.**
-Use a source's `session` or `window` field to filter its list.
+`scope` does not filter the choices in a list.
+To filter a list, use the `session` or `window` field of its source.
 
-For a `[pane, window]` action, use `context.subject.window_id` to target the window.
-Do not use `pane_id`: a window subject does not have that field.
+If the action menu is empty, make sure that the `scope` of an action includes the subject.
 
-## Where do the choices come from?
+## Where the choices come from
 
-Use exactly one source type in each selection step:
+Each `select` step has one source:
 
-| Source    | Use it for                       | Example                                   |
-| --------- | -------------------------------- | ----------------------------------------- |
-| `builtin` | Live tmux objects.               | Sessions, windows, panes.                 |
-| `items`   | A fixed list in YAML.            | Side by side or stacked.                  |
-| `exec`    | A list produced by your program. | Git branches, worktrees, project folders. |
+| Source    | Choices                                | Example                                   |
+| --------- | -------------------------------------- | ----------------------------------------- |
+| `builtin` | Live tmux sessions, windows, or panes. | The sessions on your server.              |
+| `items`   | A fixed list in the YAML file.         | Side by side or stacked.                  |
+| `exec`    | A list from your script.               | Git branches, worktrees, project folders. |
 
-Each choice has an `id` and a `label`. It can also have a `description` for
-secondary display text and a `value` object for data used by later steps.
-**Typing searches labels only**, not descriptions or values.
-See the [item format](./action-reference.md#item-format) for the shared fields.
+Each choice has an `id` and a `label`. It can also have:
+
+- a `description`, which shows in a second column;
+- a `value`, which holds data for later steps.
+
+When you type, Hetki searches only the labels.
+For all choice fields, see the [item format](./action-reference.md#item-format).
 
 ### Built-in sources
 
-These are **all three** built-in sources:
+| Name            | One choice for each | Label                      | Description                  |
+| --------------- | ------------------- | -------------------------- | ---------------------------- |
+| `tmux.sessions` | Session             | `work`                     | None                         |
+| `tmux.windows`  | Window              | `work / 1 editor`          | Directory of the active pane |
+| `tmux.panes`    | Pane                | `work / 1 editor / 0 nvim` | Directory of the pane        |
 
-| Name            | Choices                                         | Fields in each item's `value`                                        |
-| --------------- | ----------------------------------------------- | -------------------------------------------------------------------- |
-| `tmux.sessions` | Sessions on the current server.                 | `session_id`                                                         |
-| `tmux.windows`  | Windows, listed under their sessions.           | `session_id`, `window_id`, `window_target`, `pane_id`, `pane_target` |
-| `tmux.panes`    | Panes, listed under their windows and sessions. | `session_id`, `window_id`, `window_target`, `pane_id`, `pane_target` |
+The lists use the tmux order. Each `value` contains `session_id`.
+Window and pane choices also contain `window_id`, `window_target`, `pane_id`, and `pane_target`:
 
-For a window choice, `pane_id` identifies its active pane when the list loads.
-`window_target` includes the session, for example `$3:@8`.
-`pane_target` includes all three IDs, for example `$3:@8.%42`.
+- `window_target` contains the session and window, for example `$3:@8`.
+- `pane_target` contains the session, window, and pane, for example `$3:@8.%42`.
+- For a window choice, `pane_id` is the active pane of the window.
 
-Git repositories, branches, and worktrees are **not built in**.
-Use `exec` to supply those choices. No Hetki code change is needed.
+The lists include the subject.
+The `session` and `window` filters keep one ID. They cannot remove one.
+To remove the subject, use an `exec` source. Otherwise, make sure that your command can handle it.
 
-### External scripts: stdin and stdout
+Git repositories, branches, and worktrees are not built in. Use an `exec` source for them.
 
-This step tells Hetki **which program supplies the choices**:
+### Scripts
+
+An `exec` source runs your script to get the choices:
 
 ```yaml
 - select: branch
@@ -230,16 +257,14 @@ This step tells Hetki **which program supplies the choices**:
       argv: [python3, /absolute/path/to/worktrees.py, branches]
 ```
 
-`branches` is an argument for your script. It has no special meaning to Hetki.
-The script receives context and previous selections, then prints choices:
-
 ```text
 Hetki ── stdin: JSON request ──→ script
-Hetki ←─ stdout: JSON items ─── script
+Hetki ←─ stdout: JSON choices ── script
 ```
 
-Hetki connects both streams automatically. Your script reads the request from
-stdin and writes one JSON item per line to stdout:
+Hetki sends a JSON request to the stdin of the script.
+The request contains the context and the earlier selections.
+The script writes one JSON choice on each line of stdout:
 
 ```python
 import json
@@ -253,17 +278,10 @@ print(json.dumps({
 }))
 ```
 
-**The output contains items, not a `source` definition or another recipe.**
-Your script defines `branch` and `create` inside `value`. Hetki keeps those fields as data.
-Write diagnostics to stderr so they do not get parsed as choices.
+Write errors and other messages to stderr. Hetki reads each stdout line as a choice.
 
-1. Hetki starts the script and sends the JSON request to its stdin.
-2. Hetki reads stdout and waits for the script to exit successfully.
-3. Hetki validates the items, then displays their labels and optional descriptions.
-4. You select a choice. Hetki stores the whole item in `steps.branch`.
-5. Later providers and the final command receive that selection in their JSON stdin.
-
-The final command can read it with:
+When you select a choice, Hetki keeps all of it, with its `value`, in `steps.branch`.
+Later scripts and the final command get it in their JSON stdin:
 
 ```python
 import json
@@ -275,94 +293,83 @@ branch_name = choice["branch"]
 create_new = choice["create"]
 ```
 
-The YAML still defines what comes next: another `select`, or the final `run`.
-Hetki waits for `run` to finish. Its stdout is captured, not used as a new choice list.
+For a complete example, see [program-generated lists](./action-reference.md#program-generated-lists-exec).
+For commands that need the repository of the selected pane, see [working directory](./action-reference.md#working-directory).
 
-For a complete recipe and provider, see [program-generated lists](./action-reference.md#program-generated-lists-exec).
-For commands that need the selected pane's repository, see [working directory](./action-reference.md#working-directory).
+## Use the action picker
 
-## Open the menu from tmux
+### The screen
 
-Add this binding to `~/.tmux.conf`:
-
-```text
-bind -N "Pane actions popup" o run-shell -C 'display-popup -B -E -w 80% -h 80% hetki action --pane-id "#{pane_id}" --height 100%'
-```
-
-Reload the file:
-
-```bash
-tmux source-file ~/.tmux.conf
-```
-
-Press your tmux prefix, then `o`.
-**`run-shell -C` replaces `#{pane_id}` with the pane you were in when you pressed the key.**
-You do not need to find the ID yourself.
-
-Here, `run-shell -C` runs a tmux command after it expands the format fields.
-Putting `#{pane_id}` directly in the popup command does not expand it.
-
-`-B` removes the popup border. `-E` closes the popup when Hetki exits.
-`--height 100%` makes Hetki fill the popup.
-
-For window or session actions, use these bindings instead:
+Each step shows a list. This is the window step of the example, at 80 columns:
 
 ```text
-bind -N "Window actions popup" o run-shell -C 'display-popup -B -E -w 80% -h 80% hetki action --window "#{window_id}" --height 100%'
-bind -N "Session actions popup" o run-shell -C "display-popup -B -E -w 80% -h 80% hetki action --session '#{session_id}' --height 100%"
+> █                                  Move pane to another window… › Cho...
+──────────────────────────────────────────────────────────────────────────
+  atlas / 0 editor    ~/Projects/atlas
+  atlas / 1 terminal  ~/Projects/atlas
 ```
 
-Choose one binding for `o`, or assign different keys.
-Keep the inner single quotes around the session ID. They protect its `$` during command parsing.
+- At the left, `>` is the filter. Each screen starts in filter mode, so you can type immediately.
+- At the right is the title. For a `select` step, the title is the action label, then the step `title`.
+  If the step has no `title`, Hetki uses the step name.
+- Each row shows the label of a choice. A description shows in a second column.
+- The action menu shows your actions in the order of their IDs, not in file order.
 
-For the regular session/window switcher, run `hetki` without `action`:
+The title uses half of the width or less.
+Use a short action label and short step titles, so that the step title stays visible.
 
-```text
-bind -N "Session switcher popup" o display-popup -B -E -w 80% -h 80% 'hetki --height 100%'
-```
+When Hetki loads choices or runs the command, the title changes to `running action...`.
+When a step fails, the title changes to the error.
 
-## Keys and completion
+### Keys
 
-These are the default keys:
+| Key    | Result                                               |
+| ------ | ---------------------------------------------------- |
+| Type   | Filter the list by label.                            |
+| Enter  | Select a choice. The last selection runs the command. |
+| Escape | Go back one screen.                                  |
+| Ctrl+R | Reload the choices.                                  |
+| Ctrl+L | Clear the filter.                                    |
+| Ctrl+C | Close the action picker and stop the command.        |
 
-| Input | Result |
-| --- | --- |
-| Type | Filter the current list by label. |
-| Enter | Select an item. The final selection runs the command. |
-| Escape | Go back one screen. |
-| Ctrl+R | Reload the choices. |
-| Ctrl+L | Clear the filter and keep typing. |
-| Ctrl+C | Close the picker and cancel its running command. |
+- Escape always goes back, also if you change Escape for the normal picker.
+  On the action menu, Escape closes the action picker.
+- When you go back, Hetki loads the choices again. If it can, it keeps your filter and selected row.
+- Going back and reloading never run the command again.
+- While Hetki loads choices or runs a command, only Ctrl+C works.
+- Ctrl+R reloads the choices, not `actions.yaml`. After you change `actions.yaml`, open the action menu again.
 
-Back restores the previous search and selection when possible.
-Returning to a selection step reloads its choices. Escape from the action menu closes the flow.
-Back and refresh do not run the final command again.
-While a program runs, only Ctrl+C is available.
-Escape always goes Back, even if you remap it for the normal picker.
-Other supported keys use the current mode's bindings.
-See [action choice screens](key-bindings.md#action-choice-screens) for the exceptions.
+For the other keys, see [action choice screens](key-bindings.md#action-choice-screens).
 
-### Empty lists and loading errors
+### Empty lists
 
-If the list is empty, the message explains why:
+| Message                                                | Meaning                                     |
+| ------------------------------------------------------ | ------------------------------------------- |
+| `no choices available · ctrl+r refresh · Esc back`     | The source gave no choices.                 |
+| `no matching choices · ctrl+l clear filter · Esc back` | No choice matches your filter.              |
+| `could not load choices · ctrl+r retry · Esc back`     | The source failed. The title shows the error. |
 
-- **No choices available:** the source returned an empty list. Refresh or go Back.
-- **No matching choices:** choices loaded, but none match your filter. Edit or clear the filter.
-- **Could not load choices:** the source failed. The diagnostic stays visible; retry loading or go Back.
-
-The recovery hints follow your key bindings. An empty list never submits a choice.
-If the action menu itself is empty, check that a recipe's `scope` matches the subject.
-
-Ctrl+R reloads the current choices, not `actions.yaml`.
-Close and reopen the action menu after editing recipes.
+The key names in the messages follow your key bindings.
 
 ### Command results
 
-Success closes the action picker. A command failure shows a **Run** item for retry.
-If the command exits with code `0` but output capture or cleanup fails,
-Hetki shows **Close completed action** and a diagnostic. Enter or Escape closes it.
-Back and refresh cannot retry that completed command.
-Failure or cancellation does not undo changes that the command already made.
-Retry can repeat those changes.
+When the command succeeds, the action picker closes. Hetki does not show the command output.
 
-For program input, command rules, and limits, see the [action reference](./action-reference.md).
+- From `hetki action`, your shell or tmux popup comes back.
+- From inside Hetki, the normal list comes back.
+
+When the command fails, the list shows one row:
+
+```text
+> █                                  action command "tmux": exit status...
+──────────────────────────────────────────────────────────────────────────
+  Run Move pane to another window…
+```
+
+The title shows the error, cut to fit. At 80 columns, you usually see only the start of it.
+To see more of the error, use a wider terminal or popup.
+
+Press Enter to run the command again, or Escape to go back.
+A failed command does not undo its changes. When you run it again, it can make the same changes again.
+
+For other results, limits, and command rules, see the [action reference](./action-reference.md).

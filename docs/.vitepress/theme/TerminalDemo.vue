@@ -4,6 +4,7 @@ import { demoPanes } from './demo-data.js'
 import { createPickerDemo } from './picker.js'
 import { useStatusGlyph } from './status.js'
 import PanePreview from './PanePreview.vue'
+import PickerHeader from './PickerHeader.vue'
 import PickerRow from './PickerRow.vue'
 
 const root = ref(null)
@@ -69,32 +70,31 @@ async function restart() {
         <button v-if="!opened" type="button" @click="leave">Leave demo</button>
       </div>
       <template v-if="!opened">
-        <div class="bar">
-          <label class="filter">
-            <span class="active" aria-hidden="true">&gt;</span>
-            <input
-              ref="input"
-              v-model="query"
-              role="combobox"
-              aria-label="Filter panes"
-              aria-controls="hetki-demo-list"
-              aria-expanded="true"
-              aria-autocomplete="list"
-              :aria-activedescendant="selected ? `hk-demo-${selected.id}` : undefined"
-              :readonly="mode === 'normal'"
-              :placeholder="mode === 'normal' ? 'press / to filter' : ''"
-              autocomplete="off"
-              autocapitalize="off"
-              spellcheck="false"
-              @keydown="onKey"
-            />
-          </label>
-          <div class="scopes" role="group" aria-label="Demo scope">
-            <button type="button" :aria-pressed="!tracked" @click="tracked = false">All</button>
-            <button type="button" :aria-pressed="tracked" @click="tracked = true">Tracked</button>
-            <span class="muted" aria-live="polite">{{ visible.length }}</span>
-          </div>
-        </div>
+        <PickerHeader as="label" class="bar">
+          <input
+            ref="input"
+            v-model="query"
+            role="combobox"
+            aria-label="Filter panes"
+            aria-controls="hetki-demo-list"
+            aria-expanded="true"
+            aria-autocomplete="list"
+            :aria-activedescendant="selected ? `hk-demo-${selected.id}` : undefined"
+            :readonly="mode === 'normal'"
+            :placeholder="mode === 'normal' ? 'press / to filter' : ''"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            @keydown="onKey"
+          />
+          <template #meta>
+            <div class="scopes" role="group" aria-label="Demo scope">
+              <button type="button" :aria-pressed="!tracked" @click="tracked = false">All</button>
+              <button type="button" :aria-pressed="tracked" @click="tracked = true">Tracked</button>
+              <span class="muted" aria-live="polite">{{ visible.length }}</span>
+            </div>
+          </template>
+        </PickerHeader>
         <div class="body" :class="{ 'with-preview': preview }">
           <ul id="hetki-demo-list" class="hk-picker-list" role="listbox" aria-label="Sample tmux panes">
             <li
@@ -179,19 +179,10 @@ button:focus-visible, .demo-help:focus-visible {
   grid-template-columns: 340px minmax(0, 1fr);
 }
 
-.bar {
-  display: flex;
-  align-items: center;
+.window .bar {
   gap: 12px;
   padding: 4px 14px;
   border-bottom: 1px solid var(--hk-term-border);
-}
-
-.filter {
-  display: flex;
-  flex: 1;
-  gap: 1ch;
-  min-width: 0;
 }
 
 input {
@@ -291,10 +282,6 @@ li[role='option'] {
   color: var(--hk-term-muted);
 }
 
-.active {
-  color: var(--hk-term-active);
-}
-
 .demo-help {
   margin: 16px 0 0;
   color: var(--frame-muted);
@@ -315,7 +302,7 @@ li[role='option'] {
     font-size: 16px;
   }
 
-  .bar {
+  .window .bar {
     gap: 8px;
   }
 

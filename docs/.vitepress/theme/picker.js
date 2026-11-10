@@ -1,14 +1,13 @@
-import { computed, ref, watch } from "vue";
+import { computed, ref, toValue, watch } from "vue";
 
 // Search is illustrative: the Go picker also ranks text matches and frecency.
-function matchesQuery(item, query) {
-  const fields = [item.session, item.window, item.path, item.command].map(
-    (text) => text.toLowerCase(),
-  );
+// Every word must match one field as an in-order subsequence.
+export function matchesQuery(fields, query) {
+  const haystacks = fields.map((text) => text.toLowerCase());
   const words = query.toLowerCase().trim().split(/\s+/);
 
   return words.every((word) =>
-    fields.some((field) => {
+    haystacks.some((field) => {
       let next = 0;
       for (const character of field) {
         if (character === word[next]) {
@@ -21,21 +20,24 @@ function matchesQuery(item, query) {
   );
 }
 
-// Returns writable demo state; DOM focus and event cancellation belong to the view.
-// handleKey returns true when the view must consume the keyboard event.
-export function createPickerDemo(items) {
+// Movement shared by every picker mode: arrows and Ctrl+P/Ctrl+N.
+// Returns -1 or 1, or 0 when the event is not a movement key.
+export function moveStep(event) {
+  if (event.key === "ArrowUp") return -1;
+  if (event.key === "ArrowDown") return 1;
+  if (event.ctrlKey && event.key === "p") return -1;
+  if (event.ctrlKey && event.key === "n") return 1;
+  return 0;
+}
+
+// The filter and cursor shared by every picker demo. `items` is a ref or getter,
+// so a demo can swap the list; `fields` returns the searchable text of one item.
+// When the list changes, the cursor stays on the same item if it is still visible.
+export function createFilteredList(items, fields) {
   const query = ref("");
-  const mode = ref("filter");
-  const tracked = ref(false);
   const cursor = ref(0);
-  const activeId = ref(items[0]?.id);
-  const opened = ref(null);
-  const preview = ref(true);
   const visible = computed(() =>
-    items.filter(
-      (item) =>
-        (!tracked.value || item.status) && matchesQuery(item, query.value),
-    ),
+    toValue(items).filter((item) => matchesQuery(fields(item), query.value)),
   );
   const selected = computed(() => visible.value[cursor.value]);
 
@@ -59,6 +61,26 @@ export function createPickerDemo(items) {
     );
   }
 
+  function moveTo(index) {
+    cursor.value = Math.max(0, Math.min(visible.value.length - 1, index));
+  }
+
+  return { query, cursor, visible, selected, move, moveTo };
+}
+
+// Returns writable demo state; DOM focus and event cancellation belong to the view.
+// handleKey returns true when the view must consume the keyboard event.
+export function createPickerDemo(items) {
+  const mode = ref("filter");
+  const tracked = ref(false);
+  const activeId = ref(items[0]?.id);
+  const opened = ref(null);
+  const preview = ref(true);
+  const { query, cursor, visible, selected, move, moveTo } = createFilteredList(
+    () => items.filter((item) => !tracked.value || item.status),
+    (item) => [item.session, item.window, item.path, item.command],
+  );
+
   function openSelection() {
     const item = selected.value;
     if (!item) return;
@@ -73,33 +95,22 @@ export function createPickerDemo(items) {
   }
 
   function handleNavigationKey(event) {
-    const normal = mode.value === "normal" && !event.ctrlKey && !event.altKey;
+    const step = moveStep(event);
+    if (step) {
+      move(step);
+      return true;
+    }
+
+    if (mode.value !== "normal" || event.ctrlKey || event.altKey) return false;
 
     switch (event.key) {
-      case "ArrowUp":
-        move(-1);
-        return true;
-      case "ArrowDown":
-        move(1);
-        return true;
-      case "p":
-      case "n":
-        if (!event.ctrlKey) return false;
-
-        move(event.key === "p" ? -1 : 1);
-        return true;
       case "k":
       case "j":
-        if (!normal) return false;
-
         move(event.key === "k" ? -1 : 1);
         return true;
       case "g":
       case "G":
-        if (!normal) return false;
-
-        cursor.value =
-          event.key === "g" ? 0 : Math.max(0, visible.value.length - 1);
+        moveTo(event.key === "g" ? 0 : visible.value.length - 1);
         return true;
       default:
         return false;

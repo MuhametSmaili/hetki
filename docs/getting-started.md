@@ -28,6 +28,24 @@ Outside tmux, it attaches to the selected session.
 By default, the picker closes after you switch.
 Your sessions remain in tmux when you close Hetki.
 
+To open Hetki in a tmux popup, run:
+
+```bash
+tmux display-popup -B -E -w 80% -h 80% 'hetki --height 100%'
+```
+
+To open the popup with a key, add this line to `~/.tmux.conf`:
+
+```text
+bind -N "Session switcher popup" j display-popup -B -E -w 80% -h 80% 'hetki --height 100%'
+```
+
+`j` is an example. You can use a different key.
+By default, tmux does not use `a`, `b`, `e`, `h`, `j`, `k`, `u`, `v`, or `y`.
+Other keys replace a tmux key binding.
+
+Run `tmux source-file ~/.tmux.conf`. Then press your tmux prefix, then `j`.
+
 ## Find your way around
 
 By default, the picker opens in **filter mode**. Type to filter the list.

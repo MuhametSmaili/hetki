@@ -1,164 +1,167 @@
 <script setup>
-import { PhArrowRight, PhCheck, PhArrowCounterClockwise } from '@phosphor-icons/vue'
-import { computed, nextTick, ref } from 'vue'
+import { PhCheck } from '@phosphor-icons/vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import {
+  createActionFlowDemo, joinTarget, windowLabel,
+  MENU, SESSIONS, WINDOWS, SUBJECT,
+} from './action-flow.js'
+import ChoiceRow from './ChoiceRow.vue'
+import PickerHeader from './PickerHeader.vue'
 
-const sessions = [
-  {
-    id: '$3', name: 'atlas', description: 'Your application',
-    windows: [
-      { id: '@8', name: 'editor', pane: '%12', command: 'nvim' },
-      { id: '@9', name: 'terminal', pane: '%13', command: '$ _' },
-    ],
-  },
-  {
-    id: '$4', name: 'website', description: 'Your documentation',
-    windows: [
-      { id: '@10', name: 'docs', pane: '%14', command: 'nvim' },
-      { id: '@11', name: 'preview', pane: '%15', command: '$ _' },
-    ],
-  },
-]
-const stages = ['Action', 'Session', 'Window', 'Run']
-const stage = ref(0)
-const session = ref(null)
-const destination = ref(null)
-const controls = ref(null)
-const replay = ref(null)
+const input = ref(null)
+const replayButton = ref(null)
+const flow = createActionFlowDemo()
+const { query, cursor, visible, selected, screen, busy, error, closed, picked, message, emptyText, command } = flow
 
-const title = computed(() => [
-  'Choose an action.',
-  'Choose a destination session.',
-  `Choose a window in ${session.value?.name}.`,
-  'Pane moved.',
-][stage.value])
+// The Go picker sizes the label column to the widest label on the screen.
+const labelWidth = computed(() => `${Math.max(0, ...screen.value.items.map((item) => item.label.length))}ch`)
 
-const choices = computed(() => {
-  if (stage.value === 0) {
-    return [{ id: 'move', name: 'Move pane to another window…', description: 'A recipe you define in actions.yaml' }]
+// A note under the picker: the YAML behind this screen and what it shows.
+const guide = computed(() => {
+  const key = screen.value.key
+  if (key === MENU) {
+    return {
+      yaml: 'scope: [pane]',
+      note: `The menu lists each recipe whose scope includes the subject, pane ${SUBJECT}. Rows show the recipe's label.`,
+    }
   }
-
-  if (stage.value === 1) return sessions
-
-  return session.value.windows.map((window) => ({ ...window, description: `${session.value.name} / ${window.name}` }))
+  if (key === SESSIONS) {
+    return {
+      yaml: 'select: session    builtin: tmux.sessions',
+      note: 'Every session on the server, labeled by name. Typing filters labels only.',
+    }
+  }
+  if (key === WINDOWS) {
+    const session = picked.session
+    const tip = session.name === 'scratch' ? ` scratch / 0 dev holds pane ${SUBJECT} itself; try it to see a failed run.` : ''
+    return {
+      yaml: `session: "\${steps.session.value.session_id}"  →  "${session.id}"`,
+      note: `Your ${session.name} choice filters this list. Rows show session / index name, then the active pane's directory.${tip}`,
+    }
+  }
+  return {
+    yaml: `run: tmux … join-pane -d -s ${SUBJECT} -t ${joinTarget(picked)}`,
+    note: error.value
+      ? 'tmux rejected the target: it is your own pane. Enter retries the command; Esc goes back to the windows.'
+      : 'Enter runs the command again. Refresh reloads this screen without running it.',
+  }
 })
 
-const command = computed(() => {
-  if (!destination.value) return ''
-
-  const target = `${session.value.id}:${destination.value.id}.${destination.value.pane}`
-  return `tmux -S /demo/tmux.sock join-pane -d -s %7 -t '${target}'`
-})
-
-async function focusControls() {
+// Move focus with the screen: the replay button after closing, the filter after reopening.
+watch(closed, async (outcome) => {
   await nextTick()
-  const target = stage.value === 3 ? replay.value : controls.value.querySelector('button')
-  target.focus({ preventScroll: true })
-}
-
-async function choose(choice) {
-  if (stage.value === 1) session.value = choice
-  if (stage.value === 2) destination.value = choice
-
-  stage.value += 1
-  await focusControls()
-}
-
-async function back() {
-  stage.value -= 1
-  await focusControls()
-}
-
-async function restart() {
-  stage.value = 0
-  session.value = null
-  destination.value = null
-  await focusControls()
-}
+  const target = outcome ? replayButton.value : input.value
+  target?.focus({ preventScroll: true })
+})
 
 function onKey(event) {
-  if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return
-
-  if (event.key === 'Escape' && stage.value > 0 && stage.value < 3) {
-    event.preventDefault()
-    event.stopPropagation()
-    back()
-    return
-  }
-
-  if (!['ArrowDown', 'ArrowUp'].includes(event.key) || stage.value === 3) return
-
-  const buttons = [...controls.value.querySelectorAll('button')]
-  const index = buttons.indexOf(event.target)
-  if (index === -1) return
+  if (!flow.handleKey(event)) return
 
   event.preventDefault()
   event.stopPropagation()
-  const direction = event.key === 'ArrowDown' ? 1 : -1
-  buttons[Math.max(0, Math.min(buttons.length - 1, index + direction))].focus()
 }
+
+function choose(index) {
+  if (busy.value) return
+
+  cursor.value = index
+  flow.confirm(visible.value[index])
+}
+
+onBeforeUnmount(flow.dispose)
 </script>
 
 <template>
-  <div class="action-demo" role="group" aria-label="Try a user-defined action" aria-describedby="hk-action-help" @keydown="onKey">
-    <div class="hk-panel">
+  <div class="action-demo">
+    <div class="hk-panel" role="group" aria-label="Browser demo of hetki action" aria-describedby="hk-action-help">
       <div class="hk-bar">
-        <span>hetki action --pane-id '%7'</span>
-        <span class="interactive"><span aria-hidden="true">●</span> interactive demo</span>
+        <span><span class="dim">$ </span>hetki action --pane-id '{{ SUBJECT }}'</span>
+        <span class="dim">pane {{ SUBJECT }} · scratch / 0 dev</span>
       </div>
 
-      <ol class="progress" aria-label="Action steps">
-        <li v-for="(label, index) in stages" :key="label" :class="{ current: stage === index && stage < 3, complete: stage > index || stage === 3 }" :aria-current="stage === index ? 'step' : undefined">
-          <span class="step-number"><PhCheck v-if="stage > index || stage === 3" :size="12" weight="bold" aria-hidden="true" /><template v-else>{{ index + 1 }}</template></span>
-          {{ label }}
-        </li>
-      </ol>
+      <div class="screen">
+        <div v-if="!closed" class="picker">
+          <PickerHeader as="label" class="header">
+            <input
+              ref="input"
+              v-model="query"
+              role="combobox"
+              aria-label="Filter choices"
+              aria-controls="hk-action-list"
+              aria-expanded="true"
+              aria-autocomplete="list"
+              :aria-activedescendant="selected ? `hk-action-${cursor}` : undefined"
+              :readonly="busy"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              @keydown="onKey"
+            />
+            <template #meta>
+              <span class="meta" :title="message" aria-live="polite">{{ message }}</span>
+            </template>
+          </PickerHeader>
 
-      <div class="subject">
-        <span class="subject-label">{{ stage === 3 ? 'Moved pane' : 'Your pane' }}</span>
-        <span class="subject-command">npm run dev <span class="muted">%7</span></span>
-        <span v-if="stage < 3" class="subject-origin">scratch / dev</span>
-        <span v-else class="subject-origin">{{ session.name }} / {{ destination.name }}</span>
+          <ul
+            id="hk-action-list"
+            class="choices"
+            role="listbox"
+            :aria-label="screen.title"
+            :aria-busy="busy"
+            :style="{ '--hk-choice-label': labelWidth }"
+          >
+            <li
+              v-for="(item, index) in visible"
+              :id="`hk-action-${index}`"
+              :key="item.id"
+              role="option"
+              :aria-selected="index === cursor"
+              @mousedown.prevent
+              @click="choose(index)"
+            >
+              <ChoiceRow :item="item" :selected="index === cursor" />
+            </li>
+            <li v-if="!visible.length" class="empty" role="presentation">{{ emptyText }}</li>
+          </ul>
+        </div>
+
+        <div v-else class="closed">
+          <template v-if="closed === 'moved'">
+            <p class="closed-note" role="status">
+              The picker closed. Pane {{ SUBJECT }} now runs in {{ windowLabel(picked.session, picked.window) }}.
+            </p>
+            <div class="result">
+              <div class="destination-bar">
+                <span>{{ windowLabel(picked.session, picked.window) }} <span class="dim-tmux">· in the background</span></span>
+                <span class="success">pane joined <PhCheck :size="13" aria-hidden="true" /></span>
+              </div>
+              <div class="panes">
+                <div class="pane existing"><span class="pane-label">{{ picked.window.pane }}</span><span>{{ picked.window.command }}</span></div>
+                <div class="pane moved"><span class="pane-label">your pane · {{ SUBJECT }}</span><span>$ npm run dev</span><span class="ready">➜ server ready</span></div>
+              </div>
+            </div>
+            <details>
+              <summary>The command Hetki ran</summary>
+              <code>{{ command }}</code>
+            </details>
+          </template>
+          <p v-else class="closed-note" role="status">The picker closed. Nothing ran.</p>
+          <button ref="replayButton" type="button" class="replay" @click="flow.restart()">Open the picker again</button>
+        </div>
       </div>
 
-      <div class="body">
-        <div class="heading">
-          <h3 aria-live="polite" aria-atomic="true">{{ title }}</h3>
-          <p v-if="stage === 0">Move the pane running your development server to another window.</p>
-          <p v-else-if="stage === 1">The recipe lists sessions from tmux.</p>
-          <p v-else-if="stage === 2">The previous step selected {{ session.name }} ({{ session.id }}). That ID filters this window list.</p>
-          <p v-else>The final choice runs the command. The action picker closes.</p>
-        </div>
-
-        <div v-if="stage < 3" ref="controls" :key="stage" class="choices">
-          <button v-for="choice in choices" :key="choice.id" type="button" class="choice" @click="choose(choice)">
-            <span class="choice-marker" aria-hidden="true">›</span>
-            <span class="choice-copy"><span>{{ choice.name }}</span><small>{{ choice.description }}</small></span>
-            <PhArrowRight :size="16" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div v-else class="result">
-          <div class="destination-bar"><span>{{ session.name }} / {{ destination.name }}</span><span class="success">pane joined <PhCheck :size="13" aria-hidden="true" /></span></div>
-          <div class="panes">
-            <div class="pane existing"><span>{{ destination.command }}</span><div class="code-lines" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div>
-            <div class="pane moved"><span class="pane-label">your pane · %7</span><span>$ npm run dev</span><span class="server-ready">➜ server ready</span></div>
-          </div>
-        </div>
-
-        <div class="controls">
-          <button v-if="stage > 0 && stage < 3" type="button" class="back" @click="back">← Back</button>
-          <span v-else-if="stage === 0" class="hint">Choose the action to begin <PhArrowRight :size="14" aria-hidden="true" /></span>
-          <button v-else ref="replay" type="button" class="replay" @click="restart"><PhArrowCounterClockwise :size="15" aria-hidden="true" /> Try another destination</button>
-          <span v-if="stage === 2" class="hint">Next choice moves the pane</span>
-        </div>
-      </div>
-
-      <div class="recipe">
-        <template v-if="stage < 3"><span class="recipe-label">One YAML recipe</span><span><b>select</b> session <span class="muted">→</span> <b>select</b> window <span class="muted">→</span> <b>run</b></span></template>
-        <details v-else><summary>See the command with your selections</summary><code>{{ command }}</code></details>
+      <div v-if="!closed" class="guide">
+        <code>{{ guide.yaml }}</code>
+        <p>{{ guide.note }}</p>
+        <button type="button" class="back" :disabled="busy" @click="flow.back()">
+          Esc · {{ screen.key === MENU ? 'close the picker' : 'go back' }}
+        </button>
       </div>
     </div>
-    <p id="hk-action-help" class="caption">Browser illustration with sample sessions. Click or use Tab and Enter. No commands run here.</p>
+    <p id="hk-action-help" class="caption">
+      Browser demo with sample sessions. Type to filter labels, ↑↓ to move, Enter or click to select,
+      Esc to go back, Ctrl+R to reload, Ctrl+C to close. Nothing runs here.
+    </p>
   </div>
 </template>
 
@@ -167,226 +170,123 @@ function onKey(event) {
   min-width: 0;
 }
 
-.hk-bar {
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  white-space: normal;
-}
-
-.interactive {
-  color: var(--hk-term-command);
-}
-
-.interactive span {
-  margin-right: 5px;
-  font-size: 9px;
-}
-
-.progress {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin: 0;
-  padding: 20px;
-  list-style: none;
-}
-
-.progress li {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid var(--hk-term-border);
+.dim {
   color: var(--hk-term-muted);
-  font-size: 12px;
 }
 
-.progress .current {
+.screen {
+  padding: 14px 16px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* ui.border defaults to rounded; the picker opens inline below the prompt. */
+.picker {
+  padding: 4px 12px 8px;
+  border: 1px solid var(--hk-term-border);
+  border-radius: 8px;
+}
+
+.picker:has(input:focus-visible) {
   border-color: var(--hk-term-active);
+}
+
+/* The header rule sits under the prompt and title. */
+.picker .header {
+  gap: 1ch;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hk-term-border);
+  white-space: pre;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--hk-term-text);
+  font: inherit;
+  caret-color: var(--hk-term-active);
 }
 
-.progress .complete {
-  border-color: var(--hk-term-command);
-  color: var(--hk-term-command);
+input:focus {
+  outline: none;
 }
 
-.step-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--hk-term-border);
-  border-radius: 50%;
-  font-size: 10px;
-}
-
-.current .step-number {
-  background: var(--hk-term-selection);
-  border-color: var(--hk-term-active);
-  color: var(--hk-term-active);
-}
-
-.subject {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  margin: 0 20px;
-  padding: 12px 14px;
-  border: 1px solid var(--hk-term-border);
-  border-left: 2px solid var(--hk-term-command);
-  border-radius: 4px;
-  background: var(--hk-term-bar);
-  font-size: 12px;
-}
-
-.subject-label, .subject-origin, .muted {
-  color: var(--hk-term-muted);
-}
-
-.subject-command {
-  color: var(--hk-term-command);
-}
-
-.subject-origin {
-  margin-left: auto;
-}
-
-.body {
-  display: flex;
-  flex-direction: column;
-  min-height: 290px;
-  padding: 24px 20px 12px;
-}
-
-h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.5;
-  letter-spacing: -0.02em;
-}
-
-.heading p {
-  margin: 6px 0 20px;
-  color: var(--hk-term-secondary);
-  font-size: 12px;
-  line-height: 1.7;
+/* The real header cuts this text to half the list width. */
+.meta {
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--hk-term-text);
 }
 
 .choices {
-  display: grid;
-  gap: 8px;
+  min-height: calc(3 * (1.65em + 8px) + 4px);
+  margin: 0;
+  padding: 4px 0 0;
+  list-style: none;
 }
 
-button {
-  font: inherit;
-  color: inherit;
-}
-
-.choice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 64px;
-  padding: 12px;
-  border: 1px solid var(--hk-term-border);
-  border-radius: 6px;
-  text-align: left;
-}
-
-.choice:hover, .choice:focus-visible {
-  background: var(--hk-term-selection);
-  border-color: var(--hk-term-active);
-}
-
-.choice-marker, .choice > svg {
-  flex-shrink: 0;
-  color: var(--hk-term-active);
-}
-
-.choice-copy {
-  flex: 1;
-}
-
-.choice small {
-  display: block;
-  margin-top: 4px;
-  color: var(--hk-term-secondary);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0 12px;
-  margin-top: auto;
-  padding-top: 12px;
-  font-size: 11px;
-}
-
-.controls button, .hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 44px;
-}
-
-.hint {
-  color: var(--hk-term-secondary);
-}
-
-.replay {
-  color: var(--hk-term-command);
-}
-
-.recipe {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  padding: 14px 20px;
-  border-top: 1px solid var(--hk-term-border);
-  background: var(--hk-term-bar);
-  color: var(--hk-term-secondary);
-  font-size: 11px;
-  line-height: 1.8;
-}
-
-.recipe-label {
-  color: var(--hk-term-text);
-}
-
-.recipe b {
-  color: var(--hk-term-command);
-  font-weight: 400;
-}
-
-details {
-  width: 100%;
-  min-width: 0;
-}
-
-summary {
-  padding-block: 6px;
+li[role='option'] {
   cursor: pointer;
 }
 
-summary:focus-visible {
-  outline: 1px solid var(--hk-term-text);
-  outline-offset: 2px;
+.empty {
+  padding: 4px 12px;
+  color: var(--hk-term-muted);
 }
 
-.recipe code {
-  display: block;
-  padding-top: 10px;
+.guide {
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px 8px;
+  border-top: 1px solid var(--hk-term-border);
+  background: var(--hk-term-bar);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.guide code {
   color: var(--hk-term-command);
   overflow-wrap: anywhere;
+}
+
+.guide p {
+  margin: 0;
+  color: var(--hk-term-secondary);
+  min-height: 36px;
+}
+
+button {
+  color: inherit;
+  font: inherit;
+}
+
+.back {
+  justify-self: start;
+  min-height: 40px;
+  color: var(--hk-term-secondary);
+}
+
+.back:hover:not(:disabled) {
+  color: var(--hk-term-text);
+}
+
+.back:disabled {
+  opacity: 0.5;
+}
+
+.closed {
+  display: grid;
+  gap: 12px;
+  min-height: 160px;
+}
+
+.closed-note {
+  margin: 0;
+  color: var(--hk-term-active);
 }
 
 .result {
@@ -400,10 +300,13 @@ summary:focus-visible {
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 4px 12px;
-  padding: 8px 12px;
+  padding: 4px 10px;
   background: var(--hk-tmux-bg);
   color: var(--hk-tmux-fg);
-  font-size: 11px;
+}
+
+.dim-tmux {
+  opacity: 0.7;
 }
 
 .success {
@@ -412,6 +315,7 @@ summary:focus-visible {
   gap: 6px;
 }
 
+/* join-pane splits the destination's active pane top and bottom by default. */
 .panes {
   display: grid;
   grid-template-rows: 1fr 1fr;
@@ -421,31 +325,19 @@ summary:focus-visible {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  min-height: 64px;
-  padding: 12px;
+  gap: 2px 16px;
+  min-height: 56px;
+  padding: 8px 10px;
+}
+
+.pane-label {
+  width: 100%;
+  color: var(--hk-term-muted);
   font-size: 11px;
 }
 
 .existing {
   color: var(--hk-term-secondary);
-}
-
-.code-lines {
-  display: grid;
-  flex: 1;
-  gap: 5px;
-  max-width: 180px;
-}
-
-.code-lines i {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--hk-term-border);
-}
-
-.code-lines i:nth-child(even) {
-  width: 65%;
 }
 
 .moved {
@@ -454,14 +346,42 @@ summary:focus-visible {
   animation: pane-arrives 0.35s ease-out;
 }
 
-.pane-label {
-  width: 100%;
+.moved .pane-label {
   color: var(--hk-term-command);
-  font-size: 10px;
 }
 
-.server-ready {
+.ready {
   color: var(--hk-tmux-fg);
+}
+
+details {
+  min-width: 0;
+  color: var(--hk-term-secondary);
+}
+
+summary {
+  padding-block: 6px;
+  cursor: pointer;
+}
+
+summary:focus-visible {
+  outline: 1px solid var(--hk-term-text);
+  outline-offset: 2px;
+}
+
+details code {
+  display: block;
+  padding-top: 6px;
+  color: var(--hk-term-command);
+  overflow-wrap: anywhere;
+}
+
+.replay {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--hk-term-border);
+  border-radius: 6px;
 }
 
 .caption {
@@ -479,7 +399,7 @@ summary:focus-visible {
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -490,33 +410,17 @@ summary:focus-visible {
 }
 
 @media (max-width: 480px) {
-  .progress {
-    padding: 16px 12px;
-    gap: 6px;
-  }
-
-  .progress li {
-    gap: 5px;
-    font-size: 10px;
-  }
-
-  .subject {
-    margin-inline: 12px;
-  }
-
-  .subject-origin {
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .body, .recipe {
+  .screen, .guide {
     padding-inline: 12px;
   }
 
-  .hk-bar {
-    gap: 12px;
-    padding-inline: 12px;
-    font-size: 10px;
+  .picker {
+    padding-inline: 8px;
+  }
+
+  /* Keep iOS from zooming into the filter. */
+  input {
+    font-size: 16px;
   }
 }
 </style>
