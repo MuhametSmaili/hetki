@@ -24,14 +24,18 @@ func TestActionCommandValidatesBeforeOpeningPicker(t *testing.T) {
 		args  []string
 		valid bool
 	}{
-		{"pane", []string{"--pane-id", "%42"}, true},
+		{"pane", []string{"--pane", "%42"}, true},
 		{"session", []string{"--session", "$3"}, true},
 		{"window", []string{"--window", "@8"}, true},
-		{"missing scope", nil, false},
-		{"multiple subjects", []string{"--pane-id", "%42", "--session", "$3"}, false},
+		{"infer subject", nil, true},
+		{"multiple subjects", []string{"--pane", "%42", "--session", "$3"}, false},
+		{"empty pane", []string{"--pane", ""}, false},
+		{"empty window", []string{"--window", ""}, false},
+		{"empty session", []string{"--session", ""}, false},
+		{"old pane flag", []string{"--pane-id", "%42"}, false},
 		{"session name", []string{"--session", "work"}, false},
-		{"bad ID", []string{"--pane-id", "%42;kill-server"}, false},
-		{"bad height", []string{"--pane-id", "%42", "--height", "0"}, false},
+		{"bad ID", []string{"--pane", "%42;kill-server"}, false},
+		{"bad height", []string{"--pane", "%42", "--height", "0"}, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			before := len(subjects)
@@ -44,6 +48,9 @@ func TestActionCommandValidatesBeforeOpeningPicker(t *testing.T) {
 			if test.valid {
 				require.NoError(t, err)
 				assert.Len(t, subjects, before+1)
+				if test.args == nil {
+					assert.Equal(t, actions.Subject{}, subjects[before])
+				}
 			} else {
 				require.Error(t, err)
 				assert.Len(t, subjects, before)

@@ -215,6 +215,7 @@ func TestChoiceEmptyStatesDistinguishLoadingAndFiltering(t *testing.T) {
 		populated bool
 		query     string
 		loadErr   error
+		emptyText string
 		want      string
 	}{
 		{name: "empty source", want: "no choices available · ctrl+r refresh · Esc back"},
@@ -222,9 +223,14 @@ func TestChoiceEmptyStatesDistinguishLoadingAndFiltering(t *testing.T) {
 		{name: "failed source", loadErr: errors.New("provider exited 7"), want: "could not load choices · ctrl+r retry · Esc back"},
 		{name: "failed source with query", query: "missing", loadErr: errors.New("provider exited 7"), want: "could not load choices · ctrl+r retry · Esc back"},
 		{name: "filter has no matches", populated: true, query: "missing", want: "no matching choices · ctrl+l clear filter · Esc back"},
+		{name: "empty menu", emptyText: "no actions for this pane", want: "no actions for this pane · Esc back"},
+		{name: "empty menu with query", emptyText: "no global actions configured", query: "missing", want: "no global actions configured · Esc back"},
+		{name: "menu filter has no matches", emptyText: "no actions for this pane", populated: true, query: "missing", want: "no matching choices · ctrl+l clear filter · Esc back"},
+		{name: "failure overrides empty explanation", emptyText: "no actions for this pane", loadErr: errors.New("provider exited 7"), want: "could not load choices · ctrl+r retry · Esc back"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := choiceResult("choices", "Editor")
+			result.Choice.EmptyText = test.emptyText
 			if !test.populated {
 				result.Snapshot = &list.Snapshot{}
 			}
@@ -238,6 +244,7 @@ func TestChoiceEmptyStatesDistinguishLoadingAndFiltering(t *testing.T) {
 			content := terminal.Sanitize(m.View().Content)
 
 			assert.Contains(t, content, test.want)
+			assert.Equal(t, test.want, emptyStateText(m))
 			assert.NotContains(t, content, "no sessions found")
 			if test.loadErr != nil {
 				assert.Contains(t, content, test.loadErr.Error())
@@ -246,6 +253,32 @@ func TestChoiceEmptyStatesDistinguishLoadingAndFiltering(t *testing.T) {
 			assert.Nil(t, cmd, "an empty list cannot submit a choice")
 		})
 	}
+}
+
+func TestStandaloneEmptyChoiceStaysOpenUntilEscape(t *testing.T) {
+	options := DefaultOptions()
+	options.Choice = &ChoiceScreen{Key: "actions", Title: "Actions", EmptyText: "no global actions configured"}
+	var event ChoiceEvent
+	m, err := newModelWithOptions(t.Context(), list.Snapshot{}, options, Runtime{Dispatch: func(request ActionRequest) (ActionResult, error) {
+		event = request.Choice
+		return ActionResult{Choice: &ChoiceScreen{Closed: true}}, nil
+	}})
+	require.NoError(t, err)
+	m.width, m.height = 80, 24
+	m = m.reflow()
+
+	content := terminal.Sanitize(m.View().Content)
+	m, cmd := updateModel(t, m, specialKey(tea.KeyEnter))
+
+	assert.Contains(t, content, "no global actions configured · Esc close")
+	assert.NotContains(t, content, "refresh")
+	assert.False(t, m.quitting)
+	require.Nil(t, cmd)
+	m, cmd = updateModel(t, m, specialKey(tea.KeyEscape))
+	require.NotNil(t, cmd)
+	m, _ = updateModel(t, m, cmd())
+	assert.Equal(t, ChoiceBack, event)
+	assert.True(t, m.quitting)
 }
 
 func TestChoiceRefreshRecoversAndClearKeepsFiltering(t *testing.T) {

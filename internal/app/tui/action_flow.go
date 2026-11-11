@@ -14,8 +14,10 @@ import (
 // OpenActions runs a standalone action picker using the ordinary theme, keymap
 // and sizing preferences. It does not open a status subscription or daemon.
 func OpenActions(ctx context.Context, subject actions.Subject, path string, overrides Overrides) error {
-	if err := subject.Validate(); err != nil {
-		return err
+	if subject != (actions.Subject{}) {
+		if err := subject.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := overrides.Validate(); err != nil {
 		return err
@@ -110,6 +112,7 @@ func projectActionScreen(screen actions.Screen) ui.ActionResult {
 		Choice: &ui.ChoiceScreen{
 			Key: screen.Key, Title: terminal.Sanitize(screen.Title), Closed: screen.Done,
 			ResetHistory: screen.Key == "actions",
+			EmptyText:    terminal.Sanitize(screen.EmptyText),
 		},
 	}
 }

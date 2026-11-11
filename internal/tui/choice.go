@@ -26,6 +26,9 @@ type ChoiceScreen struct {
 	Closed bool
 	// ResetHistory discards other screens' positions, retaining this screen's.
 	ResetHistory bool
+	// EmptyText replaces the default message and refresh hint for an empty list.
+	// Error and filter messages have priority.
+	EmptyText string
 }
 
 type choicePosition struct {
@@ -155,10 +158,17 @@ func (m model) choiceEmptyState() string {
 		return "loading choices…"
 	}
 	message, action, verb := "no choices available", ActionRefresh, "refresh"
-	if m.choice.loadFailed {
+	switch {
+	case m.choice.loadFailed:
 		message, verb = "could not load choices", "retry"
-	} else if len(m.items.Snapshot().Items) > 0 {
+	case len(m.items.Snapshot().Items) > 0:
 		message, action, verb = "no matching choices", ActionClearFilter, "clear filter"
+	case m.choice.screen.EmptyText != "":
+		escapeAction := "back"
+		if m.choice.parent == nil {
+			escapeAction = "close"
+		}
+		return m.choice.screen.EmptyText + " · Esc " + escapeAction
 	}
 	if key := m.choiceActionKey(action); key != "" {
 		message += " · " + key + " " + verb

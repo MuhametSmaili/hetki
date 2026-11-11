@@ -75,7 +75,7 @@ onBeforeUnmount(flow.dispose)
   <div class="action-demo">
     <div class="hk-panel" role="group" aria-label="Browser demo of hetki action" aria-describedby="hk-action-help">
       <div class="hk-bar">
-        <span><span class="dim">$ </span>hetki action --pane-id '{{ SUBJECT }}'</span>
+        <span><span class="dim">$ </span>hetki action --pane '{{ SUBJECT }}'</span>
         <span class="dim">pane {{ SUBJECT }} · scratch / 0 dev</span>
       </div>
 

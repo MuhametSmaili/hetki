@@ -87,7 +87,7 @@ func (r Recipe) validate() error {
 		return fmt.Errorf("label and scope are required")
 	}
 	for _, scope := range r.Scope {
-		if !slices.Contains([]string{"pane", "window", "session"}, scope) {
+		if !slices.Contains([]string{"global", "pane", "window", "session"}, scope) {
 			return fmt.Errorf("unknown scope %q", scope)
 		}
 	}

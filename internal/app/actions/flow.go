@@ -14,10 +14,11 @@ import (
 // Screen values are immutable until the next flow operation. Keys identify UI
 // history only; accepting a choice always checks the currently published items.
 type Screen struct {
-	Key   string
-	Title string
-	Items []Item
-	Done  bool
+	Key       string
+	Title     string
+	Items     []Item
+	Done      bool
+	EmptyText string
 }
 
 // Flow has a single serialized owner. All operations are synchronous and honor
@@ -25,7 +26,7 @@ type Screen struct {
 type Flow struct {
 	catalog   Catalog
 	inventory Inventory
-	server    observe.Server
+	server    *observe.Server
 	request   Request
 	recipeID  string
 	step      int
@@ -39,22 +40,28 @@ func New(ctx context.Context, catalog Catalog, inventory Inventory, subject Subj
 	if err := catalog.validate(); err != nil {
 		return nil, err
 	}
-	if err := subject.Validate(); err != nil {
-		return nil, err
+	if subject != (Subject{}) {
+		if err := subject.Validate(); err != nil {
+			return nil, err
+		}
 	}
-	state, server, err := inventory.QueryStatusState(ctx)
+
+	snapshot, err := inventory.QueryActionState(ctx)
 	if err != nil {
 		return nil, err
 	}
-	subject, err = resolveSubject(subject, state.Sessions)
+	resolved, err := initialSubject(subject, snapshot.State)
 	if err != nil {
 		return nil, err
 	}
-	request := Request{Version: 1, Context: Context{Server: ServerContext{Socket: server.Socket}, Subject: subject}, Steps: make(map[string]Item)}
-	if state.Invocation != nil {
-		request.Context.Invocation = &Invocation{SessionID: state.Invocation.SessionID, PaneID: state.Invocation.PaneID}
+	request := Request{Version: 1, Context: Context{Subject: resolved}, Steps: make(map[string]Item)}
+	if snapshot.Socket != "" {
+		request.Context.Server = &ServerContext{Socket: snapshot.Socket}
 	}
-	f := &Flow{catalog: catalog, inventory: inventory, server: server, request: request}
+	if invocation := snapshot.State.Invocation; invocation != nil {
+		request.Context.Invocation = &Invocation{SessionID: invocation.SessionID, PaneID: invocation.PaneID}
+	}
+	f := &Flow{catalog: catalog, inventory: inventory, server: snapshot.Server, request: request}
 	f.menu()
 	return f, nil
 }
@@ -134,13 +141,19 @@ func (f *Flow) menu() {
 	f.recipeID, f.step = "", 0
 	f.request.Steps = make(map[string]Item)
 	var items []Item
+	kind, title := "", "Actions"
+	emptyText := "no global actions configured"
+	if subject := f.request.Context.Subject; subject != nil {
+		kind, title = subject.Kind, title+" · "+subject.Kind
+		emptyText = "no actions for this " + kind
+	}
 	for _, id := range slices.Sorted(maps.Keys(f.catalog.Actions)) {
 		recipe := f.catalog.Actions[id]
-		if slices.Contains(recipe.Scope, f.request.Context.Subject.Kind) {
+		if slices.Contains(recipe.Scope, "global") || slices.Contains(recipe.Scope, kind) {
 			items = append(items, Item{ID: id, Label: recipe.Label})
 		}
 	}
-	f.publish(Screen{Key: "actions", Title: "Actions · " + f.request.Context.Subject.Kind, Items: items})
+	f.publish(Screen{Key: "actions", Title: title, Items: items, EmptyText: emptyText})
 }
 
 func (f *Flow) currentStep() Step { return f.catalog.Actions[f.recipeID].Steps[f.step] }
@@ -186,22 +199,21 @@ func (f *Flow) load(ctx context.Context, spec SourceSpec) ([]Item, error) {
 }
 
 func (f *Flow) query(ctx context.Context) (backend.StateResult, error) {
-	state, server, err := f.inventory.QueryStatusState(ctx)
+	if f.server == nil {
+		return backend.StateResult{}, fmt.Errorf("this action source requires a running tmux server; none was available at startup")
+	}
+	snapshot, err := f.inventory.QueryActionState(ctx)
 	if err != nil {
 		return backend.StateResult{}, err
 	}
-	if server.Identity() != f.server.Identity() || server.Socket != f.server.Socket {
+	if snapshot.Server == nil || snapshot.Server.Identity() != f.server.Identity() || snapshot.Socket != f.server.Socket {
 		return backend.StateResult{}, observe.ErrServerChanged
 	}
-	return state, nil
+	return snapshot.State, nil
 }
 
 func (f *Flow) execute(ctx context.Context, command Command) (Screen, error) {
-	state, err := f.query(ctx)
-	if err != nil {
-		return f.screen, err
-	}
-	if err := f.validateTargets(state.Sessions); err != nil {
+	if err := f.revalidate(ctx); err != nil {
 		return f.screen, err
 	}
 	result, err := runCommand(ctx, command, f.request)
@@ -218,6 +230,17 @@ func (f *Flow) execute(ctx context.Context, command Command) (Screen, error) {
 	return f.finish(), nil
 }
 
+func (f *Flow) revalidate(ctx context.Context) error {
+	if f.server == nil {
+		return ctx.Err()
+	}
+	state, err := f.query(ctx)
+	if err != nil {
+		return err
+	}
+	return f.validateTargets(state.Sessions)
+}
+
 func (f *Flow) finish() Screen {
 	f.closed = true
 	f.screen = Screen{Done: true}
@@ -225,8 +248,10 @@ func (f *Flow) finish() Screen {
 }
 
 func (f *Flow) validateTargets(sessions []backend.Session) error {
-	if _, err := resolveSubject(f.request.Context.Subject, sessions); err != nil {
-		return err
+	if subject := f.request.Context.Subject; subject != nil {
+		if _, err := resolveSubject(*subject, sessions); err != nil {
+			return err
+		}
 	}
 	for name, item := range f.request.Steps {
 		if item.target == nil {

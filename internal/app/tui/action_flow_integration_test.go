@@ -40,7 +40,7 @@ func (f actionFixture) run(t *testing.T, args ...string) string {
 	return strings.TrimSpace(string(output))
 }
 
-func newActionFixture(t *testing.T) actionFixture {
+func newActionEnvironment(t *testing.T) actionFixture {
 	t.Helper()
 	bin, err := exec.LookPath("tmux")
 	require.NoError(t, err)
@@ -48,7 +48,6 @@ func newActionFixture(t *testing.T) actionFixture {
 	t.Setenv("TMUX", "")
 	t.Setenv("TMUX_PANE", "")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	f.source = f.run(t, "-f", "/dev/null", "new-session", "-d", "-x", "120", "-y", "30", "-s", "action-test", "-n", "source", "-P", "-F", "#{pane_id}", "/bin/sh")
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -57,11 +56,18 @@ func newActionFixture(t *testing.T) actionFixture {
 			t.Errorf("clean up action server: %v: %s", cleanupErr, output)
 		}
 	})
-	f.destination = f.run(t, "new-window", "-d", "-t", "action-test:", "-n", "destination", "-P", "-F", "#{session_id}:#{window_id}", "/bin/sh")
 	wrappers := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(wrappers, "tmux"), []byte(fmt.Sprintf("#!/bin/sh\nexec %q -S %q \"$@\"\n", bin, f.socket)), 0755))
 	t.Setenv("PATH", wrappers+string(os.PathListSeparator)+os.Getenv("PATH"))
 	f.recipes = filepath.Join(t.TempDir(), "actions.yaml")
+	return f
+}
+
+func newActionFixture(t *testing.T) actionFixture {
+	t.Helper()
+	f := newActionEnvironment(t)
+	f.source = f.run(t, "-f", "/dev/null", "new-session", "-d", "-x", "120", "-y", "30", "-s", "action-test", "-n", "source", "-P", "-F", "#{pane_id}", "/bin/sh")
+	f.destination = f.run(t, "new-window", "-d", "-t", "action-test:", "-n", "destination", "-P", "-F", "#{session_id}:#{window_id}", "/bin/sh")
 	text := fmt.Sprintf(`version: 1
 actions:
   join:
@@ -73,9 +79,39 @@ actions:
         source: {builtin: tmux.windows}
       - run:
           argv: [%q, -S, "${context.server.socket}", join-pane, -d, -s, "${context.subject.pane_id}", -t, "${steps.destination.value.pane_target}"]
-`, bin)
+`, f.bin)
 	require.NoError(t, os.WriteFile(f.recipes, []byte(text), 0600))
 	return f
+}
+
+func TestGlobalActionCreatesFirstServer(t *testing.T) {
+	f := newActionEnvironment(t)
+	output := filepath.Join(t.TempDir(), "request.json")
+	catalog := actions.Catalog{Version: 1, Actions: map[string]actions.Recipe{
+		"create": {Label: "Create first session", Scope: []string{"global"}, Steps: []actions.Step{
+			{Run: &actions.Command{Argv: []string{"sh", "-c", `cat > "$1"; exec tmux -f /dev/null new-session -d -s first /bin/sh`, "create", output}}},
+		}},
+	}}
+	inventory, err := tmux.NewBackend()
+	require.NoError(t, err)
+	flow, err := actions.New(t.Context(), catalog, inventory, actions.Subject{})
+	require.NoError(t, err)
+	_, err = os.Stat(f.socket)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	screen, err := flow.Select(t.Context(), "create")
+
+	require.NoError(t, err)
+	require.True(t, screen.Done)
+	require.Equal(t, "first", f.run(t, "list-sessions", "-F", "#{session_name}"))
+	data, err := os.ReadFile(output)
+	require.NoError(t, err)
+	var request actions.Request
+	require.NoError(t, json.Unmarshal(data, &request))
+	require.Nil(t, request.Context.Subject)
+	require.Nil(t, request.Context.Invocation)
+	require.NotNil(t, request.Context.Server)
+	require.Equal(t, f.socket, request.Context.Server.Socket)
 }
 
 func TestActionFlowNativeJoinPane(t *testing.T) {
@@ -87,6 +123,31 @@ func TestActionFlowNativeJoinPane(t *testing.T) {
 	flow, err := actions.New(t.Context(), catalog, inventory, actions.Subject{Kind: "pane", PaneID: f.source})
 	require.NoError(t, err)
 
+	_, err = flow.Select(t.Context(), "join")
+	require.NoError(t, err)
+	screen, err := flow.Select(t.Context(), f.destination)
+
+	require.NoError(t, err)
+	require.True(t, screen.Done)
+	panes := strings.Fields(f.run(t, "list-panes", "-t", f.destination, "-F", "#{pane_id}"))
+	require.Len(t, panes, 2)
+	require.Contains(t, panes, f.source)
+}
+
+func TestActionFlowInfersPaneAfterSessionMove(t *testing.T) {
+	f := newActionFixture(t)
+	origin := f.run(t, "display-message", "-p", "-t", f.source, "#{socket_path},#{pid},#{session_id}")
+	t.Setenv("TMUX", strings.Replace(origin, ",$", ",", 1))
+	t.Setenv("TMUX_PANE", f.source)
+	other := f.run(t, "new-session", "-d", "-s", "other-session", "-P", "-F", "#{pane_id}", "/bin/sh")
+	f.run(t, "join-pane", "-d", "-s", f.source, "-t", other)
+	catalog, err := actions.Load(t.Context(), f.recipes)
+	require.NoError(t, err)
+	inventory, err := tmux.NewBackend()
+	require.NoError(t, err)
+
+	flow, err := actions.New(t.Context(), catalog, inventory, actions.Subject{})
+	require.NoError(t, err)
 	_, err = flow.Select(t.Context(), "join")
 	require.NoError(t, err)
 	screen, err := flow.Select(t.Context(), f.destination)
@@ -204,12 +265,26 @@ func TestActionPickerPTY(t *testing.T) {
 	for _, height := range []string{"100%", "12"} {
 		t.Run(height, func(t *testing.T) {
 			f := newActionFixture(t)
-			runActionPTY(t, f, height)
+			origin := f.run(t, "display-message", "-p", "#{socket_path},#{pid},#{session_id}")
+			t.Setenv("TMUX", strings.Replace(origin, ",$", ",", 1))
+			t.Setenv("TMUX_PANE", f.source)
+			runActionPTY(t, f, height, []ptyStep{
+				{marker: "Join source pane", keys: "\r"},
+				{marker: "destination", keys: "destination\r"},
+			})
 			panes := strings.Fields(f.run(t, "list-panes", "-t", f.destination, "-F", "#{pane_id}"))
 			require.Len(t, panes, 2)
 			require.Contains(t, panes, f.source)
 		})
 	}
+}
+
+func TestEmptyActionPickerPTY(t *testing.T) {
+	f := newActionFixture(t)
+
+	runActionPTY(t, f, "12", []ptyStep{
+		{marker: "no global actions configured · Esc close", keys: "\x1b"},
+	})
 }
 
 func runActionPTYChild(t *testing.T) {
@@ -220,13 +295,13 @@ func runActionPTYChild(t *testing.T) {
 	before := ptyTerminalState(t)
 	height, err := ui.ParseHeight(os.Getenv("HETKI_ACTION_HEIGHT"))
 	require.NoError(t, err)
-	err = OpenActions(t.Context(), actions.Subject{Kind: "pane", PaneID: os.Getenv("HETKI_ACTION_SUBJECT")}, os.Getenv("HETKI_ACTION_FILE"), Overrides{Height: &height})
+	err = OpenActions(t.Context(), actions.Subject{}, os.Getenv("HETKI_ACTION_FILE"), Overrides{Height: &height})
 	require.NoError(t, err)
 	require.Equal(t, before, ptyTerminalState(t))
 	fmt.Println("ACTION_DONE")
 }
 
-func runActionPTY(t *testing.T, f actionFixture, height string) {
+func runActionPTY(t *testing.T, f actionFixture, height string, steps []ptyStep) {
 	t.Helper()
 	script, err := exec.LookPath("script")
 	require.NoError(t, err)
@@ -240,14 +315,11 @@ func runActionPTY(t *testing.T, f actionFixture, height string) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, script, args...)
 	cmd.WaitDelay = time.Second
-	cmd.Env = append(os.Environ(), "HETKI_ACTION_PTY=1", "TERM=xterm-256color", "HETKI_ACTION_SUBJECT="+f.source, "HETKI_ACTION_FILE="+f.recipes, "HETKI_ACTION_HEIGHT="+height)
+	cmd.Env = append(os.Environ(), "HETKI_ACTION_PTY=1", "TERM=xterm-256color", "HETKI_ACTION_FILE="+f.recipes, "HETKI_ACTION_HEIGHT="+height)
 	input, err := cmd.StdinPipe()
 	require.NoError(t, err)
 	defer input.Close()
-	output := &ptyOutput{onWrite: ptyInput(input, []ptyStep{
-		{marker: "Join source pane", keys: "\r"},
-		{marker: "destination", keys: "destination\r"},
-	})}
+	output := &ptyOutput{onWrite: ptyInput(input, steps)}
 	cmd.Stdout, cmd.Stderr = output, output
 
 	err = cmd.Run()

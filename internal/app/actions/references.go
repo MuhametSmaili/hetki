@@ -74,9 +74,13 @@ func (r Request) reference(path string) (string, error) {
 	var value any
 	switch {
 	case path == "context.server.socket":
-		value = r.Context.Server.Socket
+		if r.Context.Server != nil {
+			value = r.Context.Server.Socket
+		}
 	case len(parts) == 3 && parts[0] == "context" && parts[1] == "subject":
-		value = r.Context.Subject.field(parts[2])
+		if r.Context.Subject != nil {
+			value = r.Context.Subject.field(parts[2])
+		}
 	case len(parts) >= 3 && parts[0] == "steps":
 		item, ok := r.Steps[parts[1]]
 		if !ok {

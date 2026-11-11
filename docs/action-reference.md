@@ -14,7 +14,7 @@ current recipe; it does not reread the file.
 | `version: 1` | Select the supported file format.                                           |
 | `actions`    | Map action IDs to recipes. The menu sorts by ID.                            |
 | `label`      | Text shown in the action menu.                                              |
-| `scope`      | One or more of `pane`, `window`, `session`.                                 |
+| `scope`      | One or more of `global`, `pane`, `window`, `session`.                       |
 | `steps`      | An ordered list of selections, followed by one command.                     |
 | `select`     | Name used to store this selection in `steps.NAME`.                          |
 | `title`      | Optional selection heading; defaults to the selection name.                 |
@@ -285,6 +285,9 @@ project_path = request["steps"]["project"]["value"]["path"]
 
 `invocation` is absent outside tmux.
 The subject can differ from the invocation when you act on another pane.
+Global recipes receive the same known context, but require no subject. Without a
+subject, `context.subject` is omitted. `context.server` is omitted when its socket
+destination is unknown. A known socket does not imply that a server is running.
 For a bare pane/window ID with multiple session links, `subject.session_id` is absent.
 
 ### Working directory
@@ -377,10 +380,11 @@ Use `tmux new-window` or `tmux split-window` to open an interactive program else
 
 ## Entry points
 
-Use an exact tmux ID with one subject flag:
+Run `hetki action` to infer the current pane inside tmux or show global recipes
+outside tmux. An explicit subject flag overrides inference:
 
 ```bash
-hetki action --pane-id '%39'
+hetki action --pane '%39'
 hetki action --window '@8'
 hetki action --session '$3'
 ```
@@ -414,7 +418,10 @@ The operating system can impose additional command-size limits.
 Invalid recipes produce an error; Hetki does not substitute default actions.
 Owned command process groups are stopped on cancellation or command exit.
 
-Before the final command, Hetki checks the tmux server, original subject, and built-in selections again.
+Before the final command, Hetki checks any captured tmux server, original subject,
+and built-in selections again. This also applies to global recipes: a removed
+subject or replaced server blocks execution. A global recipe started without a
+server can execute independently or create the first session.
 Your program must validate its own custom values.
 External changes can still occur between the check and the command.
 Linked windows share their panes; changing one affects every link.

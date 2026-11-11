@@ -62,10 +62,10 @@ actions:
 In a tmux pane, run:
 
 ```bash
-hetki action --pane-id "$TMUX_PANE"
+hetki action
 ```
 
-`$TMUX_PANE` contains the ID of the current pane, for example `%39`.
+Hetki infers the current pane. To choose another pane, use `--pane '%39'`.
 To use a different actions file, add `--file /path/to/actions.yaml`.
 
 ### 3. Move the pane
@@ -90,7 +90,7 @@ To see a failed command, select **scratch**, then **scratch / 0 dev**.
 First, try the popup. In a tmux pane, run:
 
 ```bash
-tmux display-popup -B -E -w 80% -h 80% "hetki action --pane-id $TMUX_PANE --height 100%"
+tmux display-popup -B -E -w 80% -h 80% "hetki action --pane $TMUX_PANE --height 100%"
 ```
 
 The action menu opens in a popup for your current pane.
@@ -101,7 +101,7 @@ The action menu opens in a popup for your current pane.
 To open the popup with a key, add this line to `~/.tmux.conf`:
 
 ```text
-bind -N "Pane actions popup" a run-shell -C 'display-popup -B -E -w 80% -h 80% hetki action --pane-id "#{pane_id}" --height 100%'
+bind -N "Pane actions popup" a run-shell -C 'display-popup -B -E -w 80% -h 80% hetki action --pane "#{pane_id}" --height 100%'
 ```
 
 `a` is an example. You can use a different key.
@@ -173,7 +173,7 @@ The context tells the action what to act on. It does not change while the action
 | ----------------------- | -------------------------------------------------------------- | ----------------------------- |
 | `context.subject`       | The pane, window, or session that the action acts on.          | The pane `%39`                |
 | `context.subject.cwd`   | The directory of the pane when the action menu opened. Panes only, if tmux knows it. | `/work/api` |
-| `context.server.socket` | The socket of the tmux server.                                 | `/tmp/tmux-501/default`       |
+| `context.server.socket` | The known tmux socket destination, even if no server is running. | `/tmp/tmux-501/default`       |
 | `context.invocation`    | The pane that Hetki opened in, if known.                       | The pane that shows the picker |
 
 Your selections do not change the subject.
@@ -183,7 +183,7 @@ and `${steps.destination.value.pane_target}` is the destination.
 ## Where an action appears
 
 The `scope` field sets which subjects can use an action.
-Use one or more of `pane`, `window`, and `session`:
+Use one or more of `global`, `pane`, `window`, and `session`:
 
 ```yaml
 scope: [pane, window]
@@ -193,7 +193,8 @@ This action appears for panes and for windows. Each time, it acts on one subject
 
 | Scope     | Open the action menu           | Subject fields                              |
 | --------- | ------------------------------ | ------------------------------------------- |
-| `pane`    | `hetki action --pane-id '%39'` | `pane_id`, `window_id`, `session_id`, `cwd` |
+| `global`  | `hetki action`               | Optional known subject context             |
+| `pane`    | `hetki action --pane '%39'`   | `pane_id`, `window_id`, `session_id`, `cwd` |
 | `window`  | `hetki action --window '@8'`   | `window_id`, `session_id`                   |
 | `session` | `hetki action --session '$3'`  | `session_id`                                |
 
@@ -201,10 +202,27 @@ Some fields can be missing. See [program input](./action-reference.md#program-in
 For an action with `scope: [pane, window]`, use `context.subject.window_id`.
 A window subject has no `pane_id`.
 
+Subject scopes match exactly: a pane does not also qualify for window or session
+recipes. Global recipes appear everywhere and can run without a subject or an
+existing tmux server. They receive known subject context when available; otherwise,
+`context.subject` is omitted. Built-in tmux sources still require a running server
+at startup. Fixed lists and executable sources can work without one.
+
+Inside tmux, Hetki infers the current pane and resolves its current window and
+session just as with `--pane`. If its window is linked to multiple sessions,
+`context.subject.session_id` is omitted. In a popup without a pane ID, it uses
+the invoking client's pane only when one client matches. Ambiguous context requires
+an explicit `--pane`, `--window`, or `--session`. Outside tmux, Hetki infers no subject.
+
 `scope` does not filter the choices in a list.
 To filter a list, use the `session` or `window` field of its source.
 
-If the action menu is empty, make sure that the `scope` of an action includes the subject.
+If no recipes apply, the menu stays open and explains why: **no global actions
+configured** without a subject, or **no actions for this pane**, window, or session.
+Press **Esc** to close the standalone picker or return to the main picker.
+Check the recipes' `scope`, then reopen the menu after editing the file; refresh
+does not reload recipes. Empty selection steps still offer refresh, and a filter
+that hides existing choices offers clear filter instead.
 
 ## Where the choices come from
 

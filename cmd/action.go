@@ -18,12 +18,14 @@ func init() {
 func newActionCommand() *cobra.Command {
 	var pane, session, window, path string
 	command := &cobra.Command{
-		Use: "action", Short: "Open user-defined actions for a tmux pane, window or session",
+		Use: "action", Short: "Open user-defined actions for the current context",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			subject := actionSubject(pane, window, session)
-			if err := subject.Validate(); err != nil {
-				return err
+			if subject != (actions.Subject{}) || cmd.Flags().Changed("pane") || cmd.Flags().Changed("window") || cmd.Flags().Changed("session") {
+				if err := subject.Validate(); err != nil {
+					return err
+				}
 			}
 			overrides, err := pickerLayoutOverrides(cmd.Flags())
 			if err != nil {
@@ -39,14 +41,13 @@ func newActionCommand() *cobra.Command {
 		},
 	}
 	flags := command.Flags()
-	flags.StringVar(&pane, "pane-id", "", "Exact pane ID, for example %42")
+	flags.StringVar(&pane, "pane", "", "Exact pane ID, for example %42 (default: infer current pane)")
 	flags.StringVar(&session, "session", "", "Exact session ID, for example $3")
 	flags.StringVar(&window, "window", "", "Exact window ID, for example @8")
 	flags.StringVar(&path, "file", "", "Action recipes (default: $XDG_CONFIG_HOME/hetki/actions.yaml)")
 	flags.String("height", "", "Picker height in rows or percent")
 	flags.String("border", "", "Outer picker border: rounded or none")
-	command.MarkFlagsOneRequired("pane-id", "session", "window")
-	command.MarkFlagsMutuallyExclusive("pane-id", "session", "window")
+	command.MarkFlagsMutuallyExclusive("pane", "session", "window")
 	return command
 }
 
@@ -56,7 +57,9 @@ func actionSubject(pane, window, session string) actions.Subject {
 		return actions.Subject{Kind: "pane", PaneID: pane}
 	case window != "":
 		return actions.Subject{Kind: "window", WindowID: window}
-	default:
+	case session != "":
 		return actions.Subject{Kind: "session", SessionID: session}
+	default:
+		return actions.Subject{}
 	}
 }

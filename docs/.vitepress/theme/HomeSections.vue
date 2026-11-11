@@ -130,7 +130,7 @@ onBeforeUnmount(() => observer?.disconnect())
           <div class="action-launch">
             <h3>Open from your terminal or a tmux binding</h3>
             <dl>
-              <div><dt>Pane</dt><dd><code>hetki action --pane-id "$TMUX_PANE"</code></dd></div>
+              <div><dt>Pane</dt><dd><code>hetki action --pane "$TMUX_PANE"</code></dd></div>
               <div><dt>Window</dt><dd><code>hetki action --window '@8'</code></dd></div>
               <div><dt>Session</dt><dd><code>hetki action --session '$3'</code></dd></div>
             </dl>

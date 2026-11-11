@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
 	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,8 +22,13 @@ type inventoryStub struct {
 	server observe.Server
 }
 
-func (s *inventoryStub) QueryStatusState(ctx context.Context) (backend.StateResult, observe.Server, error) {
-	return s.state, s.server, ctx.Err()
+func (s *inventoryStub) QueryActionState(ctx context.Context) (tmux.ActionState, error) {
+	var server *observe.Server
+	if s.server.PID != 0 {
+		captured := s.server
+		server = &captured
+	}
+	return tmux.ActionState{State: s.state, Server: server, Socket: s.server.Socket}, ctx.Err()
 }
 
 func flowInventory() *inventoryStub {

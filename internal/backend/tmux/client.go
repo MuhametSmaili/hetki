@@ -73,6 +73,9 @@ func (c *client) run(ctx context.Context, limit int, args ...string) (string, er
 	output := out.String()
 
 	if err != nil {
+		if ctx.Err() == nil {
+			err = classifyAbsentServer(err, output, stderr.String())
+		}
 		return output, commandError(fmt.Sprintf("tmux %v", args), err, ctx.Err(), stderr.String())
 	}
 

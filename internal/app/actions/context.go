@@ -6,12 +6,13 @@ import (
 	"strings"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
-	"github.com/MuhametSmaili/hetki/internal/backend/tmux/observe"
+	"github.com/MuhametSmaili/hetki/internal/backend/tmux"
 )
 
-// Inventory supplies a bounded snapshot and its server identity without a daemon.
+// Inventory reads action context with limits on query time and output size.
+// It does not start a server or daemon.
 type Inventory interface {
-	QueryStatusState(context.Context) (backend.StateResult, observe.Server, error)
+	QueryActionState(context.Context) (tmux.ActionState, error)
 }
 
 // Subject keeps optional ancestry absent when a pane/window has multiple links.
@@ -61,9 +62,30 @@ type Invocation struct {
 }
 
 type Context struct {
-	Server     ServerContext `json:"server"`
-	Subject    Subject       `json:"subject"`
-	Invocation *Invocation   `json:"invocation,omitempty"`
+	Server     *ServerContext `json:"server,omitempty"`
+	Subject    *Subject       `json:"subject,omitempty"`
+	Invocation *Invocation    `json:"invocation,omitempty"`
+}
+
+func initialSubject(subject Subject, state backend.StateResult) (*Subject, error) {
+	if subject == (Subject{}) {
+		if state.Invocation == nil {
+			return nil, nil
+		}
+		if state.Invocation.PaneID == "" {
+			return nil, fmt.Errorf("cannot infer the invoking tmux pane; specify --pane, --window or --session")
+		}
+		// The TMUX variable can contain the old session ID after a pane moves.
+		subject = Subject{Kind: "pane", PaneID: state.Invocation.PaneID}
+	}
+	if err := subject.Validate(); err != nil {
+		return nil, err
+	}
+	resolved, err := resolveSubject(subject, state.Sessions)
+	if err != nil {
+		return nil, err
+	}
+	return &resolved, nil
 }
 
 // Request is the versioned stdin contract for providers and captured commands.
