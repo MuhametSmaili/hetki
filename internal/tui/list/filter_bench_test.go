@@ -25,6 +25,42 @@ func BenchmarkFilterRoundtrip(b *testing.B) {
 	}
 }
 
+func BenchmarkFilterFields(b *testing.B) {
+	for _, size := range []int{1, 10, 100, 1_000, 10_000} {
+		for _, fields := range []int{1, 5} {
+			snapshot := filterFieldBenchmarkSnapshot(size, fields)
+			for _, query := range []struct{ name, text string }{
+				{name: "broad", text: "project"},
+				{name: "narrow", text: "project-00042"},
+				{name: "no-match", text: "does-not-exist"},
+			} {
+				b.Run(fmt.Sprintf("%d/fields%d/%s", size, fields, query.name), func(b *testing.B) {
+					benchmarkFilterRoundtrip(b, snapshot, query.text)
+				})
+			}
+		}
+	}
+}
+
+func filterFieldBenchmarkSnapshot(size, fields int) Snapshot {
+	snapshot := filterBenchmarkSnapshot(size, "flat")
+	for i := range snapshot.Items {
+		item := &snapshot.Items[i]
+		item.SearchFields = item.SearchFields[:1]
+		if fields == 1 {
+			continue
+		}
+
+		item.SearchFields = append(item.SearchFields,
+			SearchField{Tier: SearchPrimary, Text: "opencode"},
+			SearchField{Tier: SearchPrimary, Text: "node server.js"},
+			SearchField{Tier: SearchSecondary, Text: item.Secondary},
+			SearchField{Tier: SearchSecondary, Text: "~/code/" + item.ID.ID},
+		)
+	}
+	return snapshot
+}
+
 func benchmarkFilterRoundtrip(b *testing.B, snapshot Snapshot, query string) {
 	b.Helper()
 	model, err := New(snapshot)

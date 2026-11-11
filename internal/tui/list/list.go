@@ -8,7 +8,10 @@ import (
 	"github.com/sahilm/fuzzy"
 )
 
-const maxQuality = 999
+const (
+	maxQuality       = 999
+	scoringBatchSize = 64
+)
 
 type Row struct {
 	Item       Item
@@ -337,14 +340,16 @@ type matchedItem struct {
 }
 
 func rankedMatches(items []Item, query string) []Row {
-	matched, count := matchItems(items, query)
+	scores := queryScores(items, query)
+	scoreIndex := 0
+	matched, count := matchItems(items, scores, &scoreIndex)
 	rows := make([]Row, 0, count)
 	var ancestors [MaxDepth]bool
 	flattenMatches(matched, ancestors[:0], &rows)
 	return rows
 }
 
-func matchItems(items []Item, query string) ([]matchedItem, int) {
+func matchItems(items []Item, scores []int, scoreIndex *int) ([]matchedItem, int) {
 	if len(items) == 0 {
 		return nil, 0
 	}
@@ -352,8 +357,10 @@ func matchItems(items []Item, query string) ([]matchedItem, int) {
 	count := 0
 	for i := range items {
 		item := &items[i]
-		score := itemScore(*item, query)
-		children, childCount := matchItems(item.Children, query)
+		score := scores[*scoreIndex]
+		(*scoreIndex)++
+
+		children, childCount := matchItems(item.Children, scores, scoreIndex)
 		if score == 0 && len(children) == 0 {
 			continue
 		}
@@ -383,18 +390,64 @@ func flattenMatches(items []matchedItem, ancestors []bool, rows *[]Row) {
 	}
 }
 
-func itemScore(item Item, query string) int {
-	best := 0
-	for _, field := range item.SearchFields {
-		matches := fuzzy.FindNoSort(query, []string{field.Text})
-		if len(matches) == 0 {
-			continue
-		}
-		quality := min(max(matches[0].Score, 0), maxQuality)
-		priority := (int(SearchSecondary) - int(field.Tier) + 1) * 1000
-		best = max(best, priority+quality)
+type scoringField struct {
+	text  string
+	tier  SearchTier
+	owner int
+}
+
+type scoringFields []scoringField
+
+func (s scoringFields) Len() int            { return len(s) }
+func (s scoringFields) String(i int) string { return s[i].text }
+
+func searchSize(items []Item) (itemCount, fieldCount int) {
+	itemCount = len(items)
+	for i := range items {
+		children, childFields := searchSize(items[i].Children)
+		itemCount += children
+		fieldCount += len(items[i].SearchFields) + childFields
 	}
-	return best
+	return itemCount, fieldCount
+}
+
+// queryScores returns scores in item preorder, including items with no fields.
+// matchItems must consume one score for every item in that same order.
+func queryScores(items []Item, query string) []int {
+	itemCount, fieldCount := searchSize(items)
+	scores := make([]int, itemCount)
+	fields := make(scoringFields, 0, min(scoringBatchSize, fieldCount))
+	flush := func() {
+		for _, match := range fuzzy.FindFromNoSort(query, fields) {
+			field := fields[match.Index]
+			quality := min(max(match.Score, 0), maxQuality)
+			priority := (int(SearchSecondary) - int(field.tier) + 1) * 1000
+			scores[field.owner] = max(scores[field.owner], priority+quality)
+		}
+		fields = fields[:0]
+	}
+
+	index := 0
+	var collect func([]Item)
+	collect = func(items []Item) {
+		for i := range items {
+			owner := index
+			index++
+			for _, field := range items[i].SearchFields {
+				fields = append(fields, scoringField{text: field.Text, tier: field.Tier, owner: owner})
+				if len(fields) == cap(fields) {
+					flush()
+				}
+			}
+			collect(items[i].Children)
+		}
+	}
+
+	collect(items)
+	if len(fields) > 0 {
+		flush()
+	}
+	return scores
 }
 
 func bestMatchCursor(rows []Row) int {
