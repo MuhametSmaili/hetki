@@ -67,11 +67,30 @@ func benchmarkFilterRoundtrip(b *testing.B, snapshot Snapshot, query string) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	model.SetQuery(query)
+	model.SetQuery("")
 	b.ReportAllocs()
 
 	for b.Loop() {
 		model.SetQuery(query)
 		model.SetQuery("")
+	}
+}
+
+func BenchmarkInitialFilter(b *testing.B) {
+	for _, fields := range []int{1, 5} {
+		b.Run(fmt.Sprintf("fields%d", fields), func(b *testing.B) {
+			snapshot := filterFieldBenchmarkSnapshot(10_000, fields)
+			b.ReportAllocs()
+
+			for b.Loop() {
+				model, err := New(snapshot)
+				if err != nil {
+					b.Fatal(err)
+				}
+				model.SetQuery("project")
+			}
+		})
 	}
 }
 

@@ -178,13 +178,20 @@ func validateItems(items []Item) error {
 	}
 	ids := make(map[string]bool, len(items))
 	for _, item := range items {
-		if item.ID == "" || len(item.ID) > 256 || strings.TrimSpace(item.Label) == "" {
-			return fmt.Errorf("items require a nonempty ID (at most 256 bytes) and label")
+		if err := validateItem(item); err != nil {
+			return err
 		}
 		if ids[item.ID] {
 			return fmt.Errorf("duplicate item ID %q", item.ID)
 		}
 		ids[item.ID] = true
+	}
+	return nil
+}
+
+func validateItem(item Item) error {
+	if item.ID == "" || len(item.ID) > 256 || strings.TrimSpace(item.Label) == "" {
+		return fmt.Errorf("items require a nonempty ID (at most 256 bytes) and label")
 	}
 	return nil
 }

@@ -1,8 +1,11 @@
 package list
 
 import (
+	"context"
 	"fmt"
 	"strings"
+
+	"github.com/MuhametSmaili/hetki/internal/search"
 )
 
 const (
@@ -21,17 +24,14 @@ type ItemID struct {
 // IsZero reports whether the key is absent, not whether it is valid.
 func (id ItemID) IsZero() bool { return id == (ItemID{}) }
 
-type SearchTier uint8
+type SearchTier = search.Tier
 
 const (
-	SearchPrimary SearchTier = iota + 1
-	SearchSecondary
+	SearchPrimary   = search.Primary
+	SearchSecondary = search.Secondary
 )
 
-type SearchField struct {
-	Tier SearchTier
-	Text string
-}
+type SearchField = search.Field
 
 type Item struct {
 	ID           ItemID
@@ -51,19 +51,24 @@ type Snapshot struct {
 }
 
 func Validate(snapshot Snapshot) error {
+	_, err := validateSnapshot(context.Background(), snapshot)
+	return err
+}
+
+func validateSnapshot(ctx context.Context, snapshot Snapshot) (map[ItemID]struct{}, error) {
 	ids := make(map[ItemID]struct{})
-	if err := validateItems(snapshot.Items, 1, ids); err != nil {
-		return err
+	if err := validateItems(ctx, snapshot.Items, 1, ids); err != nil {
+		return nil, err
 	}
 	if !snapshot.ActiveItemID.IsZero() {
 		if _, exists := ids[snapshot.ActiveItemID]; !exists {
-			return fmt.Errorf("active item ID %q is not present", snapshot.ActiveItemID)
+			return nil, fmt.Errorf("active item ID %q is not present", snapshot.ActiveItemID)
 		}
 	}
-	return nil
+	return ids, ctx.Err()
 }
 
-func validateItems(items []Item, depth int, ids map[ItemID]struct{}) error {
+func validateItems(ctx context.Context, items []Item, depth int, ids map[ItemID]struct{}) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -71,24 +76,31 @@ func validateItems(items []Item, depth int, ids map[ItemID]struct{}) error {
 		return fmt.Errorf("item tree exceeds maximum depth %d", MaxDepth)
 	}
 	for i, item := range items {
-		if len(ids) >= MaxItems {
-			return fmt.Errorf("item tree exceeds maximum count %d", MaxItems)
+		if i%64 == 0 && ctx.Err() != nil {
+			return ctx.Err()
 		}
 		if item.ID.ID == "" {
 			return fmt.Errorf("item at depth %d index %d has an empty ID", depth, i)
 		}
-		if _, exists := ids[item.ID]; exists {
-			return fmt.Errorf("duplicate item ID %q", item.ID)
-		}
-		ids[item.ID] = struct{}{}
-		if err := validateItem(item); err != nil {
+		if err := registerItem(item, ids); err != nil {
 			return err
 		}
-		if err := validateItems(item.Children, depth+1, ids); err != nil {
+		if err := validateItems(ctx, item.Children, depth+1, ids); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func registerItem(item Item, ids map[ItemID]struct{}) error {
+	if len(ids) >= MaxItems {
+		return fmt.Errorf("item tree exceeds maximum count %d", MaxItems)
+	}
+	if _, exists := ids[item.ID]; exists {
+		return fmt.Errorf("duplicate item ID %q", item.ID)
+	}
+	ids[item.ID] = struct{}{}
+	return validateItem(item)
 }
 
 func validateItem(item Item) error {
@@ -112,10 +124,17 @@ func validateItem(item Item) error {
 }
 
 func IDs(items []Item) map[ItemID]struct{} {
+	return itemIDs(context.Background(), items)
+}
+
+func itemIDs(ctx context.Context, items []Item) map[ItemID]struct{} {
 	ids := make(map[ItemID]struct{})
 	var collect func([]Item)
 	collect = func(items []Item) {
-		for _, item := range items {
+		for i, item := range items {
+			if i%64 == 0 && ctx.Err() != nil {
+				return
+			}
 			ids[item.ID] = struct{}{}
 			collect(item.Children)
 		}

@@ -17,6 +17,16 @@ type actionResultMsg struct {
 }
 
 func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
+	if m.quitting {
+		return m, nil
+	}
+	if m.search.worker != nil && m.needsReplacement(msg) {
+		return m.queueReplacement(msg), nil
+	}
+	if m.replacement != nil {
+		m.search.worker.submit(nil)
+	}
+	m.replacement = nil
 	result := msg.result
 	pending, previousRows := m.pending, m.pendingRows
 	m.pending, m.pendingRows = nil, nil
@@ -73,13 +83,12 @@ func (m model) applyActionSnapshot(result ActionResult, pending *ActionRequest, 
 		m.applyStatusUpdate(*result.Status)
 	}
 	m.paneStatus.bindingGeneration++
+	m.scope.valid = false
 	m.applyStatusPresentation(time.Now())
-	if !m.items.Select(preferred) {
-		m.revealCreatedSession(result.SelectItemID, pending)
+	m.search.selection = &snapshotSelection{
+		preferred: preferred, created: result.SelectItemID, pending: pending, previous: previousRows,
 	}
-	if pending != nil && isDeleteAction(pending.ActionID) {
-		m.selectAfterDelete(pending.ItemID, result.SelectItemID, previousRows)
-	}
+	m.finishSnapshotSelection()
 	return m.reflow(), nil
 }
 
@@ -94,6 +103,11 @@ func (m *model) revealCreatedSession(id list.ItemID, pending *ActionRequest) {
 
 	if m.scope.mode == ScopeTracked {
 		m.toggleScope()
+		if m.items.SearchPending() {
+			m.search.selection = &snapshotSelection{preferred: id, created: id, pending: pending}
+			m.items.PreferSelection(id)
+			return
+		}
 		if m.items.Select(id) {
 			return
 		}
@@ -128,10 +142,9 @@ func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows
 			return
 		}
 	}
-	rows := m.items.Rows()
-	if len(rows) > 0 {
+	if m.items.Len() > 0 {
 		position := max(0, slices.Index(previousRows, deletedID))
-		m.items.Select(rows[min(position, len(rows)-1)].Item.ID)
+		m.items.Move(position - m.items.Cursor())
 	}
 }
 
@@ -237,15 +250,12 @@ func (m model) startAction(action ActionID, itemID list.ItemID) (tea.Model, tea.
 }
 
 func (m model) startRequest(request ActionRequest, status string) (tea.Model, tea.Cmd) {
+	m.search.confirm = nil
 	m.busy = true
 	m.pending = cloneRequest(request)
 	m.pendingRows = nil
 	if isDeleteAction(request.ActionID) && request.Confirmed {
-		rows := m.items.Rows()
-		m.pendingRows = make([]list.ItemID, len(rows))
-		for i, row := range rows {
-			m.pendingRows[i] = row.Item.ID
-		}
+		m.pendingRows = m.items.RowIDs()
 	}
 	m.status = status
 	return m, runAction(m.dispatch, request)

@@ -19,14 +19,23 @@ func (m *Model) SetDetails(details map[ItemID]Details) {
 		return
 	}
 	selected, ok := m.Selected()
+	if !maps.EqualFunc(m.details, details, equalSearchFields) {
+		m.invalidateSearch()
+	}
 	m.details = details
+	m.projection = nil
+	m.searchKey.presentation++
 	m.applyFilter()
 	if ok {
-		m.Select(selected.Item.ID)
+		m.PreferSelection(selected.Item.ID)
 	}
 	m.reflow()
 }
 
 func equalDetails(a, b Details) bool {
 	return a.Secondary == b.Secondary && a.Trailing == b.Trailing && slices.Equal(a.SearchFields, b.SearchFields)
+}
+
+func equalSearchFields(a, b Details) bool {
+	return slices.Equal(a.SearchFields, b.SearchFields)
 }

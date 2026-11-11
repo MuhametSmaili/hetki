@@ -137,6 +137,7 @@ func (m model) handleStatusResult(msg statusResultMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) applyStatusUpdate(update StatusUpdate) {
+	m.scope.valid = false
 	m.paneStatus.values = update.Values
 	m.paneStatus.readErr = update.Err
 	if update.Bindings != nil {
@@ -150,7 +151,7 @@ func (m *model) applyStatusUpdate(update StatusUpdate) {
 
 func (m model) syncStatusFrame(now time.Time) (model, tea.Cmd) {
 	var due time.Time
-	if !m.quitting && m.navigation.IsZero() {
+	if !m.quitting && m.navigation.IsZero() && m.replacement == nil {
 		due = m.nextStatusFrame(now)
 	}
 	p := &m.paneStatus
@@ -174,6 +175,9 @@ func (m model) nextStatusFrame(now time.Time) time.Time {
 	p := m.paneStatus
 	// Hidden window details still affect search when their status expires.
 	due := p.windowChangeDue
+	if !m.scope.changeDue.IsZero() {
+		due = earlierStatusTime(due, m.scope.changeDue)
+	}
 	for _, row := range m.items.VisibleRows() {
 		if p.rowValue(row.Item.ID, now).State == status.Working {
 			due = earlierStatusTime(due, now.Truncate(statusSpinnerPeriod).Add(statusSpinnerPeriod))

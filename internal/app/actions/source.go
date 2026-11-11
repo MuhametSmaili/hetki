@@ -1,13 +1,8 @@
 package actions
 
 import (
-	"bufio"
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 
 	"github.com/MuhametSmaili/hetki/internal/backend"
 )
@@ -20,38 +15,12 @@ type Source interface {
 type executableSource struct{}
 
 func (executableSource) List(ctx context.Context, spec SourceSpec, request Request) ([]Item, error) {
-	result, err := runCommand(ctx, *spec.Exec, request)
+	var stream itemStream
+	_, err := runCommandTo(ctx, *spec.Exec, request, &stream)
 	if err != nil {
 		return nil, err
 	}
-	return decodeItems(result.output)
-}
-
-func decodeItems(output []byte) ([]Item, error) {
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-	scanner.Buffer(make([]byte, 4096), maxRecord)
-	var items []Item
-	for scanner.Scan() {
-		if len(items) == MaxItems {
-			return nil, fmt.Errorf("source exceeds %d items", MaxItems)
-		}
-		var item Item
-		decoder := json.NewDecoder(bytes.NewReader(scanner.Bytes()))
-		decoder.DisallowUnknownFields()
-		decoder.UseNumber()
-		if err := decoder.Decode(&item); err != nil {
-			return nil, fmt.Errorf("source item %d: %w", len(items)+1, err)
-		}
-		var extra any
-		if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("source item %d has trailing data", len(items)+1)
-		}
-		items = append(items, item)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read source records (limit %d bytes each): %w", maxRecord, err)
-	}
-	return items, validateItems(items)
+	return stream.finish()
 }
 
 type inventorySource struct {

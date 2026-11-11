@@ -82,6 +82,14 @@ func TestProviderRecordValidation(t *testing.T) {
 	}
 }
 
+func decodeItems(output []byte) ([]Item, error) {
+	var stream itemStream
+	if _, err := stream.Write(output); err != nil {
+		return nil, err
+	}
+	return stream.finish()
+}
+
 func TestNumericValuesPreservePrecisionAcrossSources(t *testing.T) {
 	for _, number := range []string{"18446744073709551615", "9223372036854775807", "-9223372036854775808", "9007199254740993", "0", "1.25"} {
 		t.Run(number, func(t *testing.T) {

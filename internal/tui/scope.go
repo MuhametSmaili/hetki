@@ -8,8 +8,11 @@ import (
 )
 
 type scopeState struct {
-	mode  Scope
-	views [2]scopeView
+	mode      Scope
+	views     [2]scopeView
+	applied   Scope
+	valid     bool
+	changeDue time.Time
 }
 
 type scopeView struct {
@@ -18,20 +21,37 @@ type scopeView struct {
 }
 
 func (m *model) setQuery(query string) {
+	if query != m.items.Query() {
+		m.search.selection, m.search.confirm = nil, nil
+	}
 	m.applyScope(query, time.Now())
 }
 
 func (m *model) applyScope(query string, now time.Time) {
+	if m.scope.valid && m.scope.applied == m.scope.mode && (m.scope.changeDue.IsZero() || now.Before(m.scope.changeDue)) {
+		m.items.SetFilterQuery(query)
+		return
+	}
 	var included map[list.ItemID]struct{}
+	m.scope.changeDue = time.Time{}
 	if m.scope.mode == ScopeTracked {
 		included = m.trackedItems(now)
+		for _, value := range m.paneStatus.values.All() {
+			if change := nextStatusChange(value, now); !change.IsZero() {
+				m.scope.changeDue = earlierStatusTime(m.scope.changeDue, change)
+			}
+		}
 	}
 	m.items.SetFilter(query, included)
+	m.scope.valid, m.scope.applied = true, m.scope.mode
 }
 
 func (m model) trackedItems(now time.Time) map[list.ItemID]struct{} {
 	included := make(map[list.ItemID]struct{})
 	for id := range m.paneStatus.options.Bindings {
+		if m.ctx.Err() != nil {
+			return included
+		}
 		value := m.paneStatus.options.Bindings.ValueAt(id, m.paneStatus.values, now)
 		if statusPriority(value) > 0 {
 			included[id] = struct{}{}
@@ -63,7 +83,5 @@ func (m *model) toggleScope() {
 	m.applyScope(m.items.Query(), time.Now())
 	view := m.scope.views[next]
 	m.items.RestoreExpansion(view.expanded)
-	if !m.items.Select(view.selected) {
-		m.items.Select(selected.Item.ID)
-	}
+	m.items.PreferSelection(view.selected, selected.Item.ID)
 }

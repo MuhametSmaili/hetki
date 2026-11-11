@@ -225,6 +225,9 @@ func headerMessage(m model) string {
 	if m.busy {
 		return m.status
 	}
+	if m.items.SearchPending() {
+		return "searching… previous results"
+	}
 	if notice := m.items.Snapshot().Notice; notice != "" {
 		return notice
 	}
@@ -273,6 +276,9 @@ func responsiveFrameStyle(base lipgloss.Style, width, height int) lipgloss.Style
 }
 
 func emptyStateText(m model) string {
+	if m.items.SearchPending() {
+		return "searching…"
+	}
 	if m.choice != nil {
 		return m.choiceEmptyState()
 	}

@@ -42,12 +42,35 @@ func TestActionCommandHelper(t *testing.T) {
 		for _, arg := range args[1:] {
 			_, _ = fmt.Fprintln(os.Stdout, arg)
 		}
+	case "source-stream":
+		err = actionHelperStream(args)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
 	os.Exit(0)
+}
+
+func actionHelperStream(args []string) error {
+	conn, err := net.Dial("tcp", args[1])
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.Write([]byte("ready")); err != nil {
+		return err
+	}
+	file, err := os.Open(args[2])
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := io.Copy(os.Stdout, file); err != nil {
+		return err
+	}
+	_, err = io.Copy(io.Discard, conn)
+	return err
 }
 
 func recordActionAttempt(path string) (err error) {

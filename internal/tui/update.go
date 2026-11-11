@@ -9,14 +9,17 @@ import (
 
 func (m model) Init() tea.Cmd {
 	if m.paneStatus.options.Read != nil {
-		return statusPoll(0)
+		return tea.Batch(statusPoll(0), m.waitForSearch())
 	}
-	return nil
+	return m.waitForSearch()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	updated, cmd := m.update(msg)
-	next, previewCmd := updated.(model).syncPreview() //nolint:forcetypeassert // update always returns the concrete model.
+	next := updated.(model) //nolint:forcetypeassert // update always returns the concrete model.
+	next.finishSnapshotSelection()
+	next.syncSearch()
+	next, previewCmd := next.syncPreview()
 	next, frameCmd := next.syncStatusFrame(time.Now())
 	next, directoryCmd := next.syncDirectorySuggestions()
 	return next, tea.Batch(cmd, previewCmd, frameCmd, directoryCmd)
@@ -24,6 +27,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case searchResultMsg:
+		return m.handleSearchResult(msg)
 	case statusPollMsg:
 		return m.readPaneStatus()
 	case statusResultMsg:
@@ -32,7 +37,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.generation == m.paneStatus.frameGeneration {
 			m.paneStatus.frameDue = time.Time{}
 			now := time.Now()
-			if due := m.paneStatus.windowChangeDue; !due.IsZero() && !now.Before(due) {
+			if due := m.nextPresentationChange(); !due.IsZero() && !now.Before(due) {
 				m.applyStatusPresentation(now)
 			}
 		}

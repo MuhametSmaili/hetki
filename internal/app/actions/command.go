@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -33,9 +34,19 @@ func commandTimeout(value string) (time.Duration, error) {
 	return duration, nil
 }
 
-// runCommand owns a noninteractive process group and bounded stdout/stderr.
-// It waits for all os/exec copy workers before returning; no child owns the TTY.
 func runCommand(ctx context.Context, spec Command, request Request) (commandResult, error) {
+	var output bytes.Buffer
+	result, err := runCommandTo(ctx, spec, request, &output)
+	if err == nil {
+		result.output = output.Bytes()
+	}
+	return result, err
+}
+
+// runCommandTo owns a noninteractive process group and bounded stdout/stderr.
+// Output is consumed serially by an os/exec copy worker, joined before return.
+// The writer must not block; a write error cancels the process group.
+func runCommandTo(ctx context.Context, spec Command, request Request, output io.Writer) (commandResult, error) {
 	args, err := resolveArgs(spec.Argv, request)
 	if err != nil {
 		return commandResult{}, err
@@ -53,33 +64,30 @@ func runCommand(ctx context.Context, spec Command, request Request) (commandResu
 	if len(input) > maxOutput {
 		return commandResult{}, fmt.Errorf("action context exceeds 4 MiB")
 	}
-	return runCapturedCommand(ctx, args, input, duration)
+	return runCapturedCommand(ctx, args, input, duration, output)
 }
 
-func runCapturedCommand(ctx context.Context, args []string, input []byte, timeout time.Duration) (commandResult, error) {
+func runCapturedCommand(ctx context.Context, args []string, input []byte, timeout time.Duration, output io.Writer) (commandResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	stdout := boundedOutput{limit: maxOutput, cancel: cancel}
-	stderr := boundedOutput{limit: 8 * 1024, cancel: cancel}
+	var diagnostic bytes.Buffer
+	stdout := boundedOutput{writer: output, limit: maxOutput, cancel: cancel}
+	stderr := boundedOutput{writer: &diagnostic, limit: 8 * 1024, cancel: cancel}
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Stdin = bytes.NewReader(input)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 
 	err := runProcessGroup(cmd)
 	result := commandResult{exitedSuccessfully: cmd.ProcessState != nil && cmd.ProcessState.Success()}
-	if stdout.exceeded || stderr.exceeded {
-		err = errors.Join(err, ErrOutputLimit)
-	}
+	err = errors.Join(err, stdout.err, stderr.err)
 	if err != nil {
 		cause := errors.Join(err, ctx.Err())
 		if result.exitedSuccessfully {
 			cause = fmt.Errorf("command exited successfully, but output capture or cleanup failed: %w", cause)
 		}
-		diagnostic := strings.TrimSpace(stderr.buffer.String())
-		return result, fmt.Errorf("action command %q: %w: %s", args[0], cause, diagnostic)
+		return result, fmt.Errorf("action command %q: %w: %s", args[0], cause, strings.TrimSpace(diagnostic.String()))
 	}
-	result.output = stdout.buffer.Bytes()
 	return result, nil
 }
 
@@ -105,19 +113,23 @@ func runProcessGroup(cmd *exec.Cmd) error {
 }
 
 type boundedOutput struct {
-	buffer   bytes.Buffer
-	limit    int
-	cancel   context.CancelFunc
-	exceeded bool
+	writer  io.Writer
+	limit   int
+	written int
+	cancel  context.CancelFunc
+	err     error
 }
 
 func (w *boundedOutput) Write(data []byte) (int, error) {
-	size := len(data)
-	if remaining := w.limit - w.buffer.Len(); size > remaining {
+	if remaining := w.limit - w.written; len(data) > remaining {
 		data = data[:remaining]
-		w.exceeded = true
+		w.err = ErrOutputLimit
+	}
+	n, err := w.writer.Write(data)
+	w.written += n
+	w.err = errors.Join(w.err, err)
+	if w.err != nil {
 		w.cancel()
 	}
-	_, _ = w.buffer.Write(data)
-	return size, nil
+	return n, w.err
 }

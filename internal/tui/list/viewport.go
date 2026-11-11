@@ -22,7 +22,7 @@ func (m Model) rowsThatFit(start, direction int) int {
 
 	count, remaining := 0, m.height
 	for i := start; i >= 0 && i < len(m.rows); i += direction {
-		height := max(1, min(m.height, m.rowHeight(m.rows[i])))
+		height := max(1, min(m.height, m.rowHeight(m.rows[i].materialize())))
 		if height > remaining {
 			break
 		}

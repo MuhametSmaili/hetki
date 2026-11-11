@@ -2,7 +2,6 @@ package list
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/sahilm/fuzzy"
@@ -96,47 +95,6 @@ func TestFilteredTreeKeepsRankedPrefixesAndBranchIdentity(t *testing.T) {
 	}
 }
 
-func TestFilteringScoresMatchIndependentFieldsAcrossBatchBoundaries(t *testing.T) {
-	for _, count := range []int{0, 1, 63, 64, 65, 129} {
-		t.Run(fmt.Sprintf("%d fields", count), func(t *testing.T) {
-			candidate := scoringFixture(count)
-			for _, query := range []string{"api", "aaa", "é", "σ", "東京", "missing", strings.Repeat("ab", 64)} {
-				assertFilteredScore(t, candidate, query)
-			}
-		})
-	}
-}
-
-func scoringFixture(count int) Item {
-	texts := []string{"api", "ApiServer", "api/api", "aaaa", "école Straße Σσς", "東京", "hidden\x00api", "\xffapi", strings.Repeat("ab", 128)}
-	candidate := Item{ID: ItemID{ID: "candidate"}, Primary: "candidate"}
-	for i := range count {
-		tier := SearchPrimary
-		if count > 1 && i >= count/2 {
-			tier = SearchSecondary
-		}
-		candidate.SearchFields = append(candidate.SearchFields, SearchField{Tier: tier, Text: texts[i%len(texts)]})
-	}
-	return candidate
-}
-
-func assertFilteredScore(t *testing.T, candidate Item, query string) {
-	t.Helper()
-	model, err := New(Snapshot{Items: []Item{candidate}})
-	require.NoError(t, err)
-	expected := referenceItemScore(candidate, query)
-
-	model.SetQuery(query)
-
-	if expected == 0 {
-		require.Empty(t, model.Rows(), "query %q", query)
-		return
-	}
-
-	require.Len(t, model.Rows(), 1, "query %q", query)
-	require.Equal(t, expected, model.Rows()[0].Score, "query %q", query)
-}
-
 func TestFilteringRanksAndRefreshesItemsAcrossBatches(t *testing.T) {
 	children := make([]Item, 130)
 	for i := range children {
@@ -182,6 +140,32 @@ func TestFilteringRanksAndRefreshesItemsAcrossBatches(t *testing.T) {
 	require.False(t, model.Expansion()[second.ID])
 }
 
+func TestFilteringRefreshesSearchOnReplacement(t *testing.T) {
+	model, err := New(Snapshot{Items: []Item{item("first", "api", ""), item("second", "shell", "")}})
+	require.NoError(t, err)
+	model.SetQuery(" API ")
+	require.Equal(t, []ItemID{{ID: "first"}}, rowIDs(model.Rows()))
+
+	err = model.Replace(Snapshot{Items: []Item{item("second", "api", ""), item("first", "shell", "")}}, ItemID{})
+
+	require.NoError(t, err)
+	require.Equal(t, []ItemID{{ID: "second"}}, rowIDs(model.Rows()))
+	require.Equal(t, ItemID{ID: "second"}, selectedID(model))
+}
+
+func TestFilteringRestoresSnapshotFieldsAfterDetailsRemoved(t *testing.T) {
+	model, err := New(Snapshot{Items: []Item{item("first", "api", "")}})
+	require.NoError(t, err)
+	model.SetQuery("api")
+	model.SetDetails(map[ItemID]Details{{ID: "first"}: {Secondary: "display only"}})
+	require.Empty(t, model.Rows(), "a present override with no fields clears searchable fields")
+
+	model.SetDetails(nil)
+
+	require.Equal(t, []ItemID{{ID: "first"}}, rowIDs(model.Rows()))
+	require.Equal(t, "api", model.Query())
+}
+
 func referenceItemScore(item Item, query string) int {
 	best := 0
 	for _, field := range item.SearchFields {
@@ -190,7 +174,7 @@ func referenceItemScore(item Item, query string) int {
 			continue
 		}
 
-		quality := min(max(matches[0].Score, 0), maxQuality)
+		quality := min(max(matches[0].Score, 0), 999)
 		priority := (int(SearchSecondary) - int(field.Tier) + 1) * 1000
 		best = max(best, priority+quality)
 	}

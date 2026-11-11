@@ -128,6 +128,14 @@ func init() {
 }
 
 func (m model) dispatchAction(action ActionID, itemID list.ItemID) (tea.Model, tea.Cmd) {
+	m.search.confirm = nil
+	if m.items.SearchPending() && m.isListMode() && pendingRowAction(action) {
+		if itemID.IsZero() && (action == ActionOpen || action == ActionConfirm) {
+			request, _ := m.items.PendingSearch()
+			m.search.confirm = &searchConfirmation{key: request.Key(), action: action}
+		}
+		return m, nil
+	}
 	if m.choice != nil {
 		return m.dispatchChoice(action, itemID)
 	}

@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/MuhametSmaili/hetki/internal/tui/list"
@@ -94,7 +96,11 @@ func (m model) applyChoiceResult(result ActionResult, actionErr error) (tea.Mode
 		m.err = fmt.Errorf("choice screen has no snapshot")
 		return m, nil
 	}
-	items, err := list.New(*result.Snapshot)
+	var position choicePosition
+	if m.choice != nil {
+		position = m.choice.history[result.Choice.Key]
+	}
+	items, err := prepareChoiceItems(m.ctx, *result.Snapshot, position)
 	if err != nil {
 		m.err = err
 		return m, nil
@@ -105,19 +111,33 @@ func (m model) applyChoiceResult(result ActionResult, actionErr error) (tea.Mode
 			parent:  &choiceReturn{items: m.items, view: m.view, scope: m.scope.mode, preview: m.preview.enabled, mode: m.mode},
 		}
 	}
-	position := m.choice.history[result.Choice.Key]
 	if result.Choice.ResetHistory {
 		m.choice.history = map[string]choicePosition{result.Choice.Key: position}
 	}
-	items.SetQuery(position.query)
-	items.Select(position.selected)
+	if m.search.worker != nil {
+		items.DeferSearch()
+	}
 	m.items = items
+	m.scope.valid = false
+	m.scope.changeDue = time.Time{}
+	m.search.selection = nil
 	m.choice.screen = *result.Choice
 	m.choice.loadFailed = actionErr != nil && len(result.Snapshot.Items) == 0
 	m.mode, m.view, m.scope.mode, m.preview.enabled = modeFilter, ViewFlat, ScopeAll, false
 	m.preview.invalidate()
 	m.err = actionErr
 	return m.reflow(), nil
+}
+
+func prepareChoiceItems(ctx context.Context, snapshot list.Snapshot, position choicePosition) (list.Model, error) {
+	return (list.Model{}).Prepare(ctx, func(items *list.Model) error {
+		if err := items.Replace(snapshot, list.ItemID{}); err != nil {
+			return err
+		}
+		items.SetQuery(position.query)
+		items.PreferSelection(position.selected)
+		return nil
+	})
 }
 
 func (m model) closeChoice(result ActionResult) (tea.Model, tea.Cmd) {
@@ -128,6 +148,8 @@ func (m model) closeChoice(result ActionResult) (tea.Model, tea.Cmd) {
 	parent := m.choice.parent
 	m.items, m.view, m.scope.mode, m.preview.enabled = parent.items, parent.view, parent.scope, parent.preview
 	m.choice = nil
+	m.scope.valid = false
+	m.search.selection = nil
 	m.mode = parent.mode
 	if result.Snapshot != nil {
 		return m.applyActionSnapshot(result, nil, nil)

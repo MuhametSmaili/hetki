@@ -71,6 +71,14 @@ func (m *model) applyStatusPresentation(now time.Time) {
 	m.applyScope(m.items.Query(), now)
 }
 
+func (m model) nextPresentationChange() time.Time {
+	due := m.paneStatus.windowChangeDue
+	if !m.scope.changeDue.IsZero() {
+		due = earlierStatusTime(due, m.scope.changeDue)
+	}
+	return due
+}
+
 func (m *model) syncWindowStatus(now time.Time) {
 	p := &m.paneStatus
 	p.windowChangeDue = p.nextWindowStatusChange(now)

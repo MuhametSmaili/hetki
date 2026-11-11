@@ -18,6 +18,9 @@ func Run(ctx context.Context, initial list.Snapshot, options Options, runtime Ru
 	if err != nil {
 		return Result{}, err
 	}
+	m.search.worker = newSearchWorker(ctx, nil)
+	m.items.DeferSearch()
+	defer m.search.worker.close()
 	programOptions := []tea.ProgramOption{tea.WithFPS(120)}
 	if os.Getenv("NO_COLOR") != "" {
 		m.theme = m.theme.withMonochromeSelection()
@@ -102,6 +105,8 @@ type model struct {
 	ctx             context.Context
 	paneStatus      paneStatusState
 	scope           scopeState
+	search          searchState
+	replacement     *replacementRequest
 
 	width        int
 	height       int
@@ -145,7 +150,7 @@ func newModelWithOptions(ctx context.Context, snapshot list.Snapshot, options Op
 		m.view, m.scope.mode, m.preview.enabled = ViewFlat, ScopeAll, false
 	}
 	m.applyScope("", time.Now())
-	if options.StartMode == StartModeFilter && (len(m.items.Rows()) > 0 || m.scope.mode == ScopeTracked) {
+	if options.StartMode == StartModeFilter && (m.items.Len() > 0 || m.scope.mode == ScopeTracked) {
 		m.mode = modeFilter
 	}
 	return m.reflow(), nil
@@ -214,4 +219,9 @@ func (m model) layout() layoutMetrics {
 	}
 }
 
-func (m model) selectedRow() (list.Row, bool) { return m.items.Selected() }
+func (m model) selectedRow() (list.Row, bool) {
+	if m.items.SearchPending() {
+		return list.Row{}, false
+	}
+	return m.items.Selected()
+}

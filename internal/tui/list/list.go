@@ -1,16 +1,12 @@
 package list
 
 import (
+	"context"
 	"maps"
 	"slices"
 	"strings"
 
-	"github.com/sahilm/fuzzy"
-)
-
-const (
-	maxQuality       = 999
-	scoringBatchSize = 64
+	"github.com/MuhametSmaili/hetki/internal/search"
 )
 
 type Row struct {
@@ -23,33 +19,53 @@ type Row struct {
 }
 
 type Model struct {
-	snapshot  Snapshot
-	rows      []Row
-	cursor    int
-	offset    int
-	height    int
-	rowHeight func(Row) int
-	shownRoot int
-	query     string
-	included  map[ItemID]struct{}
-	details   map[ItemID]Details
-	expanded  map[ItemID]bool
-	active    map[ItemID]bool
+	snapshot      Snapshot
+	rows          []rowRef
+	cursor        int
+	offset        int
+	height        int
+	rowHeight     func(Row) int
+	shownRoot     int
+	query         string
+	included      map[ItemID]struct{}
+	details       map[ItemID]Details
+	search        *search.Index
+	projection    *itemProjection
+	expanded      map[ItemID]bool // Copy-on-write: preparation borrows this map.
+	active        map[ItemID]bool
+	deferred      bool
+	pendingSearch bool
+	searchKey     SearchKey
+	preferred     []ItemID
+	workContext   context.Context
 }
 
+// New borrows an immutable snapshot. Use Replace to publish changed items.
 func New(snapshot Snapshot) (Model, error) {
-	if err := Validate(snapshot); err != nil {
-		return Model{}, err
-	}
-	m := Model{snapshot: snapshot, expanded: make(map[ItemID]bool), active: activePath(snapshot.Items, snapshot.ActiveItemID)}
-	markAllExpanded(snapshot.Items, m.expanded)
-	markActivePathExpanded(snapshot.Items, snapshot.ActiveItemID, m.expanded)
-	m.applyFilter()
-	return m, nil
+	var m Model
+	err := m.Replace(snapshot, ItemID{})
+	return m, err
 }
 
-func (m Model) Snapshot() Snapshot      { return m.snapshot }
-func (m Model) Rows() []Row             { return m.rows }
+// Snapshot returns the borrowed snapshot; callers must not mutate its contents.
+func (m Model) Snapshot() Snapshot { return m.snapshot }
+
+// Rows materializes all current rows into a caller-owned slice. Nested item
+// slices remain borrowed and immutable. Rendering should use VisibleRows instead.
+func (m Model) Rows() []Row { return materializeRows(m.rows) }
+
+// Len is the row count after scope, filtering and expansion are applied.
+func (m Model) Len() int { return len(m.rows) }
+
+// RowIDs returns the current row order without materializing presentation data.
+func (m Model) RowIDs() []ItemID {
+	ids := make([]ItemID, len(m.rows))
+	for i, row := range m.rows {
+		ids[i] = row.item.ID
+	}
+	return ids
+}
+
 func (m Model) Cursor() int             { return m.cursor }
 func (m Model) Offset() int             { return m.offset }
 func (m Model) Height() int             { return m.height }
@@ -62,20 +78,24 @@ func (m Model) Selected() (Row, bool) {
 	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return Row{}, false
 	}
-	return m.rows[m.cursor], true
+	return m.rows[m.cursor].materialize(), true
 }
 
+// VisibleRows materializes only the viewport. Its ownership is the same as Rows.
 func (m Model) VisibleRows() []Row {
 	start := m.offset
 	end := start + m.rowsThatFit(start, 1)
 	if start < 0 || start >= end {
 		return nil
 	}
-	return m.rows[start:end]
+	return materializeRows(m.rows[start:end])
 }
 
+// Replace borrows a new immutable snapshot and retains surviving selection and expansion.
 func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
-	if err := Validate(snapshot); err != nil {
+	ctx := m.operationContext()
+	ids, err := validateSnapshot(ctx, snapshot)
+	if err != nil {
 		return err
 	}
 	selectedID := preferred
@@ -85,25 +105,44 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 		}
 	}
 	candidate := *m
+	if candidate.searchKey.owner == nil {
+		candidate.searchKey.owner = new(byte)
+	}
 	candidate.snapshot = snapshot
 	candidate.details = nil
-	candidate.expanded = cloneExpanded(m.expanded, IDs(snapshot.Items))
-	markAllExpanded(snapshot.Items, candidate.expanded)
-	restoreBranchExpansion(m.snapshot.Items, m.expanded, candidate.expanded)
+	candidate.invalidateSearch()
+	candidate.expanded = cloneExpanded(ctx, m.expanded, ids)
+	markAllExpanded(ctx, snapshot.Items, candidate.expanded)
+	restoreBranchExpansion(ctx, m.snapshot.Items, m.expanded, candidate.expanded)
 
-	candidate.active = activePath(snapshot.Items, snapshot.ActiveItemID)
-	markActivePathExpanded(snapshot.Items, snapshot.ActiveItemID, candidate.expanded)
+	candidate.active = activePath(ctx, snapshot.Items, snapshot.ActiveItemID)
+	markActivePathExpanded(ctx, snapshot.Items, snapshot.ActiveItemID, candidate.expanded)
 	candidate.applyFilter()
+	candidate.PreferSelection(selectedID)
 	if idx := findRow(candidate.rows, selectedID); idx >= 0 {
 		candidate.cursor = idx
 	}
 	candidate.reflow()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	*m = candidate
 	return nil
 }
 
 func (m *Model) SetQuery(query string) {
 	m.SetFilter(query, nil)
+}
+
+// SetFilterQuery changes the query while retaining the current inclusion scope.
+func (m *Model) SetFilterQuery(query string) {
+	if m.query == query {
+		return
+	}
+	m.query = query
+	m.preferred = nil
+	m.applyFilter()
+	m.reflow()
 }
 
 // SetFilter retains ancestors of included items; nil allows all items.
@@ -113,11 +152,17 @@ func (m *Model) SetFilter(query string, included map[ItemID]struct{}) {
 	}
 	selected, hasSelection := m.Selected()
 	preserve := m.query == query
+	if !preserve {
+		m.preferred = nil
+	}
 	m.query = query
-	m.included = maps.Clone(included)
+	if (m.included == nil) != (included == nil) || !maps.Equal(m.included, included) {
+		m.included = maps.Clone(included)
+		m.invalidateSearch()
+	}
 	m.applyFilter()
 	if preserve && hasSelection {
-		m.Select(selected.Item.ID)
+		m.PreferSelection(selected.Item.ID)
 	}
 	m.reflow()
 }
@@ -160,6 +205,9 @@ func (m *Model) Select(id ItemID) bool {
 		return false
 	}
 	m.cursor = idx
+	if m.pendingSearch {
+		m.preferred = []ItemID{id}
+	}
 	m.reflow()
 	return true
 }
@@ -188,6 +236,7 @@ func (m *Model) ToggleSelected(expand bool) bool {
 	if !ok || !selected.Branch || strings.TrimSpace(m.query) != "" {
 		return false
 	}
+	m.expanded = maps.Clone(m.expanded)
 	m.expanded[selected.Item.ID] = expand
 	m.applyFilter()
 	m.reflow()
@@ -208,7 +257,8 @@ func (m *Model) ExpandAll() bool {
 	if strings.TrimSpace(m.query) != "" {
 		return false
 	}
-	markAllExpanded(m.snapshot.Items, m.expanded)
+	m.expanded = maps.Clone(m.expanded)
+	markAllExpanded(m.operationContext(), m.snapshot.Items, m.expanded)
 	m.applyFilter()
 	m.reflow()
 	return true
@@ -255,29 +305,58 @@ func (m Model) MatchPosition() (int, int) {
 }
 
 func (m *Model) applyFilter() {
+	m.searchKey.query++
+	m.pendingSearch = m.deferred && strings.TrimSpace(m.query) != ""
+	if m.pendingSearch {
+		return
+	}
+	ctx := m.operationContext()
+	if ctx.Err() != nil {
+		return
+	}
 	var selectedID ItemID
 	if selected, ok := m.Selected(); ok {
 		selectedID = selected.Item.ID
 	}
-	query := strings.ToLower(strings.TrimSpace(m.query))
-	items := projectItems(m.snapshot.Items, m.included, m.details)
-	if query == "" {
-		m.rows = flatten(items, m.expanded, false)
+	if m.projection == nil {
+		m.projection = &itemProjection{items: projectItems(ctx, m.snapshot.Items, m.included, m.details)}
+	}
+	items := m.projection.items
+	if strings.TrimSpace(m.query) == "" {
+		m.rows = flatten(ctx, items, m.expanded, false)
 		if idx := findRow(m.rows, selectedID); idx >= 0 {
 			m.cursor = idx
 		} else {
 			m.cursor = clampCursor(m.cursor, len(m.rows))
 		}
 	} else {
-		m.rows = rankedMatches(items, query)
+		rows, err := m.matchingRows(ctx, items)
+		if err != nil {
+			return
+		}
+		m.rows = rows
 		m.cursor = bestMatchCursor(m.rows)
 	}
 	m.shownRoot = 0
 	for _, row := range m.rows {
-		if row.Depth == 0 {
+		if row.depth == 0 {
 			m.shownRoot++
 		}
 	}
+}
+
+func (m *Model) matchingRows(ctx context.Context, items []Item) ([]rowRef, error) {
+	if m.search == nil {
+		m.search = prepareSearch(ctx, items)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	scores, err := m.search.ScoresContext(ctx, m.query)
+	if err != nil {
+		return nil, err
+	}
+	return rankedMatches(ctx, items, scores), ctx.Err()
 }
 
 func (m *Model) reflow() {
@@ -294,40 +373,44 @@ func (m *Model) reflow() {
 func (m Model) matchIndices() []int {
 	indices := make([]int, 0, len(m.rows))
 	for i, row := range m.rows {
-		if row.Score > 0 {
+		if row.score > 0 {
 			indices = append(indices, i)
 		}
 	}
 	return indices
 }
 
-func flatten(items []Item, expanded map[ItemID]bool, includeAll bool) []Row {
-	rows := make([]Row, 0, visibleItemCount(items, expanded, includeAll))
+func flatten(ctx context.Context, items []Item, expanded map[ItemID]bool, includeAll bool) []rowRef {
+	rows := make([]rowRef, 0, visibleItemCount(ctx, items, expanded, includeAll))
 	var ancestors [MaxDepth]bool
-	flattenAtDepth(items, ancestors[:0], expanded, includeAll, &rows)
+	flattenAtDepth(ctx, items, ancestors[:0], expanded, includeAll, &rows)
 	return rows
 }
 
-func visibleItemCount(items []Item, expanded map[ItemID]bool, includeAll bool) int {
+func visibleItemCount(ctx context.Context, items []Item, expanded map[ItemID]bool, includeAll bool) int {
 	count := len(items)
-	for _, item := range items {
+	for i, item := range items {
+		if i%64 == 0 && ctx.Err() != nil {
+			return 0
+		}
 		if len(item.Children) > 0 && (includeAll || expanded[item.ID]) {
-			count += visibleItemCount(item.Children, expanded, includeAll)
+			count += visibleItemCount(ctx, item.Children, expanded, includeAll)
 		}
 	}
 	return count
 }
 
-func flattenAtDepth(items []Item, ancestors []bool, expanded map[ItemID]bool, includeAll bool, rows *[]Row) {
-	for i, item := range items {
+func flattenAtDepth(ctx context.Context, items []Item, ancestors []bool, expanded map[ItemID]bool, includeAll bool, rows *[]rowRef) {
+	for i := range items {
+		if i%64 == 0 && ctx.Err() != nil {
+			return
+		}
+		item := &items[i]
 		hasNext := i < len(items)-1
 		isExpanded := includeAll || expanded[item.ID]
-		*rows = append(*rows, Row{
-			Item: item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
-			Expanded: isExpanded, Branch: len(item.Children) > 0,
-		})
+		*rows = append(*rows, newRowRef(item, ancestors, hasNext, isExpanded, 0))
 		if len(item.Children) > 0 && isExpanded {
-			flattenAtDepth(item.Children, append(ancestors, hasNext), expanded, includeAll, rows)
+			flattenAtDepth(ctx, item.Children, append(ancestors, hasNext), expanded, includeAll, rows)
 		}
 	}
 }
@@ -339,153 +422,128 @@ type matchedItem struct {
 	rank     int
 }
 
-func rankedMatches(items []Item, query string) []Row {
-	scores := queryScores(items, query)
+func rankedMatches(ctx context.Context, items []Item, scores []int) []rowRef {
 	scoreIndex := 0
-	matched, count := matchItems(items, scores, &scoreIndex)
-	rows := make([]Row, 0, count)
+	matched, count := matchItems(ctx, items, scores, &scoreIndex)
+	rows := make([]rowRef, 0, count)
 	var ancestors [MaxDepth]bool
-	flattenMatches(matched, ancestors[:0], &rows)
+	flattenMatches(ctx, matched, ancestors[:0], &rows)
 	return rows
 }
 
-func matchItems(items []Item, scores []int, scoreIndex *int) ([]matchedItem, int) {
+func matchItems(ctx context.Context, items []Item, scores []int, scoreIndex *int) ([]matchedItem, int) {
 	if len(items) == 0 {
 		return nil, 0
 	}
 	matched := make([]matchedItem, 0, len(items))
 	count := 0
 	for i := range items {
+		if i%64 == 0 && ctx.Err() != nil {
+			return nil, 0
+		}
 		item := &items[i]
 		score := scores[*scoreIndex]
 		(*scoreIndex)++
 
-		children, childCount := matchItems(item.Children, scores, scoreIndex)
+		children, childCount := matchItems(ctx, item.Children, scores, scoreIndex)
 		if score == 0 && len(children) == 0 {
 			continue
 		}
-		rank := score
-		for _, child := range children {
-			rank = max(rank, child.rank)
-		}
+		rank := branchRank(ctx, score, children)
 		matched = append(matched, matchedItem{item: item, children: children, score: score, rank: rank})
 		count += 1 + childCount
 	}
-	slices.SortStableFunc(matched, func(left, right matchedItem) int {
-		return right.rank - left.rank
-	})
+	sortMatches(ctx, matched)
 	return matched, count
 }
 
-func flattenMatches(items []matchedItem, ancestors []bool, rows *[]Row) {
+func branchRank(ctx context.Context, score int, children []matchedItem) int {
+	for i, child := range children {
+		if i%64 == 0 && ctx.Err() != nil {
+			return 0
+		}
+		score = max(score, child.rank)
+	}
+	return score
+}
+
+func flattenMatches(ctx context.Context, items []matchedItem, ancestors []bool, rows *[]rowRef) {
 	for i, matched := range items {
+		if i%64 == 0 && ctx.Err() != nil {
+			return
+		}
 		hasNext := i < len(items)-1
-		*rows = append(*rows, Row{
-			Item: *matched.item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
-			Expanded: true, Branch: len(matched.item.Children) > 0, Score: matched.score,
-		})
+		*rows = append(*rows, newRowRef(matched.item, ancestors, hasNext, true, matched.score))
 		if len(matched.children) > 0 {
-			flattenMatches(matched.children, append(ancestors, hasNext), rows)
+			flattenMatches(ctx, matched.children, append(ancestors, hasNext), rows)
 		}
 	}
 }
 
-type scoringField struct {
-	text  string
-	tier  SearchTier
-	owner int
-}
-
-type scoringFields []scoringField
-
-func (s scoringFields) Len() int            { return len(s) }
-func (s scoringFields) String(i int) string { return s[i].text }
-
-func searchSize(items []Item) (itemCount, fieldCount int) {
-	itemCount = len(items)
-	for i := range items {
-		children, childFields := searchSize(items[i].Children)
-		itemCount += children
-		fieldCount += len(items[i].SearchFields) + childFields
-	}
-	return itemCount, fieldCount
-}
-
-// queryScores returns scores in item preorder, including items with no fields.
-// matchItems must consume one score for every item in that same order.
-func queryScores(items []Item, query string) []int {
-	itemCount, fieldCount := searchSize(items)
-	scores := make([]int, itemCount)
-	fields := make(scoringFields, 0, min(scoringBatchSize, fieldCount))
-	flush := func() {
-		for _, match := range fuzzy.FindFromNoSort(query, fields) {
-			field := fields[match.Index]
-			quality := min(max(match.Score, 0), maxQuality)
-			priority := (int(SearchSecondary) - int(field.tier) + 1) * 1000
-			scores[field.owner] = max(scores[field.owner], priority+quality)
-		}
-		fields = fields[:0]
-	}
-
-	index := 0
+// Search entry positions follow item preorder, including entries with no fields.
+// matchItems consumes scores in that same order.
+func prepareSearch(ctx context.Context, items []Item) *search.Index {
+	entries := make([][]search.Field, 0, visibleItemCount(ctx, items, nil, true))
 	var collect func([]Item)
 	collect = func(items []Item) {
 		for i := range items {
-			owner := index
-			index++
-			for _, field := range items[i].SearchFields {
-				fields = append(fields, scoringField{text: field.Text, tier: field.Tier, owner: owner})
-				if len(fields) == cap(fields) {
-					flush()
-				}
+			if i%64 == 0 && ctx.Err() != nil {
+				return
 			}
+			entries = append(entries, items[i].SearchFields)
 			collect(items[i].Children)
 		}
 	}
-
 	collect(items)
-	if len(fields) > 0 {
-		flush()
-	}
-	return scores
+	index, _ := search.PrepareContext(ctx, entries)
+	return index
 }
 
-func bestMatchCursor(rows []Row) int {
+func bestMatchCursor(rows []rowRef) int {
 	bestIndex, bestScore := 0, 0
 	for i, row := range rows {
-		if row.Score > bestScore {
-			bestIndex, bestScore = i, row.Score
+		if row.score > bestScore {
+			bestIndex, bestScore = i, row.score
 		}
 	}
 	return bestIndex
 }
 
-func markAllExpanded(items []Item, expanded map[ItemID]bool) {
-	for _, item := range items {
+func markAllExpanded(ctx context.Context, items []Item, expanded map[ItemID]bool) {
+	for i, item := range items {
+		if i%64 == 0 && ctx.Err() != nil {
+			return
+		}
 		if len(item.Children) > 0 {
 			expanded[item.ID] = true
-			markAllExpanded(item.Children, expanded)
+			markAllExpanded(ctx, item.Children, expanded)
 		}
 	}
 }
 
-func restoreBranchExpansion(items []Item, previous, expanded map[ItemID]bool) {
-	for _, item := range items {
+func restoreBranchExpansion(ctx context.Context, items []Item, previous, expanded map[ItemID]bool) {
+	for i, item := range items {
+		if i%64 == 0 && ctx.Err() != nil {
+			return
+		}
 		if len(item.Children) == 0 {
 			continue
 		}
 		if _, exists := expanded[item.ID]; exists {
 			expanded[item.ID] = previous[item.ID]
 		}
-		restoreBranchExpansion(item.Children, previous, expanded)
+		restoreBranchExpansion(ctx, item.Children, previous, expanded)
 	}
 }
 
-func activePath(items []Item, activeID ItemID) map[ItemID]bool {
+func activePath(ctx context.Context, items []Item, activeID ItemID) map[ItemID]bool {
 	active := make(map[ItemID]bool)
 	var find func([]Item) bool
 	find = func(items []Item) bool {
-		for _, item := range items {
+		for i, item := range items {
+			if i%64 == 0 && ctx.Err() != nil {
+				return false
+			}
 			if item.ID == activeID || find(item.Children) {
 				active[item.ID] = true
 				return true
@@ -497,13 +555,16 @@ func activePath(items []Item, activeID ItemID) map[ItemID]bool {
 	return active
 }
 
-func markActivePathExpanded(items []Item, activeID ItemID, expanded map[ItemID]bool) bool {
-	for _, item := range items {
+func markActivePathExpanded(ctx context.Context, items []Item, activeID ItemID, expanded map[ItemID]bool) bool {
+	for i, item := range items {
+		if i%64 == 0 && ctx.Err() != nil {
+			return false
+		}
 		if item.ID == activeID {
 			expanded[item.ID] = true
 			return true
 		}
-		if markActivePathExpanded(item.Children, activeID, expanded) {
+		if markActivePathExpanded(ctx, item.Children, activeID, expanded) {
 			expanded[item.ID] = true
 			return true
 		}
@@ -531,21 +592,24 @@ func treePrefix(ancestors []bool, hasNext bool) string {
 	return builder.String()
 }
 
-func findRow(rows []Row, id ItemID) int {
+func findRow(rows []rowRef, id ItemID) int {
 	if id.IsZero() {
 		return -1
 	}
 	for i, row := range rows {
-		if row.Item.ID == id {
+		if row.item.ID == id {
 			return i
 		}
 	}
 	return -1
 }
 
-func cloneExpanded(expanded map[ItemID]bool, valid map[ItemID]struct{}) map[ItemID]bool {
+func cloneExpanded(ctx context.Context, expanded map[ItemID]bool, valid map[ItemID]struct{}) map[ItemID]bool {
 	clone := make(map[ItemID]bool, len(expanded))
 	for id, value := range expanded {
+		if ctx.Err() != nil {
+			return nil
+		}
 		if _, exists := valid[id]; exists {
 			clone[id] = value
 		}
