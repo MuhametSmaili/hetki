@@ -58,12 +58,12 @@ func TestViewAlignsColumnsAcrossStatusAndFilterChanges(t *testing.T) {
 			require.Equal(t, "?", terminal.Cut(lines[2], rightEdge-1, rightEdge))
 		}
 
-		m.items.SetQuery("pi")
+		m.items.SetFilter("pi", nil)
 		filtered := strings.Split(m.viewList(m.layout()), "\n")
 
 		require.Len(t, filtered, 1)
 		require.Equal(t, "pi ", terminal.Cut(terminal.Sanitize(filtered[0]), rightEdge-4, rightEdge-1))
-		m.items.SetQuery("")
+		m.items.SetFilter("", nil)
 	}
 
 	m.paneStatus.options.Bindings[items[1].ID] = []status.PaneRef{pane}

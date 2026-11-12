@@ -47,9 +47,9 @@ func TestWindowStatusPriorityAndFreshness(t *testing.T) {
 			snapshot, err := status.NewSnapshot(values)
 			require.NoError(t, err)
 
-			got := bindings.StateAt(list.ItemID{ID: "window"}, snapshot, now)
+			got := bindings.ValueAt(list.ItemID{ID: "window"}, snapshot, now)
 
-			require.Equal(t, test.want, got)
+			require.Equal(t, test.want, got.State)
 		})
 	}
 }
@@ -271,7 +271,7 @@ func TestProjectionReplacementBindsStatusByIncarnation(t *testing.T) {
 
 			require.Nil(t, cmd)
 			require.EqualValues(t, 2, current.paneStatus.sequence, "only the replacement was applied")
-			require.Equal(t, test.want, current.paneStatus.options.Bindings.StateAt(list.ItemID{ID: "pane"}, current.paneStatus.values, now))
+			require.Equal(t, test.want, current.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "pane"}, current.paneStatus.values, now).State)
 		})
 	}
 }
@@ -281,7 +281,7 @@ func TestStatusPollReplacesBindingsAndClearsReadFailure(t *testing.T) {
 	pane := m.paneStatus.options.Bindings[list.ItemID{ID: "window"}][0]
 	failed, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Values: m.paneStatus.values.Invalidate(), Err: errors.New("status unavailable")}})
 	m = failed.(model)
-	require.Equal(t, status.Unknown, m.paneStatus.options.Bindings.StateAt(list.ItemID{ID: "window"}, m.paneStatus.values, time.Now()))
+	require.Equal(t, status.Unknown, m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, m.paneStatus.values, time.Now()).State)
 	require.ErrorContains(t, m.paneStatus.readErr, "status unavailable")
 	pane.Generation = "new daemon generation"
 	values, err := status.NewSnapshot(map[status.PaneRef]status.Value{pane: {State: status.Idle, ValidUntil: time.Now().Add(time.Minute)}})
@@ -291,7 +291,7 @@ func TestStatusPollReplacesBindingsAndClearsReadFailure(t *testing.T) {
 	m = recovered.(model)
 
 	require.NoError(t, m.paneStatus.readErr)
-	require.Equal(t, status.Idle, m.paneStatus.options.Bindings.StateAt(list.ItemID{ID: "window"}, m.paneStatus.values, time.Now()))
+	require.Equal(t, status.Idle, m.paneStatus.options.Bindings.ValueAt(list.ItemID{ID: "window"}, m.paneStatus.values, time.Now()).State)
 	cleared, _ := m.handleStatusResult(statusResultMsg{update: StatusUpdate{Bindings: StatusBindings{}}})
 	require.Empty(t, cleared.(model).paneStatus.options.Bindings)
 }

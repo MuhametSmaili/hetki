@@ -134,7 +134,7 @@ func TestSemicolonShortcutsDoNotChangeMode(t *testing.T) {
 				ID: list.ItemID{ID: "semicolon"}, Primary: "semi;colon",
 				SearchFields: []list.SearchField{{Tier: list.SearchPrimary, Text: "semi;colon"}},
 			}}}, nil)
-			m.items.SetQuery("semi")
+			m.items.SetFilter("semi", nil)
 			m.mode = test.mode
 
 			m, cmd := updateModel(t, m, test.key)
@@ -188,7 +188,7 @@ func TestEnterOpensSelectedItemFromFilter(t *testing.T) {
 		got = request
 		return ActionResult{}, nil
 	})
-	m.items.SetQuery("server")
+	m.items.SetFilter("server", nil)
 	m.view, m.preview.enabled = ViewTree, true
 	require.Equal(t, list.ItemID{ID: "window-2"}, selectedNodeID(m))
 
@@ -220,7 +220,7 @@ func TestLastSessionSnapshotPreservesPickerState(t *testing.T) {
 		require.Equal(t, ActionRequest{ActionID: ActionLastSession}, request)
 		return ActionResult{Snapshot: &refreshed}, nil
 	})
-	m.items.SetQuery("server")
+	m.items.SetFilter("server", nil)
 	m.view, m.preview.enabled = ViewTree, true
 	selected := selectedNodeID(m)
 
@@ -256,7 +256,7 @@ func TestLastSessionKeyWorksWithoutVisibleRowsAndRespectsOverlays(t *testing.T) 
 				require.Equal(t, ActionRequest{ActionID: ActionLastSession}, request)
 				return ActionResult{}, unavailable
 			})
-			m.items.SetQuery("no-match")
+			m.items.SetFilter("no-match", nil)
 			require.Empty(t, m.items.Rows())
 			m.mode, m.busy = test.mode, test.busy
 			m, cmd := updateModel(t, m, controlKey('o'))
@@ -413,7 +413,7 @@ func TestProjectionTogglePreservesTheFilterAndUsesPreferredSelection(t *testing.
 	})
 	m = browseModel(m)
 	m = selectNode(t, m, list.ItemID{ID: "window-2"})
-	m.items.SetQuery("server")
+	m.items.SetFilter("server", nil)
 
 	m, cmd := updateModel(t, m, controlKey('t'))
 	require.NotNil(t, cmd)

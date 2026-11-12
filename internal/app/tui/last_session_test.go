@@ -65,11 +65,11 @@ func TestLastSessionMarkerAndShortcutUseTheSameDestination(t *testing.T) {
 				}
 			}
 			require.Equal(t, 1, count)
-			model.SetQuery("previous")
+			model.SetFilter("previous", nil)
 			require.NotEmpty(t, model.Rows())
-			model.SetQuery("↶")
+			model.SetFilter("↶", nil)
 			require.Empty(t, model.Rows(), "the marker is not a search field")
-			model.SetQuery("core")
+			model.SetFilter("core", nil)
 			for _, row := range model.Rows() {
 				require.NotContains(t, row.Item.Primary, "↶", "filtering hides the marked row normally")
 			}

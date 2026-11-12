@@ -87,7 +87,7 @@ func TestPreviewHeaderSeparatesQueryFromMetadata(t *testing.T) {
 		t.Run(fmt.Sprintf("width %d", width), func(t *testing.T) {
 			m := previewModel(t)
 			m.width, m.mode, m.preview.enabled = width, modeFilter, true
-			m.items.SetQuery("a-very-long-query-that-does-not-fit-in-the-list")
+			m.items.SetFilter("a-very-long-query-that-does-not-fit-in-the-list", nil)
 			m = m.reflow()
 			layout := m.layout()
 

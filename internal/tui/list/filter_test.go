@@ -76,7 +76,7 @@ func TestFilteredTreeKeepsRankedPrefixesAndBranchIdentity(t *testing.T) {
 			require.NoError(t, err)
 			model.CollapseAll()
 
-			model.SetQuery(test.query)
+			model.SetFilter(test.query, nil)
 
 			require.Equal(t, test.ids, rowIDs(model.Rows()))
 			for i, row := range model.Rows() {
@@ -87,7 +87,7 @@ func TestFilteredTreeKeepsRankedPrefixesAndBranchIdentity(t *testing.T) {
 				require.Equal(t, referenceItemScore(row.Item, test.query), row.Score)
 			}
 
-			model.SetQuery("")
+			model.SetFilter("", nil)
 
 			require.Equal(t, []Item{branch, strong, item("tie", "api", "")}, model.Snapshot().Items[0].Children)
 			require.Equal(t, []Item{item("hidden", "shell", "")}, model.Snapshot().Items[0].Children[1].Children)
@@ -126,7 +126,7 @@ func assertFilteredScore(t *testing.T, candidate Item, query string) {
 	require.NoError(t, err)
 	expected := referenceItemScore(candidate, query)
 
-	model.SetQuery(query)
+	model.SetFilter(query, nil)
 
 	if expected == 0 {
 		require.Empty(t, model.Rows(), "query %q", query)
@@ -151,7 +151,7 @@ func TestFilteringRanksAndRefreshesItemsAcrossBatches(t *testing.T) {
 	model.Resize(4)
 	model.CollapseAll()
 
-	model.SetQuery("api")
+	model.SetFilter("api", nil)
 
 	require.Len(t, model.Rows(), 132)
 	require.Equal(t, second.ID, model.Rows()[0].Item.ID)

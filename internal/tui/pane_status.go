@@ -38,10 +38,6 @@ type StatusUpdate struct {
 	Sequence uint64
 }
 
-func (b StatusBindings) StateAt(id list.ItemID, values status.Snapshot, now time.Time) status.State {
-	return b.ValueAt(id, values, now).State
-}
-
 // ValueAt returns the highest-priority bound activity and outcome, resolving freshness
 // and the brief success indication before aggregation.
 // Attention and ongoing work take precedence over completed results in other panes.

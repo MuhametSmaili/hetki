@@ -69,5 +69,8 @@ keymap:
 	action, matched := options.Keys.Action(ui.KeyModeNormal, tea.KeyPressMsg{Code: 'p', Text: "p"})
 	require.True(t, matched)
 	require.Equal(t, ui.ActionTogglePreview, action)
-	require.False(t, options.Keys.Matches(ui.KeyModeNormal, ui.ActionTogglePreview, tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt}))
+
+	_, matched = options.Keys.Action(ui.KeyModeNormal, tea.KeyPressMsg{Code: 'p', Mod: tea.ModAlt})
+
+	require.False(t, matched)
 }

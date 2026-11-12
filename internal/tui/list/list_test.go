@@ -69,15 +69,15 @@ func TestFlatAndNestedListsShareMovementFilterAndViewport(t *testing.T) {
 			require.Equal(t, test.wantRows[0], selectedID(m))
 			require.Zero(t, m.Offset())
 
-			m.SetQuery("api")
+			m.SetFilter("api", nil)
 			require.Equal(t, ItemID{ID: "server"}, selectedID(m))
 			require.Contains(t, rowIDs(m.Rows()), ItemID{ID: "server"})
 			if test.name == "nested" {
 				require.Contains(t, rowIDs(m.Rows()), ItemID{ID: "dev"}, "a matching child must retain its ancestor")
 			}
-			m.SetQuery("")
+			m.SetFilter("", nil)
 			require.Equal(t, ItemID{ID: "server"}, selectedID(m))
-			m.SetQuery("no-such-item")
+			m.SetFilter("no-such-item", nil)
 			require.Empty(t, m.Rows())
 		})
 	}
@@ -90,7 +90,7 @@ func TestPrimarySearchTierOutranksSecondaryWithoutReorderingRows(t *testing.T) {
 	}}
 	m, err := New(snapshot)
 	require.NoError(t, err)
-	m.SetQuery("api")
+	m.SetFilter("api", nil)
 
 	require.Equal(t, []ItemID{{ID: "name"}, {ID: "path"}}, rowIDs(m.Rows()), "stronger fuzzy matches must sort first")
 	require.Greater(t, m.Rows()[0].Score, m.Rows()[1].Score, "primary matches must outrank secondary matches")
@@ -104,7 +104,7 @@ func TestFilteringSelectsTheBestMatchInsteadOfKeepingAWeakerFlatMatch(t *testing
 	require.NoError(t, err)
 	require.True(t, m.Select(ItemID{ID: "path-match"}))
 
-	m.SetQuery("app")
+	m.SetFilter("app", nil)
 
 	require.Equal(t, []ItemID{{ID: "name-match"}, {ID: "path-match"}}, rowIDs(m.Rows()))
 	require.Equal(t, ItemID{ID: "name-match"}, selectedID(m))
@@ -117,7 +117,7 @@ func TestNestedFilteringRanksPrimaryTierBeforeSecondaryAndKeepsAncestors(t *test
 	primary.Children = []Item{item("primary", "api", "~/other")}
 	m, err := New(Snapshot{Items: []Item{secondary, primary}})
 	require.NoError(t, err)
-	m.SetQuery("api")
+	m.SetFilter("api", nil)
 
 	require.Equal(t, []ItemID{{ID: "primary-root"}, {ID: "primary"}, {ID: "secondary-root"}, {ID: "secondary"}}, rowIDs(m.Rows()))
 	require.Equal(t, 0, m.Rows()[0].Score, "retained ancestors are not direct matches")
@@ -127,7 +127,7 @@ func TestNestedFilteringRanksPrimaryTierBeforeSecondaryAndKeepsAncestors(t *test
 func TestEqualFilterScoresPreserveIncomingOrder(t *testing.T) {
 	m, err := New(Snapshot{Items: []Item{item("first", "api", ""), item("second", "api", "")}})
 	require.NoError(t, err)
-	m.SetQuery("api")
+	m.SetFilter("api", nil)
 	require.Equal(t, []ItemID{{ID: "first"}, {ID: "second"}}, rowIDs(m.Rows()))
 }
 
@@ -193,7 +193,7 @@ func TestInvalidReplacementRetainsAllListState(t *testing.T) {
 	require.NoError(t, err)
 	m.Resize(2)
 	require.True(t, m.Select(ItemID{ID: "server"}))
-	m.SetQuery("server")
+	m.SetFilter("server", nil)
 	beforeRows := rowIDs(m.Rows())
 	beforeOffset := m.Offset()
 
@@ -212,7 +212,7 @@ func TestEmptyListUsesTheSameSafePipeline(t *testing.T) {
 	m.Resize(3)
 	m.Move(1)
 	m.Page(1)
-	m.SetQuery("missing")
+	m.SetFilter("missing", nil)
 	require.Empty(t, m.Rows())
 	require.Empty(t, m.VisibleRows())
 	_, ok := m.Selected()
@@ -251,11 +251,9 @@ func TestMatchNavigationUsesOnlyMatchingRows(t *testing.T) {
 	}}
 	m, err := New(snapshot)
 	require.NoError(t, err)
-	m.SetQuery("api")
+	m.SetFilter("api", nil)
 	require.Equal(t, ItemID{ID: "first"}, selectedID(m))
 	require.True(t, m.JumpMatch(true))
 	require.Equal(t, ItemID{ID: "third"}, selectedID(m))
-	current, total := m.MatchPosition()
-	require.Equal(t, 2, current)
-	require.Equal(t, 2, total)
+	require.Len(t, m.Rows(), 2)
 }

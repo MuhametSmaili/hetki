@@ -113,7 +113,7 @@ func TestTreeViewKeepsAlignedPathsAndTrailingStatusWhenFiltered(t *testing.T) {
 				require.Equal(t, "pi ", terminal.Cut(lines[1], 76, 79))
 				require.Equal(t, "opencode  ", terminal.Cut(lines[2], 70, 80))
 
-				m.items.SetQuery("pi")
+				m.items.SetFilter("pi", nil)
 				filtered := strings.Split(m.viewList(layout), "\n")
 				for i := range filtered {
 					filtered[i] = terminal.Sanitize(filtered[i])
@@ -125,7 +125,7 @@ func TestTreeViewKeepsAlignedPathsAndTrailingStatusWhenFiltered(t *testing.T) {
 				if state == status.Blocked {
 					require.Equal(t, "?", terminal.Cut(filtered[1], 79, 80))
 				}
-				m.items.SetQuery("")
+				m.items.SetFilter("", nil)
 			})
 		}
 	}

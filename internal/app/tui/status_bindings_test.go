@@ -64,14 +64,14 @@ func TestServiceSuppliesBindingsOnProjectionReplacement(t *testing.T) {
 		require.Empty(t, runtime.Status.Bindings, "ordinary backend rows have no status references")
 		initial := runtime.Status.Read(ctx, 0)
 		require.NoError(t, initial.Err)
-		require.Equal(t, status.Blocked, initial.Bindings.StateAt(windowItemID("$1", "@1"), initial.Values, now))
+		require.Equal(t, status.Blocked, initial.Bindings.ValueAt(windowItemID("$1", "@1"), initial.Values, now).State)
 
 		for _, id := range []list.ItemID{destinationItemID("$1", "@1", "%1"), windowItemID("$1", "@1")} {
 			result, err := runtime.Dispatch(ui.ActionRequest{ActionID: ui.ActionToggleProjection})
 			require.NoError(t, err)
 			require.NotNil(t, result.Snapshot)
 			require.NotNil(t, result.Status)
-			require.Equal(t, status.Blocked, result.Status.Bindings.StateAt(id, result.Status.Values, now))
+			require.Equal(t, status.Blocked, result.Status.Bindings.ValueAt(id, result.Status.Values, now).State)
 		}
 		require.Equal(t, 1, reads, "replacement must not depend on another transport read")
 		return ui.Result{}, nil

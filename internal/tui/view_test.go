@@ -60,7 +60,7 @@ func TestHeaderTracksMode(t *testing.T) {
 
 	m = newModel(viewSnapshot(), nil)
 	m.mode = modeBrowse
-	m.items.SetQuery("dev")
+	m.items.SetFilter("dev", nil)
 	require.Empty(t, headerHint(m))
 	require.Equal(t, ">", headerPrompt(m))
 }
@@ -80,7 +80,7 @@ func TestBrowseHeaderShowsHintOnlyWithoutQuery(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := browseModel(newModel(viewSnapshot(), nil))
-			m.items.SetQuery(tc.query)
+			m.items.SetFilter(tc.query, nil)
 			layout := layoutMetrics{listWidth: 80, previewWidth: tc.previewWidth, headerHeight: 3}
 
 			header := m.viewHeader(layout)
@@ -107,7 +107,7 @@ func TestLeavingFilterModeKeepsNarrowQueryWithoutHint(t *testing.T) {
 			m, err := newModelWithKeys(viewSnapshot(), nil, keys)
 			require.NoError(t, err)
 			m.width, m.height, m.preview.enabled = 48, 12, true
-			m.items.SetQuery("editor")
+			m.items.SetFilter("editor", nil)
 			m = m.reflow()
 
 			m, _ = updateModel(t, m, specialKey(tea.KeyEscape))
@@ -182,8 +182,8 @@ func TestRootCountLabelShowsFilteredRootsOverTotal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "2", rootCountLabel(snapshot, model.ShownRoots(), model.Query()))
 
-	model.SetQuery("logs")
+	model.SetFilter("logs", nil)
 	require.Equal(t, "1/2", rootCountLabel(snapshot, model.ShownRoots(), model.Query()))
-	model.SetQuery("missing")
+	model.SetFilter("missing", nil)
 	require.Equal(t, "0/2", rootCountLabel(snapshot, model.ShownRoots(), model.Query()))
 }

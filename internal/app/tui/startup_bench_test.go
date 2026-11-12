@@ -148,18 +148,18 @@ func benchmarkProjectedFiltering(b *testing.B, name string, model *list.Model) {
 	b.Helper()
 	for _, query := range []string{"project", "project-0999", "no-match"} {
 		b.Run(name+"_filter_roundtrip/"+query, func(b *testing.B) {
-			model.SetQuery("")
+			model.SetFilter("", nil)
 			b.ReportAllocs()
 			for b.Loop() {
-				model.SetQuery(query)
-				model.SetQuery("")
+				model.SetFilter(query, nil)
+				model.SetFilter("", nil)
 			}
 		})
 		b.Run(name+"_filter_unchanged/"+query, func(b *testing.B) {
-			model.SetQuery(query)
+			model.SetFilter(query, nil)
 			b.ReportAllocs()
 			for b.Loop() {
-				model.SetQuery(query)
+				model.SetFilter(query, nil)
 			}
 		})
 	}

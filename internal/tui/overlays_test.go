@@ -94,7 +94,7 @@ func TestOverlayResultsRequireAPendingRequest(t *testing.T) {
 	} {
 		m := browseModel(newModel(interactionSnapshot(), nil))
 		m.mode = modeFilter
-		m.items.SetQuery("server")
+		m.items.SetFilter("server", nil)
 		m, cmd := updateModel(t, m, actionResultMsg{result: result})
 		require.Nil(t, cmd)
 		require.ErrorContains(t, m.err, "no pending request")
@@ -117,7 +117,7 @@ func TestFilterAndInputShareEndOfLineEditingBehavior(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			filter := browseModel(newModel(interactionSnapshot(), nil))
 			filter.mode = modeFilter
-			filter.items.SetQuery("one two")
+			filter.items.SetFilter("one two", nil)
 			filter, _ = updateModel(t, filter, test.key)
 
 			input := browseModel(newModel(interactionSnapshot(), nil))

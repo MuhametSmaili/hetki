@@ -70,8 +70,8 @@ func benchmarkFilterRoundtrip(b *testing.B, snapshot Snapshot, query string) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		model.SetQuery(query)
-		model.SetQuery("")
+		model.SetFilter(query, nil)
+		model.SetFilter("", nil)
 	}
 }
 

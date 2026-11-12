@@ -37,7 +37,7 @@ func TestContextMenuCancelRestoresBrowseAndFilterState(t *testing.T) {
 				return ActionResult{Menu: new(testItemMenu())}, nil
 			})
 			m = browseModel(m)
-			m.items.SetQuery("server")
+			m.items.SetFilter("server", nil)
 			m.height = 5
 			m = m.reflow()
 			require.True(t, m.items.Select(list.ItemID{ID: "window-2"}))
@@ -144,7 +144,7 @@ func TestEveryMenuEntryDispatchesFromTheStableOrigin(t *testing.T) {
 			})
 			m = selectNode(t, browseModel(m), list.ItemID{ID: "window-2"})
 			if test.action == ActionRefresh || test.action == ActionToggleProjection {
-				m.items.SetQuery("server")
+				m.items.SetFilter("server", nil)
 				m.mode = modeFilter
 			}
 			origin, query, selected := m.mode, m.items.Query(), selectedNodeID(m)
@@ -250,7 +250,7 @@ func TestMenuInputAndConfirmationHandoffsRestoreFilterState(t *testing.T) {
 		}
 	})
 	m = browseModel(m)
-	m.items.SetQuery("server")
+	m.items.SetFilter("server", nil)
 	m.height = 5
 	m = m.reflow()
 	require.True(t, m.items.Select(list.ItemID{ID: "window-2"}))
@@ -348,7 +348,7 @@ func TestIndependentMenuShortcutsSubmitThroughCustomDialogControls(t *testing.T)
 func TestDeleteResultSelectsParentThenNextOrPreviousSurvivor(t *testing.T) {
 	t.Run("filtered tree window parent", func(t *testing.T) {
 		m := browseModel(newModel(interactionSnapshot(), nil))
-		m.items.SetQuery("editor")
+		m.items.SetFilter("editor", nil)
 		m = selectNode(t, m, list.ItemID{ID: "window-1"})
 		m.mode = modeFilter
 		m.busy = true
@@ -385,7 +385,7 @@ func TestDeleteResultSelectsParentThenNextOrPreviousSurvivor(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m := browseModel(newModel(test.before, nil))
-			m.items.SetQuery("place")
+			m.items.SetFilter("place", nil)
 			m = selectNode(t, m, test.selectID)
 			m.mode = modeFilter
 			m.busy = true

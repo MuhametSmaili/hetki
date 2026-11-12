@@ -62,11 +62,11 @@ func TestMixedHeightViewportReflowsAfterFilteringAndExpansion(t *testing.T) {
 	m.ResizeRows(3, treeRowHeight)
 	m.Bottom()
 
-	m.SetQuery("api")
+	m.SetFilter("api", nil)
 
 	require.Equal(t, []ItemID{{ID: "dev"}, {ID: "server"}}, rowIDs(m.VisibleRows()))
 	require.Equal(t, ItemID{ID: "server"}, selectedID(m))
-	m.SetQuery("")
+	m.SetFilter("", nil)
 	require.True(t, m.CollapseAll())
 	require.Equal(t, []ItemID{{ID: "dev"}, {ID: "prod"}}, rowIDs(m.VisibleRows()))
 	require.True(t, m.ExpandAll())

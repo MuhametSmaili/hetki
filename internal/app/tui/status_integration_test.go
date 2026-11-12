@@ -49,7 +49,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, result.Status)
 			require.Len(t, result.Status.Bindings, 2)
-			require.Equal(t, status.Idle, result.Status.Bindings.StateAt(id, result.Status.Values, time.Now()), "replacement must carry status before another read")
+			require.Equal(t, status.Idle, result.Status.Bindings.ValueAt(id, result.Status.Values, time.Now()).State, "replacement must carry status before another read")
 		}
 		run("send-keys", "-t", "%0", "-l", "--", "\x1b[2J\x1b[HAPPROVAL\n")
 		awaitPickerValue(t, ctx, runtime.Status, status.Value{State: status.Blocked}, nil)
@@ -60,7 +60,7 @@ func TestNativePickerStartsReusesAndRebindsDaemon(t *testing.T) {
 			update := runtime.Status.Read(readCtx, 0)
 			for ref := range update.Values.All() {
 				if ref.ID == before.ID && ref.Generation != before.Generation && update.Values.At(ref, time.Now()) == status.Idle {
-					return update.Bindings.StateAt(windowItemID("$0", "@0"), update.Values, time.Now()) == status.Idle
+					return update.Bindings.ValueAt(windowItemID("$0", "@0"), update.Values, time.Now()).State == status.Idle
 				}
 			}
 			return false

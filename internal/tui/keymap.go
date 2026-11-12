@@ -184,11 +184,6 @@ func (k KeyMap) Keys(mode KeyMode, action ActionID) []string {
 	return append([]string(nil), binding.Keys()...)
 }
 
-func (k KeyMap) Matches(mode KeyMode, action ActionID, msg tea.KeyPressMsg) bool {
-	binding, ok := k.bindings[mode][action]
-	return ok && key.Matches(msg, binding)
-}
-
 func (k KeyMap) Action(mode KeyMode, msg tea.KeyPressMsg) (ActionID, bool) {
 	for action, binding := range k.bindings[mode] {
 		if key.Matches(msg, binding) {

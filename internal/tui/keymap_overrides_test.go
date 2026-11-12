@@ -119,7 +119,10 @@ func TestKeymapOverridesMatchCanonicalKeyEvents(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			require.True(t, keys.Matches(KeyModePrompt, ActionConfirm, test.key))
+			action, matched := keys.Action(KeyModePrompt, test.key)
+
+			require.True(t, matched)
+			require.Equal(t, ActionConfirm, action)
 			require.Equal(t, test.name+" submit | esc cancel", modalControls(keys, KeyModePrompt, "submit"))
 		})
 	}

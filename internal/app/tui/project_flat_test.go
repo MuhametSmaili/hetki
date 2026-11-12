@@ -131,12 +131,12 @@ func TestFlatProjectionSearchesSessionWindowAndPathWithNamePriority(t *testing.T
 	model, err := list.New(snapshot)
 	require.NoError(t, err)
 
-	model.SetQuery("needle")
+	model.SetFilter("needle", nil)
 	require.Len(t, model.Rows(), 2)
 	assert.Equal(t, destinationItemID("$1", "@1", "%1"), model.Rows()[0].Item.ID)
-	model.SetQuery("editor")
+	model.SetFilter("editor", nil)
 	require.Len(t, model.Rows(), 1)
-	model.SetQuery("work/needle")
+	model.SetFilter("work/needle", nil)
 	require.Len(t, model.Rows(), 1)
 	assert.Equal(t, destinationItemID("$2", "@2", "%2"), model.Rows()[0].Item.ID)
 }
@@ -169,7 +169,7 @@ func TestProjectFlatIdentitySurvivesPathCommandAndIndexChanges(t *testing.T) {
 	model, err := list.New(after)
 	require.NoError(t, err)
 	for _, query := range []string{"pi", "node", "after"} {
-		model.SetQuery(query)
+		model.SetFilter(query, nil)
 		require.Len(t, model.Rows(), 1, query)
 	}
 	pane.Dead = true
@@ -246,7 +246,7 @@ func TestProjectFlatLabelsEveryPaneInSplitWindows(t *testing.T) {
 	model, err := list.New(snapshot)
 	require.NoError(t, err)
 
-	model.SetQuery("nvim")
+	model.SetFilter("nvim", nil)
 
 	require.Len(t, model.Rows(), 1)
 	require.Equal(t, "·2", model.Rows()[0].Item.Annotation)
@@ -289,7 +289,7 @@ func TestProjectFlatUsesTotalFrecencyOrderAndFilteredTieBreaks(t *testing.T) {
 
 	model, err := list.New(snapshot)
 	require.NoError(t, err)
-	model.SetQuery("shared")
+	model.SetFilter("shared", nil)
 	require.Len(t, model.Rows(), 2)
 	assert.Equal(t, destinationItemID("$3", "@4", "%4"), model.Rows()[0].Item.ID)
 }
@@ -312,7 +312,7 @@ func TestExponentialFrecencyKeepsTextRelevanceAndStructuralTreeOrder(t *testing.
 
 	require.Equal(t, destinationItemID("$2", "@2", "%2"), model.Rows()[0].Item.ID)
 
-	model.SetQuery("needle")
+	model.SetFilter("needle", nil)
 
 	require.Len(t, model.Rows(), 2)
 	require.Equal(t, destinationItemID("$1", "@1", "%1"), model.Rows()[0].Item.ID)

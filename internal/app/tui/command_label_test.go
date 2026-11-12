@@ -58,7 +58,7 @@ func TestLiveAdapterHidesDefaultShellCommandsFromLabelsAndSearch(t *testing.T) {
 				model, err := list.New(snapshot)
 				require.NoError(t, err)
 
-				model.SetQuery(test.query)
+				model.SetFilter(test.query, nil)
 
 				require.Equal(t, test.matches, len(model.Rows()) > 0)
 			})

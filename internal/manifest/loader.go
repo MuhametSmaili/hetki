@@ -21,10 +21,6 @@ func GetConfigDir() (string, error) {
 	return filepath.Join(root, "hetki"), nil
 }
 
-type Loader interface {
-	Load() (*Workspace, error)
-}
-
 type FileLoader struct {
 	Path           string
 	validateLayout func(string) error

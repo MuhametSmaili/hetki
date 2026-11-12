@@ -102,10 +102,6 @@ func (m *Model) Replace(snapshot Snapshot, preferred ItemID) error {
 	return nil
 }
 
-func (m *Model) SetQuery(query string) {
-	m.SetFilter(query, nil)
-}
-
 // SetFilter retains ancestors of included items; nil allows all items.
 func (m *Model) SetFilter(query string, included map[ItemID]struct{}) {
 	if m.query == query && (m.included == nil) == (included == nil) && maps.Equal(m.included, included) {
@@ -241,19 +237,6 @@ func (m *Model) JumpMatch(forward bool) bool {
 	return true
 }
 
-func (m Model) MatchPosition() (int, int) {
-	indices := m.matchIndices()
-	if len(indices) == 0 {
-		return 0, 0
-	}
-	for i, idx := range indices {
-		if idx == m.cursor {
-			return i + 1, len(indices)
-		}
-	}
-	return 1, len(indices)
-}
-
 func (m *Model) applyFilter() {
 	var selectedID ItemID
 	if selected, ok := m.Selected(); ok {
@@ -262,7 +245,7 @@ func (m *Model) applyFilter() {
 	query := strings.ToLower(strings.TrimSpace(m.query))
 	items := projectItems(m.snapshot.Items, m.included, m.details)
 	if query == "" {
-		m.rows = flatten(items, m.expanded, false)
+		m.rows = flatten(items, m.expanded)
 		if idx := findRow(m.rows, selectedID); idx >= 0 {
 			m.cursor = idx
 		} else {
@@ -301,33 +284,33 @@ func (m Model) matchIndices() []int {
 	return indices
 }
 
-func flatten(items []Item, expanded map[ItemID]bool, includeAll bool) []Row {
-	rows := make([]Row, 0, visibleItemCount(items, expanded, includeAll))
+func flatten(items []Item, expanded map[ItemID]bool) []Row {
+	rows := make([]Row, 0, visibleItemCount(items, expanded))
 	var ancestors [MaxDepth]bool
-	flattenAtDepth(items, ancestors[:0], expanded, includeAll, &rows)
+	flattenAtDepth(items, ancestors[:0], expanded, &rows)
 	return rows
 }
 
-func visibleItemCount(items []Item, expanded map[ItemID]bool, includeAll bool) int {
+func visibleItemCount(items []Item, expanded map[ItemID]bool) int {
 	count := len(items)
 	for _, item := range items {
-		if len(item.Children) > 0 && (includeAll || expanded[item.ID]) {
-			count += visibleItemCount(item.Children, expanded, includeAll)
+		if len(item.Children) > 0 && expanded[item.ID] {
+			count += visibleItemCount(item.Children, expanded)
 		}
 	}
 	return count
 }
 
-func flattenAtDepth(items []Item, ancestors []bool, expanded map[ItemID]bool, includeAll bool, rows *[]Row) {
+func flattenAtDepth(items []Item, ancestors []bool, expanded map[ItemID]bool, rows *[]Row) {
 	for i, item := range items {
 		hasNext := i < len(items)-1
-		isExpanded := includeAll || expanded[item.ID]
+		isExpanded := expanded[item.ID]
 		*rows = append(*rows, Row{
 			Item: item, Depth: len(ancestors), TreePrefix: treePrefix(ancestors, hasNext),
 			Expanded: isExpanded, Branch: len(item.Children) > 0,
 		})
 		if len(item.Children) > 0 && isExpanded {
-			flattenAtDepth(item.Children, append(ancestors, hasNext), expanded, includeAll, rows)
+			flattenAtDepth(item.Children, append(ancestors, hasNext), expanded, rows)
 		}
 	}
 }
