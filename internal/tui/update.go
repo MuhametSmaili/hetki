@@ -86,14 +86,8 @@ func (m model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeMenu {
 		return m.updateMenuMode(msg)
 	}
-	if m.choice != nil && msg.String() == "esc" {
-		return m.startChoice(ChoiceBack, list.ItemID{})
-	}
 	if action, ok := m.keys.Action(keyModeFor(m.mode), msg); ok {
 		return m.dispatchAction(action, list.ItemID{})
-	}
-	if m.choice != nil && msg.String() == "ctrl+r" {
-		return m.startChoice(ChoiceRefresh, list.ItemID{})
 	}
 	if m.mode == modeInput && len(m.input.Fields) > 0 {
 		if next, handled := m.formKey(msg); handled {

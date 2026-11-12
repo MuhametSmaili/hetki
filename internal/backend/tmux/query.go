@@ -77,22 +77,16 @@ type ActiveContext struct {
 type LoadStateQuery struct {
 	IncludeClients     bool
 	IncludeProgramInfo bool
-	// NoStart disables automatic server startup.
-	NoStart bool
 }
 
 func (q LoadStateQuery) Args() []string {
-	var args []string
-	if !q.NoStart {
-		args = append(args, "start-server", ";")
-	}
-
-	args = append(args,
-		"show-options", "-gv", "base-index",
+	args := []string{
+		"start-server",
+		";", "show-options", "-gv", "base-index",
 		";", "show-options", "-gv", "pane-base-index",
 		";", "list-panes", "-a",
-		"-F", "#{session_id}|#{q:session_name}|#{window_id}|#{q:window_name}|#{window_index}|#{window_layout}|#{window_zoomed_flag}|#{window_active}|#{pane_id}|#{pane_index}|#{pane_active}|#{q:pane_current_path}|#{q:pane_current_command}|#{q:"+backend.WorkspacePathOption+"}",
-	)
+		"-F", "#{session_id}|#{q:session_name}|#{window_id}|#{q:window_name}|#{window_index}|#{window_layout}|#{window_zoomed_flag}|#{window_active}|#{pane_id}|#{pane_index}|#{pane_active}|#{q:pane_current_path}|#{q:pane_current_command}|#{q:" + backend.WorkspacePathOption + "}",
+	}
 	if q.IncludeProgramInfo {
 		args[len(args)-1] += "|#{pane_pid}|#{pane_dead}|#{q:default-shell}"
 	}
@@ -332,11 +326,11 @@ func getCurrentSessionID() string {
 	if tmuxEnv == "" {
 		return ""
 	}
-	end := strings.LastIndexByte(tmuxEnv, ',')
-	if end < 0 || !strings.Contains(tmuxEnv[:end], ",") {
+	parts := strings.Split(tmuxEnv, ",")
+	if len(parts) < 3 {
 		return ""
 	}
-	return "$" + tmuxEnv[end+1:]
+	return "$" + parts[2]
 }
 
 const clientStateFormat = "client|#{session_id}|#{pane_id}|#{q:client_last_session}" +

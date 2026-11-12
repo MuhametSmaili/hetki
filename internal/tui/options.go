@@ -47,8 +47,6 @@ type State struct {
 
 // Options contains fully resolved startup settings, consumed once per run.
 type Options struct {
-	// Choice starts a standalone generic picker, without navigation/status controls.
-	Choice       *ChoiceScreen
 	Initial      State
 	Keys         KeyMap
 	StartMode    StartMode

@@ -35,7 +35,6 @@ Read the [documentation](https://hetki.smaili.dev).
 - [Application status](docs/status.md): activity indicators, profiles, and troubleshooting.
 - [Configuration](docs/configuration.md): picker defaults, flags, and layout.
 - [Key bindings](docs/key-bindings.md) and [theme](docs/theme.md): customize the picker.
-- [User-defined actions](docs/actions.md): chain choices and run commands for panes and sessions.
 - [Shell completion](docs/shell-completion.md): Bash and Zsh setup.
 
 Workspaces save session structure, not running processes or terminal contents.

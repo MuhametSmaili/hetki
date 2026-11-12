@@ -22,9 +22,6 @@ func (m model) handleActionResult(msg actionResultMsg) (tea.Model, tea.Cmd) {
 	m.pending, m.pendingRows = nil, nil
 	m.busy, m.status = false, ""
 	m.err = msg.err
-	if result.Choice != nil {
-		return m.applyChoiceResult(result, msg.err)
-	}
 	if m.err == nil && result.View != "" {
 		m.err = result.View.Validate()
 	}
@@ -138,7 +135,7 @@ func (m *model) selectAfterDelete(deletedID, preferred list.ItemID, previousRows
 func requiresMenuEntry(action ActionID) bool {
 	switch action {
 	case ActionContextMenu, ActionCreateSession, ActionCreateWindow, ActionRename, ActionRenameSession,
-		ActionDelete, ActionDeleteSession, ActionRefresh, ActionToggleProjection, ActionOpen, ActionUserActions:
+		ActionDelete, ActionDeleteSession, ActionRefresh, ActionToggleProjection, ActionOpen:
 		return true
 	default:
 		return false
