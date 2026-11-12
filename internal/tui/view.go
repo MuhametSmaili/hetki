@@ -122,23 +122,25 @@ func (m model) viewBody(layout layoutMetrics) string {
 }
 
 func (m model) viewList(layout layoutMetrics) string {
-	rows := m.items.VisibleRows()
-	visibleRows := make([]rowProps, 0, len(rows))
+	rows := m.items.Rows()
+	all := make([]rowProps, 0, len(rows))
 	now := time.Now()
 	for i, row := range rows {
-		visibleRows = append(visibleRows, rowProps{
+		all = append(all, rowProps{
 			Context: row.Item.Context, Primary: row.Item.Primary, Annotation: row.Item.Annotation,
 			Secondary:  row.Item.Secondary,
 			Trailing:   row.Item.Trailing,
 			Status:     m.paneStatus.rowValue(row.Item.ID, now),
 			StatusTime: now,
 			Depth:      row.Depth, TreePrefix: row.TreePrefix, Expanded: row.Expanded, Branch: row.Branch,
-			Active: m.items.IsActive(row.Item.ID), Selected: m.items.Offset()+i == m.items.Cursor(),
+			Active: m.items.IsActive(row.Item.ID), Selected: i == m.items.Cursor(),
 		})
 	}
+	start := min(max(0, m.items.Offset()), len(all))
+	visibleRows := all[start:min(len(all), start+len(m.items.VisibleRows()))]
 	return strings.Join(renderList(listProps{
 		Width: layout.listWidth, Height: layout.middleHeight, EmptyText: emptyStateText(m), Rows: visibleRows,
-		Compact: layout.compact, Theme: m.theme,
+		Measure: all, Compact: layout.compact, Theme: m.theme,
 	}), "\n")
 }
 

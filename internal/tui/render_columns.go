@@ -24,7 +24,7 @@ type columnWidths struct {
 }
 
 func renderColumnList(props listProps) []string {
-	columns := measureColumns(props.Rows).fit(props.Width)
+	columns := measureColumns(props.measureRows()).fit(props.Width)
 	lines := make([]string, len(props.Rows))
 	for i, row := range props.Rows {
 		lines[i] = renderColumnRow(row, columns, props.Width, props.Theme)

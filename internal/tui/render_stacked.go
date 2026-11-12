@@ -34,7 +34,7 @@ func usesStackedRows(props listProps) bool {
 		return false
 	}
 
-	for _, row := range props.Rows {
+	for _, row := range props.measureRows() {
 		if row.Context != "" || row.Depth > 0 {
 			return true
 		}
@@ -44,7 +44,7 @@ func usesStackedRows(props listProps) bool {
 
 func renderStackedList(props listProps) []string {
 	trailingWidth := 0
-	for _, row := range props.Rows {
+	for _, row := range props.measureRows() {
 		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
 	}
 

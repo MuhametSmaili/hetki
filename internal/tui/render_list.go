@@ -30,8 +30,18 @@ type listProps struct {
 	Height    int // Zero means unconstrained; one forces single-line items.
 	EmptyText string
 	Rows      []rowProps
-	Compact   bool
-	Theme     theme
+	// Measure sets the column widths. Pass every row in the list so columns
+	// do not move while scrolling. Empty means Rows.
+	Measure []rowProps
+	Compact bool
+	Theme   theme
+}
+
+func (props listProps) measureRows() []rowProps {
+	if len(props.Measure) > 0 {
+		return props.Measure
+	}
+	return props.Rows
 }
 
 func renderList(props listProps) []string {
@@ -51,7 +61,9 @@ func renderList(props listProps) []string {
 	trailingWidth := commandStatusWidth
 	for i, row := range props.Rows {
 		left[i] = props.Theme.renderPrimaryLabel(row, renderRowLine(row, props.Compact))
-		columnWidth = max(columnWidth, terminal.Width(left[i]))
+	}
+	for _, row := range props.measureRows() {
+		columnWidth = max(columnWidth, terminal.Width(renderRowLine(row, props.Compact)))
 		secondaryWidth = max(secondaryWidth, terminal.Width(strings.TrimSpace(terminal.Sanitize(row.Secondary))))
 		trailingWidth = max(trailingWidth, rowTrailingWidth(row))
 	}
