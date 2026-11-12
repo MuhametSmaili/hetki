@@ -21,6 +21,7 @@ func TestWorkspaceCompletionReportsInventoryErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			home := filepath.Join(t.TempDir(), "home\n\x1b[31m")
 			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", "")
 			debugPath := filepath.Join(t.TempDir(), "completion.log")
 			t.Setenv("BASH_COMP_DEBUG_FILE", debugPath)
 			if test.brokenDirectory {

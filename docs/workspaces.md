@@ -11,7 +11,7 @@ From inside tmux, run:
 hetki save work
 ```
 
-For a new workspace, this creates `~/.config/hetki/workspaces/work.yaml`.
+For a new workspace, this creates `work.yaml` in your [workspace directory](#choose-a-workspace).
 Hetki saves the current session. If that session is already in the file, it replaces its saved structure.
 Other saved sessions remain in the file.
 
@@ -85,8 +85,17 @@ hetki save work
 hetki start work
 ```
 
-Named files are in `~/.config/hetki/workspaces` on Linux and macOS.
-This directory does not change with `XDG_CONFIG_HOME`.
+Named files are in `$XDG_CONFIG_HOME/hetki/workspaces` on Linux and macOS.
+If `XDG_CONFIG_HOME` is unset or relative, Hetki uses `~/.config/hetki/workspaces` instead.
+Shell completion uses the same directory.
+
+Hetki does not move existing files or search the old directory when you set `XDG_CONFIG_HOME`.
+Move existing workspaces to the new directory yourself, or continue to use their file paths:
+
+```bash
+hetki start --file ~/.config/hetki/workspaces/work.yaml
+```
+
 `work` selects `work.yaml`, or an existing `work.yml` if `work.yaml` is absent.
 You can also supply the extension, such as `work.yml`.
 

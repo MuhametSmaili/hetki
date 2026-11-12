@@ -11,6 +11,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestResolverNamedPathUsesConfigHome(t *testing.T) {
+	home := t.TempDir()
+	xdg := filepath.Join(t.TempDir(), "$HETKI_CONFIG", "with spaces")
+	for _, test := range []struct {
+		name, home, xdg, want string
+		invalid               bool
+	}{
+		{name: "HOME fallback", home: home, want: filepath.Join(home, ".config", "hetki", "workspaces", "work.yaml")},
+		{name: "absolute XDG is literal", home: home, xdg: xdg, want: filepath.Join(xdg, "hetki", "workspaces", "work.yaml")},
+		{name: "relative XDG ignored", home: home, xdg: "relative", want: filepath.Join(home, ".config", "hetki", "workspaces", "work.yaml")},
+		{name: "missing HOME", invalid: true},
+		{name: "relative HOME", home: "relative", invalid: true},
+		{name: "XDG needs no HOME", xdg: xdg, want: filepath.Join(xdg, "hetki", "workspaces", "work.yaml")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("HOME", test.home)
+			t.Setenv("XDG_CONFIG_HOME", test.xdg)
+			t.Setenv("HETKI_CONFIG", "wrong-directory")
+
+			path, err := NewResolver().NamedPath("work")
+
+			if test.invalid {
+				require.Error(t, err)
+				assert.Empty(t, path)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, test.want, path)
+		})
+	}
+}
+
 func TestResolverNamedPathSelectsConfiguredWorkspace(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
@@ -48,6 +80,7 @@ func TestResolverNamedPathSelectsConfiguredWorkspace(t *testing.T) {
 func TestResolverNamedPathKeepsHomeAndNameLiteral(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "$HETKI_HOME")
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HETKI_HOME", "../../other-home")
 	t.Setenv("HETKI_NAME", "../../escaped")
 	workspaceDir := filepath.Join(home, ".config", "hetki", "workspaces")

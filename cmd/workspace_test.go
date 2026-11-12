@@ -49,16 +49,22 @@ func TestWorkspaceCommandsRejectInvalidSelectorsBeforeDetection(t *testing.T) {
 func TestWorkspaceSelectorsRoundTripThroughCommands(t *testing.T) {
 	for _, test := range []struct {
 		name, flag, value, destination string
+		xdg                            string
 	}{
-		{"literal name", "", "$HETKI_NAME", ".config/hetki/workspaces/$HETKI_NAME.yml"},
-		{"relative file", "--file", "./work.yaml", "work.yaml"},
-		{"short file", "-f", "./work.yaml", "work.yaml"},
-		{"absolute file", "--file", "", "absolute.yaml"},
+		{"literal name", "", "$HETKI_NAME", ".config/hetki/workspaces/$HETKI_NAME.yml", ""},
+		{"XDG name", "", "$HETKI_NAME", "xdg/hetki/workspaces/$HETKI_NAME.yml", "xdg"},
+		{"relative file", "--file", "./work.yaml", "work.yaml", "xdg"},
+		{"short file", "-f", "./work.yaml", "work.yaml", ""},
+		{"absolute file", "--file", "", "absolute.yaml", "xdg"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
 			t.Chdir(home)
 			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", "")
+			if test.xdg != "" {
+				t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, test.xdg))
+			}
 			t.Setenv("HETKI_NAME", "unexpected")
 			destination := filepath.Join(home, test.destination)
 			require.NoError(t, os.MkdirAll(filepath.Dir(destination), 0700))
@@ -80,10 +86,11 @@ func TestWorkspaceSelectorsRoundTripThroughCommands(t *testing.T) {
 				selector = []string{test.flag, value}
 			}
 
-			captureLoggerOutput(t, func() {
+			output := captureLoggerOutput(t, func() {
 				require.NoError(t, executeWorkspaceCommand(t, append([]string{"save"}, selector...)...))
 			})
 
+			require.Contains(t, output, destination)
 			data, err := os.ReadFile(destination)
 			require.NoError(t, err)
 			require.Contains(t, string(data), "name: dev")
@@ -103,13 +110,17 @@ func TestWorkspaceSelectorsRoundTripThroughCommands(t *testing.T) {
 	}
 }
 
-func TestStartMissingNamedWorkspaceDoesNotUseLocalFiles(t *testing.T) {
+func TestStartMissingNamedWorkspaceDoesNotUseOtherDirectories(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Chdir(home)
 	for _, name := range []string{"work.yaml", ".hetki.yaml"} {
 		writeWorkspaceFile(t, home, name, "sessions:\n  - name: dev\n    windows:\n      - name: editor\n")
 	}
+	legacy := filepath.Join(home, ".config", "hetki", "workspaces")
+	require.NoError(t, os.MkdirAll(legacy, 0700))
+	writeWorkspaceFile(t, legacy, "work.yaml", "sessions:\n  - name: dev\n    windows:\n      - name: editor\n")
 	previous := detectBackend
 	detectBackend = func(...string) (backend.Backend, error) {
 		t.Fatal("missing named workspace reached backend detection")
@@ -125,8 +136,10 @@ func TestStartMissingNamedWorkspaceDoesNotUseLocalFiles(t *testing.T) {
 func TestWorkspaceCompletion(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "$HETKI_HOME")
 	t.Setenv("HOME", home)
+	xdg := filepath.Join(t.TempDir(), "$HETKI_HOME")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
 	t.Setenv("HETKI_HOME", "wrong-directory")
-	directory := filepath.Join(home, ".config", "hetki", "workspaces")
+	directory := filepath.Join(xdg, "hetki", "workspaces")
 	require.NoError(t, os.MkdirAll(directory, 0700))
 	for _, name := range []string{"work.yml", "work.v1.yaml", "work.yaml.yml", "work .yaml", ".yaml", "-dash.yaml"} {
 		writeWorkspaceFile(t, directory, name, "")

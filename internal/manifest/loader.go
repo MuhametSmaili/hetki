@@ -8,12 +8,17 @@ import (
 	"strings"
 )
 
+// GetConfigDir uses an absolute XDG_CONFIG_HOME or falls back to HOME/.config.
 func GetConfigDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	root := os.Getenv("XDG_CONFIG_HOME")
+	if !filepath.IsAbs(root) {
+		home := os.Getenv("HOME")
+		if !filepath.IsAbs(home) {
+			return "", fmt.Errorf("configuration path requires an absolute HOME or XDG_CONFIG_HOME")
+		}
+		root = filepath.Join(home, ".config")
 	}
-	return filepath.Join(home, ".config", "hetki"), nil
+	return filepath.Join(root, "hetki"), nil
 }
 
 type Loader interface {
