@@ -1,5 +1,47 @@
 # Changelog
 
+## [v0.7.0] - 2026-11-22
+
+### Before you upgrade
+
+Named workspaces now use `$XDG_CONFIG_HOME/hetki/workspaces` when `XDG_CONFIG_HOME`
+is an absolute path. If it is unset or relative, the default remains
+`~/.config/hetki/workspaces`.
+
+Hetki does not move existing files or search the old directory. If you set a
+different `XDG_CONFIG_HOME`, move your workspace files or pass their old paths
+with `--file`. See the [workspace guide](docs/workspaces.md#choose-a-workspace).
+
+### Added
+
+- In tree view, expand a split window to see and select its individual panes.
+  Selecting the window still opens its active pane.
+- Choose a working directory when creating a session in the picker. The
+  directory starts with the selected item's working directory, or your home
+  directory if no path is available, and supports tab completion.
+
+### Changed
+
+- Picker filtering does less work and allocates less memory for large lists.
+- `hetki start` skips rewriting workspace metadata that is already up to date.
+- The docs homepage now has interactive demos for the picker, status tracking,
+  configuration, and workspaces. The getting-started guide includes a tmux popup
+  example.
+
+### Fixed
+
+- Picker columns stay aligned while scrolling, even when long names move in or
+  out of view.
+
+### Known issue
+
+On tmux 3.3 through 3.6b, creating a session or window with global `window-size`
+set to `manual` can crash the tmux server and close its sessions. Use the default
+`window-size latest` setting. This issue was fixed in tmux 3.7. See
+[#26](https://github.com/MuhametSmaili/hetki/issues/26).
+
+[All changes](https://github.com/MuhametSmaili/hetki/compare/v0.6.0...v0.7.0)
+
 ## [v0.6.0] - 2026-11-01
 
 ### Before you upgrade
