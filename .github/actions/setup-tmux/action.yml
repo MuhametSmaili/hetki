@@ -1,0 +1,61 @@
+name: Set up pinned tmux
+description: Build tmux for native integration and mixed-version tests
+inputs:
+  version:
+    description: tmux version to put on PATH (3.2a, 3.4, or 3.8)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install tmux build dependencies (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y build-essential libevent-dev libncurses-dev pkg-config bison python3
+
+    - name: Install tmux build dependencies (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        # tmux 3.8 requires Unicode and allocator libraries on macOS.
+        brew install libevent ncurses utf8proc jemalloc pkgconf bison
+        echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+        echo "PKG_CONFIG_PATH=$(brew --prefix libevent)/lib/pkgconfig:$(brew --prefix ncurses)/lib/pkgconfig:$(brew --prefix utf8proc)/lib/pkgconfig:$(brew --prefix jemalloc)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+    - name: Build pinned tmux protocol families
+      shell: bash
+      env:
+        TMUX_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "$TMUX_VERSION" in
+          3.2a|3.4|3.8) ;;
+          *) echo "unsupported test tmux version: $TMUX_VERSION" >&2; exit 1 ;;
+        esac
+
+        work="$RUNNER_TEMP/hetki-tmux"
+        mkdir -p "$work"
+        while read -r version checksum; do
+          if [[ "$version" == 3.4 && "$TMUX_VERSION" != 3.4 ]]; then
+            continue
+          fi
+          archive="$work/tmux-$version.tar.gz"
+          curl --fail --location --retry 3 --connect-timeout 15 --max-time 120 \
+            --output "$archive" "https://github.com/tmux/tmux/releases/download/$version/tmux-$version.tar.gz"
+          printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 -c -
+          tar -xzf "$archive" -C "$work"
+          (
+            cd "$work/tmux-$version"
+            ./configure
+            make -j2
+          ) </dev/null
+          test "$("$work/tmux-$version/tmux" -V)" = "tmux $version"
+        done <<'SOURCES'
+        3.2a 551553a4f82beaa8dadc9256800bcc284d7c000081e47aa6ecbb6ff36eacd05f
+        3.4 551ab8dea0bf505c0ad6b7bb35ef567cdde0ccb84357df142c254f35a23e19aa
+        3.8 e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e
+        SOURCES
+        echo "$work/tmux-$TMUX_VERSION" >> "$GITHUB_PATH"
+        echo "HETKI_TEST_TMUX_LEGACY=$work/tmux-3.2a/tmux" >> "$GITHUB_ENV"
+        echo "HETKI_TEST_TMUX_CURRENT=$work/tmux-3.8/tmux" >> "$GITHUB_ENV"

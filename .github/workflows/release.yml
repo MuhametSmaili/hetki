@@ -41,6 +41,11 @@ jobs:
         with:
           version: v0.11.0
 
+      - name: Set up pinned tmux
+        uses: ./.github/actions/setup-tmux
+        with:
+          version: '3.8'
+
       - name: Verify source gates
         run: |
           test -z "$(gofmt -l .)"
